@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login — Dashboard de Compras CEDEP</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="pagina-auth">
+  <div class="caixa-auth">
+    <h1>Compras CEDEP</h1>
+    <p class="subtitulo">Entre com seu login para continuar</p>
+    {% if erro %}<p class="erro-form">{{ erro }}</p>{% endif %}
+    <form method="post" action="/login">
+      <label for="login">Login</label>
+      <input type="text" id="login" name="login" required autofocus autocomplete="username">
+      <label for="senha">Senha</label>
+      <input type="password" id="senha" name="senha" required autocomplete="current-password">
+      <button type="submit">Entrar</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

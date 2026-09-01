@@ -1,0 +1,95 @@
+{% import "_macros.html" as m %}
+{# Um SKU, uma unica div com id="linha-CODIGO". E' o mesmo elemento no
+   celular (cartao) e na mesa (linha de grade) - so muda o que fica visivel
+   via CSS (ver app.css). Os DOIS formularios abaixo (mobile e mesa) apontam
+   para o MESMO hx-target="#linha-{codigo}", entao a gravacao por qualquer um
+   deles troca a div inteira - cartao e linha nunca ficam dessincronizados. #}
+<div id="linha-{{ linha.codigo }}" class="linha-produto">
+
+  {# ---------------------------------------------------------- cartao (mobile) --- #}
+  <div class="cartao-mobile card">
+    <div class="card-titulo">
+      <div>
+        <div class="codigo">{{ linha.codigo }}</div>
+        <div class="descricao">{{ linha.descricao }}</div>
+        <div class="texto-suave">{{ linha.fornecedor }}{% if linha.comprador %} · {{ linha.comprador }}{% endif %}{% if linha.classe %} · classe {{ linha.classe }}{% endif %}</div>
+      </div>
+    </div>
+
+    {% if linha.alertas %}
+    <div class="lista-alertas" style="margin-top:6px">
+      {% for a in linha.alertas %}
+      <span class="etiqueta etiqueta-alerta" title="{{ a.texto }}">{{ a.tipo }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card-linha"><span class="rotulo">Estoque disponível</span><span>{{ m.numero(linha.est_disp, 2) }}</span></div>
+    <div class="card-linha"><span class="rotulo">Sugestão de cobertura</span><span>{{ m.numero(linha.sug_cobertura, 2) }}</span></div>
+
+    <details>
+      <summary>Mais detalhes</summary>
+      <div class="card-linha"><span class="rotulo">Média janela</span><span>{{ m.numero(linha.media_janela, 2) }}</span></div>
+      <div class="card-linha"><span class="rotulo">Meses de estoque</span><span>{{ m.numero(linha.meses_est, 2) }}</span></div>
+      <div class="card-linha"><span class="rotulo">Embalagem de compra</span><span>{{ m.numero(linha.embal_compra, 2) }}</span></div>
+      <div class="card-linha"><span class="rotulo">Pedido em unidades</span><span>{{ m.numero(linha.pedido_unidades, 2) }}</span></div>
+      {# Quantidade em unidades e valor sao calculados AO VIVO em compra.py, a
+         partir de APP_DECISAO_PEDIDO com o fator congelado - atualizam no mesmo
+         instante da gravacao. NAO rotule como "so no proximo build": era o texto
+         anterior, e estava errado. O comprador precisa conferir quanto vai gastar
+         na hora de decidir; dizer que o numero esta velho quando ele esta certo
+         faz ele desconfiar do valor correto. O que de fato espera o build diario
+         sao os campos derivados de recalculo geral (cobertura com pedido,
+         alertas), nao estes dois. #}
+      <div class="card-linha"><span class="rotulo">Valor do pedido</span><span>{{ m.moeda(linha.valor_pedido) }}</span></div>
+    </details>
+
+    <form class="campo-pedido" hx-post="/compra/{{ linha.codigo }}/pedido"
+          hx-target="#linha-{{ linha.codigo }}" hx-swap="outerHTML">
+      <div>
+        <label for="pedido-m-{{ linha.codigo }}">
+          Pedido ({% if linha.fator_exibicao and linha.fator_exibicao > 1 %}caixa c/ {{ m.numero(linha.embal_compra, 0) }}{% else %}unidade{% endif %})
+        </label>
+        <input type="text" inputmode="decimal" id="pedido-m-{{ linha.codigo }}" name="pedido"
+               value="{{ m.editavel(linha.pedido, 2) }}">
+      </div>
+      <span class="texto-suave">sugestão: {{ m.numero(linha.sug_cobertura, 2) }}</span>
+      <button type="submit">Gravar</button>
+    </form>
+  </div>
+
+  {# ---------------------------------------------------------- linha (mesa) --- #}
+  <div class="linha-desktop">
+    <div>{{ linha.codigo }}</div>
+    <div>{{ linha.descricao }}</div>
+    <div>{{ linha.fornecedor }}</div>
+    <div>{{ linha.comprador }}</div>
+    <div>{{ linha.classe }}</div>
+    <div class="celula-alertas">
+      {% if linha.alertas %}
+        {% for a in linha.alertas %}
+        <span class="etiqueta etiqueta-alerta" title="{{ a.texto }}">{{ a.tipo }}</span>
+        {% endfor %}
+      {% else %}<span class="pill-vazio">—</span>{% endif %}
+    </div>
+    <div>{{ m.numero(linha.est_disp, 2) }}</div>
+    <div>{{ m.numero(linha.media_janela, 2) }}</div>
+    <div>{{ m.numero(linha.meses_est, 2) }}</div>
+    <div>{{ m.numero(linha.sug_cobertura, 2) }}</div>
+    <div class="celula-pedido">
+      <form class="campo-pedido" hx-post="/compra/{{ linha.codigo }}/pedido"
+            hx-target="#linha-{{ linha.codigo }}" hx-swap="outerHTML">
+        <input type="text" inputmode="decimal" name="pedido"
+               value="{{ m.editavel(linha.pedido, 2) }}"
+               aria-label="Pedido ({% if linha.fator_exibicao and linha.fator_exibicao > 1 %}caixa{% else %}unidade{% endif %})">
+        <button type="submit">Gravar</button>
+        <div class="texto-suave">{% if linha.fator_exibicao and linha.fator_exibicao > 1 %}caixa c/ {{ m.numero(linha.embal_compra, 0) }}{% else %}unidade{% endif %} · sug. {{ m.numero(linha.sug_cobertura, 2) }}</div>
+      </form>
+    </div>
+    <div>{{ m.numero(linha.pedido_unidades, 2) }}</div>
+    <div>{{ m.moeda(linha.valor_pedido) }}</div>
+    <div>{{ m.numero(linha.fator_exibicao, 0) }}</div>
+    <div>{{ m.numero(linha.embal_compra, 2) }}</div>
+  </div>
+
+</div>

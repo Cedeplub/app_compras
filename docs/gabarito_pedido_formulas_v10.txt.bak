@@ -1,0 +1,123 @@
+NCOLS 122
+A|CODIGO|F=None|V=1036
+B|COD_FAB|F=None|V=None
+C|DESCRICAO|F=None|V=** LATA QUEROSENE ESSO JACARE 5L
+D|ALERTA|F=MID(IF($X2<>"","; "&$X2,"")&IF($Y2<>"","; "&$Y2,"")&IF($AL2<>"","; "&$AL2,"")&IF($AV2<>"","; "&$AV2,"")&IF($AO2<>"","; "&$AO2,"")&IF($AP2<>"","; "&$AP2,"")&IF($AY2<>"","; "&$AY2,"")&IF($BS2<>"","; "&$BS2,"")&IF($CC2<>"","; "&$CC2,"")&IF($CD2<>"","; "&$CD2,"")&IF($CE2<>"","; "&$CE2,"")&IF($CL2<>"","; "&$CL2,"")&IF($DO2<>"","; "&$DO2,"")&IF($DB2<>"","; "&$DB2,""),3,9999)|V=None
+E|STATUS|F=IFERROR(IF(INDEX(dCadastroTI!$D:$D,MATCH($A2,dCadastroTI!$A:$A,0))="","?",INDEX(dCadastroTI!$D:$D,MATCH($A2,dCadastroTI!$A:$A,0))),"?")|V=Inativo
+F|FORNECEDOR|F=IFERROR(IF(INDEX(dCadastroTI!$M:$M,MATCH($A2,dCadastroTI!$A:$A,0))="","NAO MAPEADO",INDEX(dCadastroTI!$M:$M,MATCH($A2,dCadastroTI!$A:$A,0))),"NAO MAPEADO")|V=LATAS VAZIAS
+G|COMPRADOR|F=IFERROR(INDEX(dFornecedor!$E:$E,MATCH($F2,dFornecedor!$A:$A,0)),"A DEFINIR")|V=A DEFINIR
+H|EMBALAGEM|F=None|V=1X1
+I|(nao usado)|F=None|V=None
+J|EMBAL_COMPRA|F=IFERROR(IF(INDEX(dCadastroTI!$G:$G,MATCH($A2,dCadastroTI!$A:$A,0))="",1,INDEX(dCadastroTI!$G:$G,MATCH($A2,dCadastroTI!$A:$A,0))),1)|V=1
+K|FATOR_EXIBICAO|F=IF(IFERROR(INDEX(dFornecedor!$D:$D,MATCH($F2,dFornecedor!$A:$A,0)),"UNIDADE")="MASTER",$J2,1)|V=1
+L|L_POR_UNIDADE|F=IFERROR(INDEX(dEmbalagem!$D:$D,MATCH($H2,dEmbalagem!$A:$A,0)),0)|V=1
+M|PESO_UNITARIO_KG|F=IFERROR(IF(INDEX(dCadastroTI!$AG:$AG,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$AG:$AG,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=5
+N|QT_PALETE|F=IFERROR(IF(INDEX(dCadastroTI!$AH:$AH,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$AH:$AH,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=0
+O|NIVEL_BASE_MARGEM|F=IF($CJ2="",0,IF($CJ2<0,3,IF($CJ2<Parametros!$B$22,2,IF($CJ2<Parametros!$B$21,1,0))))|V=0
+P|NIVEL_MARGEM|F=IF(AND($AX2<>"A",$O2>0),MIN($O2+1,3),$O2)|V=0
+Q|EST_DISP|F=(IFERROR(IF(INDEX(dCadastroTI!$W:$W,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$W:$W,MATCH($A2,dCadastroTI!$A:$A,0))),0))/$K2|V=0
+R|QT_BLOQUEADA|F=IFERROR(IF(INDEX(dCadastroTI!$T:$T,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$T:$T,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=0
+S|QT_AVARIA|F=IFERROR(IF(INDEX(dCadastroTI!$U:$U,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$U:$U,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=0
+T|QT_RESERVADA|F=IFERROR(IF(INDEX(dCadastroTI!$V:$V,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$V:$V,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=0
+U|PENDENTE|F=(IFERROR(IF(INDEX(dCadastroTI!$S:$S,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$S:$S,MATCH($A2,dCadastroTI!$A:$A,0))),0))/$K2|V=0
+V|EST+PEND|F=$Q2+$U2|V=0
+W|EST_FABRICA|F=IFERROR(INDEX(fEstFabrica!$C:$C,MATCH($B2,fEstFabrica!$A:$A,0))/$K2,"")|V=None
+X|CHECK_FABRICA|F=IF($W2="","",IF($BA2>$W2,"PEDIDO ACIMA DO ESTOQUE DA FABRICA",""))|V=None
+Y|CHECK_INATIVO|F=IF(AND($E2="Inativo",$BA2>0),"PRODUTO INATIVO NO CADASTRO","")|V=None
+Z|DT_ULT_ENT|F=IFERROR(IF(INDEX(dCadastroTI!$X:$X,MATCH($A2,dCadastroTI!$A:$A,0))="","",INDEX(dCadastroTI!$X:$X,MATCH($A2,dCadastroTI!$A:$A,0))),"")|V=41455
+AA|QT_ULT_ENT|F=(IFERROR(IF(INDEX(dCadastroTI!$Y:$Y,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$Y:$Y,MATCH($A2,dCadastroTI!$A:$A,0))),0))/$K2|V=0
+AB|N_MESES|F=IFERROR(INDEX(dFornecedor!$B:$B,MATCH($F2,dFornecedor!$A:$A,0)),3)|V=3
+AC|VD MES ATUAL|F=(IFERROR(INDEX(fVendaMes!$T:$T,MATCH($A2,fVendaMes!$A:$A,0)),0)+$DL2*IFERROR(INDEX(fVendaMes!$T:$T,MATCH($DK2,fVendaMes!$A:$A,0)),0)+$DN2*IFERROR(INDEX(fVendaMes!$T:$T,MATCH($DM2,fVendaMes!$A:$A,0)),0))/$K2|V=0
+AD|VD M-1|F=(IFERROR(INDEX(fVendaMes!$B:$B,MATCH($A2,fVendaMes!$A:$A,0)),0)+$DL2*IFERROR(INDEX(fVendaMes!$B:$B,MATCH($DK2,fVendaMes!$A:$A,0)),0)+$DN2*IFERROR(INDEX(fVendaMes!$B:$B,MATCH($DM2,fVendaMes!$A:$A,0)),0))/$K2|V=0
+AE|VD M-2|F=(IFERROR(INDEX(fVendaMes!$C:$C,MATCH($A2,fVendaMes!$A:$A,0)),0)+$DL2*IFERROR(INDEX(fVendaMes!$C:$C,MATCH($DK2,fVendaMes!$A:$A,0)),0)+$DN2*IFERROR(INDEX(fVendaMes!$C:$C,MATCH($DM2,fVendaMes!$A:$A,0)),0))/$K2|V=0
+AF|VD M-3|F=(IFERROR(INDEX(fVendaMes!$D:$D,MATCH($A2,fVendaMes!$A:$A,0)),0)+$DL2*IFERROR(INDEX(fVendaMes!$D:$D,MATCH($DK2,fVendaMes!$A:$A,0)),0)+$DN2*IFERROR(INDEX(fVendaMes!$D:$D,MATCH($DM2,fVendaMes!$A:$A,0)),0))/$K2|V=0
+AG|MEDIA_JANELA|F=(IFERROR(INDEX(fVendaMes!$AD:$AI,MATCH($A2,fVendaMes!$A:$A,0),MATCH($AB2,{2;3;4;6;9;12},0)),0)+$DL2*IFERROR(INDEX(fVendaMes!$AD:$AI,MATCH($DK2,fVendaMes!$A:$A,0),MATCH($AB2,{2;3;4;6;9;12},0)),0)+$DN2*IFERROR(INDEX(fVendaMes!$AD:$AI,MATCH($DM2,fVendaMes!$A:$A,0),MATCH($AB2,{2;3;4;6;9;12},0)),0))/$K2|V=0
+AH|MEDIA_L|F=$AG2*$K2*$L2|V=0
+AI|QT_CLI_ATACADO|F=IFERROR(INDEX(fVendaMes!$AA:$AA,MATCH($A2,fVendaMes!$A:$A,0)),0)|V=0
+AJ|QT_CLI_VAREJO|F=IFERROR(INDEX(fVendaMes!$AB:$AB,MATCH($A2,fVendaMes!$A:$A,0)),0)|V=0
+AK|DIAS_SEM_ESTOQUE|F=IFERROR(INDEX(fVendaMes!$AC:$AC,MATCH($A2,fVendaMes!$A:$A,0)),0)|V=0
+AL|CHECK_RUPTURA|F=IF($AK2>Parametros!$B$17,"RUPTURA RECORRENTE - "&$AK2&" DIAS SEM ESTOQUE","")|V=None
+AM|DT_ULT_SAIDA|F=IFERROR(IF(INDEX(dCadastroTI!$AE:$AE,MATCH($A2,dCadastroTI!$A:$A,0))="","",INDEX(dCadastroTI!$AE:$AE,MATCH($A2,dCadastroTI!$A:$A,0))),"")|V=None
+AN|DIAS_SEM_VENDA|F=IF($AM2="","",TODAY()-$AM2)|V=None
+AO|CHECK_ESTOQUE_PARADO|F=IF(AND($V2>0,$AN2<>"",$AN2>90),"SEM VENDA HA "&$AN2&" DIAS - ESTOQUE PARADO","")|V=None
+AP|CHECK_FORA_DE_LINHA|F=IF(IFERROR(INDEX(fVendaMes!$Y:$Y,MATCH($A2,fVendaMes!$A:$A,0)),"N")="S","FORA DE LINHA - AVALIAR LIQUIDACAO","")|V=None
+AQ|VD_ANT_3M|F=(IFERROR(INDEX(fVendaMes!$E:$E,MATCH($A2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$F:$F,MATCH($A2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$G:$G,MATCH($A2,fVendaMes!$A:$A,0)),0)+$DL2*(IFERROR(INDEX(fVendaMes!$E:$E,MATCH($DK2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$F:$F,MATCH($DK2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$G:$G,MATCH($DK2,fVendaMes!$A:$A,0)),0)))/3/$K2|V=0
+AR|TEND %|F=IF($AQ2=0,"",($AD2+$AE2+$AF2)/3/$AQ2-1)|V=None
+AS|TEND|F=IF($AR2="","SEM BASE",IF($AR2>0.15,"ALTA",IF($AR2<-0.15,"QUEDA","ESTAVEL")))|V=SEM BASE
+AT|VAR_PV|F=IFERROR((IFERROR(INDEX(fVendaMes!$N:$N,MATCH($A2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$O:$O,MATCH($A2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$P:$P,MATCH($A2,fVendaMes!$A:$A,0)),0))/($AD2+$AE2+$AF2)/((IFERROR(INDEX(fVendaMes!$Q:$Q,MATCH($A2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$R:$R,MATCH($A2,fVendaMes!$A:$A,0)),0)+IFERROR(INDEX(fVendaMes!$S:$S,MATCH($A2,fVendaMes!$A:$A,0)),0))/($AQ2*3))-1,"")|V=None
+AU|TX_DEVOLUCAO_3M|F=IFERROR(INDEX(fVendaMes!$Z:$Z,MATCH($A2,fVendaMes!$A:$A,0)),0)|V=0
+AV|CHECK_DEVOLUCAO_ALTA|F=IF($AU2>Parametros!$B$18,"DEVOLUCAO ACIMA DO PADRAO - "&TEXT($AU2,"0.0%"),"")|V=None
+AW|MESES_EST|F=IF($AG2=0,"",$V2/$AG2)|V=None
+AX|CLASSE|F=IF($AG2=0,"S/VEND",IF($L2>0,IF(IFERROR($AH2/SUMPRODUCT(($L$2:$L$8773>0)*$AH$2:$AH$8773),0)>Parametros!$B$10,"A","B/C"),IF(IFERROR(($AG2*$K2)/SUMPRODUCT(($L$2:$L$8773=0)*$AG$2:$AG$8773*$K$2:$K$8773),0)>Parametros!$B$10,"A","B/C")))|V=S/VEND
+AY|CHECK_LITRAGEM|F=IF(ISNA(MATCH($H2,dEmbalagem!$A:$A,0)),"SEM CADASTRO NA dEmbalagem","")|V=None
+AZ|SUG_COBERTURA|F=MAX(0,ROUND($AG2*IFERROR(INDEX(dFornecedor!$C:$C,MATCH($F2,dFornecedor!$A:$A,0)),2)-$V2,0))|V=0
+BA|PEDIDO|F=None|V=0
+BB|PEDIDO_UNIDADES|F=$BA2*$K2|V=0
+BC|PEDIDO_NA_MEDIDA|F=IF(Parametros!$B$19="LITROS",$BB2*$L2,IF(Parametros!$B$19="PESO",$BB2*$M2,IFERROR($BB2/$J2,0)))|V=0
+BD|VALOR_PEDIDO|F=IF($BW2="","",$BB2*$BW2)|V=0
+BE|SUG_PALETE|F=IF(OR($AX2<>"A",$N2=0,$BB2=0),"",IF(MOD($BB2/$J2,$N2)/$N2>=Parametros!$B$20,"COMPLETAR PALETE: +"&ROUND($N2-MOD($BB2/$J2,$N2),0)&" CAIXAS",""))|V=None
+BF|MESES_EST+PED|F=IF($AG2=0,"",($V2+$BB2)/$AG2)|V=None
+BG|VALOR_ESTOQUE|F=IF($BW2="","",$V2*$K2*$BW2)|V=0
+BH|VL_ENT_UNIT|F=IFERROR(IF(INDEX(dCadastroTI!$AA:$AA,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$AA:$AA,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=8.61
+BI|CUSTO_ULT_ENT|F=IFERROR(IF(INDEX(dCadastroTI!$Z:$Z,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$Z:$Z,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=0
+BJ|COD_ICMS|F=IFERROR(IF(INDEX(dCadastroTI!$N:$N,MATCH($A2,dCadastroTI!$A:$A,0))="",Parametros!$B$13,INDEX(dCadastroTI!$N:$N,MATCH($A2,dCadastroTI!$A:$A,0))),Parametros!$B$13)|V=24
+BK|COD_PISCOF|F=IFERROR(IF(INDEX(dCadastroTI!$Q:$Q,MATCH($A2,dCadastroTI!$A:$A,0))="",Parametros!$B$14,INDEX(dCadastroTI!$Q:$Q,MATCH($A2,dCadastroTI!$A:$A,0))),Parametros!$B$14)|V=1
+BL|MODALIDADE|F=IFERROR(INDEX(dICMS!$D:$D,MATCH($BJ2,dICMS!$A:$A,0)),"")|V=NORMAL
+BM|MVA|F=IFERROR(INDEX(dICMS!$E:$E,MATCH($BJ2,dICMS!$A:$A,0)),"")|V=0
+BN|UF_ORIGEM|F=IFERROR(IF(INDEX(dCadastroTI!$K:$K,MATCH($A2,dCadastroTI!$A:$A,0))="","?",INDEX(dCadastroTI!$K:$K,MATCH($A2,dCadastroTI!$A:$A,0))),"?")|V=CE
+BO|CRED_TOTAL|F=IFERROR(INDEX(dCredito!$E:$E,MATCH($F2&"|"&$BJ2,dCredito!$G:$G,0)),IF(OR($BH2=0,$BI2=0),"",MAX(0,1-$BI2/$BH2)))|V=None
+BP|ALIQ_ICMS_ORIGEM|F=IFERROR(INDEX(dICMS_Origem!$B:$B,MATCH($BN2,dICMS_Origem!$A:$A,0)),0)|V=0.12
+BQ|CRED_ICMS|F=IF($BL2="ST_RECOLHIDO",0,IF($BL2="NORMAL",$BP2,IF(OR($DR2="",$DR2<=$BZ2),0,$DR2-$BZ2)))|V=0.12
+BR|CRED_PISCOF|F=IF($BZ2=0,0,MAX(0,(1-$BQ2)*Parametros!$B$2))|V=8.14E-2
+BS|CHECK_IMPORTADO|F=IF(AND($BO2<>"",$BO2<$BP2*0.6),"CREDITO REAL MUITO ABAIXO DO ESPERADO - CONFERIR SE E IMPORTADO (4%)","")|V=None
+BT|ICMS_ST_s/VALOR|F=IF($BL2<>"ST_SUBSTITUTO",0,IF(OR($BM2="",$BH2=0),"",MAX(0,$BH2*(1+$BM2)*Parametros!$B$16-$BH2*IFERROR($BQ2,0))))|V=0
+BU|ICMS_ST_s/CUSTO|F=IF($BL2<>"ST_SUBSTITUTO",0,IF(OR($BM2="",$BH2=0),"",MAX(0,$BI2*(1+$BM2)*Parametros!$B$16-$BH2*IFERROR($BQ2,0))))|V=0
+BV|CUSTO_TOT_s/VALOR|F=IF($BT2="","",$BI2+$BT2)|V=0
+BW|CUSTO_TOT_OFICIAL|F=IF($BU2="","",$BI2+$BU2)|V=0
+BX|CUSTO_ADICIONAL_IMAGEM|F=IF($F2="INGRAX",$BH2*(1/Parametros!$B$29-1)*(1-$BZ2),0)|V=0
+BY|CUSTO_TOT_GERENCIAL|F=IF($BW2="","",$BW2+$BX2)|V=0
+BZ|PISCOF_EF|F=IFERROR(INDEX(dPISCOFINS!$D:$D,MATCH($BK2,dPISCOFINS!$A:$A,0)),"")|V=9.2499999999999999E-2
+CA|ICMS_SAIDA_EF|F=IFERROR(INDEX(dICMS!$H:$H,MATCH($BJ2,dICMS!$A:$A,0)),"")|V=0.12058919999999999
+CB|ICMS_SEM_RED|F=IFERROR(INDEX(dICMS!$J:$J,MATCH($BJ2,dICMS!$A:$A,0)),"")|V=0.20499999999999999
+CC|CHECK_TRIB|F=IF($BJ2="","TRIB NAO ENCONTRADA","")|V=None
+CD|CHECK_MVA|F=IF($BL2<>"ST_SUBSTITUTO","",IF($BM2="","MVA PENDENTE",IF($BH2=0,"SEM VALOR DE ENTRADA","")))|V=None
+CE|CHECK_CUSTO|F=IF(OR($BH2=0,$BI2=0,$BI2<=$BH2),"","CUSTO ACIMA DA NOTA - ult.entrada "&TEXT($Z2,"dd/mm/aa"))|V=None
+CF|PV_ATACADO|F=IFERROR(IF(INDEX(dCadastroTI!$AB:$AB,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$AB:$AB,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=0
+CG|MKP_ATACADO|F=IF(OR($BW2="",$BW2=0),"",$CF2/$BY2)|V=None
+CH|MARGEM_ST_s/VALOR|F=IF(OR($CF2=0,$BV2="",$CA2="",$BZ2=""),"",($CF2-$CF2*($CA2+$BZ2+Parametros!$B$4)-($BV2+$BX2))/$CF2)|V=None
+CI|MARGEM_OFICIAL|F=IF(OR($CF2=0,$BW2="",$CA2="",$BZ2=""),"",($CF2-$CF2*($CA2+$BZ2+Parametros!$B$4)-$BY2)/$CF2)|V=None
+CJ|MARGEM_SEM_RED|F=IF(OR($CF2=0,$BW2="",$CB2="",$BZ2=""),"",($CF2-$CF2*($CB2+$BZ2+Parametros!$B$4)-$BY2)/$CF2)|V=None
+CK|GAP_FILIAL_pp|F=IF(OR($CI2="",$CJ2=""),"",($CI2-$CJ2)*100)|V=None
+CL|CHECK_MARGEM_INSTAVEL|F=IF($P2=0,"",CHOOSE($P2,"ALERTA DE MARGEM","MARGEM CRITICA","MARGEM MAXIMA")&" - pior cenario "&TEXT($CJ2,"0.0%")&IF($AX2<>"A"," (fora da curva A)",""))|V=None
+CM|DIF_MC_pp|F=IF(OR($CH2="",$CI2=""),"",($CI2-$CH2)*100)|V=None
+CN|MARGEM_ALVO|F=None|V=0.2
+CO|PV_SUG_ST_s/VALOR_AV|F=IF(OR($BW2="",$CA2="",$BZ2="",$BV2=""),"",IFERROR(($BV2+$BX2)/(1-$CA2-$BZ2-Parametros!$B$4-$CN2),""))|V=0
+CP|PV_SUG_ST_s/VALOR_AP|F=IFERROR($CO2*Parametros!$B$5,"")|V=0
+CQ|PV_SUG_OFICIAL_AV|F=IF(OR($BW2="",$CA2="",$BZ2=""),"",IFERROR($BY2/(1-$CA2-$BZ2-Parametros!$B$4-$CN2),""))|V=0
+CR|PV_SUG_OFICIAL_AP|F=IFERROR($CQ2*Parametros!$B$5,"")|V=0
+CS|PV_SUG_SEM_RED_AV|F=IF(OR($BW2="",$CB2="",$BZ2=""),"",IFERROR($BY2/(1-$CB2-$BZ2-Parametros!$B$4-$CN2),""))|V=0
+CT|PV_SUG_SEM_RED_AP|F=IFERROR($CS2*Parametros!$B$5,"")|V=0
+CU|ALT_PV_AT_AV|F=None|V=None
+CV|ALT_PV_AT_AP|F=IF($CU2="","",IFERROR($CU2*Parametros!$B$5,""))|V=None
+CW|PV_VAREJO|F=IFERROR(IF(INDEX(dCadastroTI!$AC:$AC,MATCH($A2,dCadastroTI!$A:$A,0))="",0,INDEX(dCadastroTI!$AC:$AC,MATCH($A2,dCadastroTI!$A:$A,0))),0)|V=0
+CX|MKP_VAREJO|F=IF(OR($BW2="",$BW2=0),"",$CW2/$BY2)|V=None
+CY|MARGEM_ST_s/VALOR_VAREJO|F=IF(OR($CW2=0,$BV2="",$CA2="",$BZ2=""),"",($CW2-$CW2*($CA2+$BZ2+Parametros!$B$4)-($BV2+$BX2))/$CW2)|V=None
+CZ|MARGEM_SEM_RED_VAREJO|F=IF(OR($CW2=0,$BW2="",$CB2="",$BZ2=""),"",($CW2-$CW2*($CB2+$BZ2+Parametros!$B$4)-$BY2)/$CW2)|V=None
+DA|GAP_FILIAL_VAREJO_pp|F=IF(OR($CY2="",$CZ2=""),"",($CY2-$CZ2)*100)|V=None
+DB|CHECK_MARGEM_INSTAVEL_VAREJO|F=IF($DQ2=0,"",CHOOSE($DQ2,"ALERTA DE MARGEM","MARGEM CRITICA","MARGEM MAXIMA")&" - pior cenario varejo "&TEXT($CZ2,"0.0%")&IF($AX2<>"A"," (fora da curva A)",""))|V=None
+DC|DIF_MC_VAREJO_pp|F=IF(OR($CY2="",$CZ2=""),"",($CY2-$CZ2)*100)|V=None
+DD|MARGEM_ALVO_VAREJO|F=None|V=0.2
+DE|PV_SUG_ST_s/VALOR_VAR_AV|F=IF(OR($BW2="",$CA2="",$BZ2="",$BV2=""),"",IFERROR(($BV2+$BX2)/(1-$CA2-$BZ2-Parametros!$B$4-$DD2),""))|V=0
+DF|PV_SUG_ST_s/VALOR_VAR_AP|F=IFERROR($DE2*1.086435,"")|V=0
+DG|PV_SUG_SEM_RED_VAR_AV|F=IF(OR($BW2="",$CB2="",$BZ2=""),"",IFERROR($BY2/(1-$CB2-$BZ2-Parametros!$B$4-$DD2),""))|V=0
+DH|PV_SUG_SEM_RED_VAR_AP|F=IFERROR($DG2*1.086435,"")|V=0
+DI|ALT_PV_VAR_AV|F=None|V=None
+DJ|ALT_PV_VAR_AP|F=IF($DI2="","",IFERROR($DI2*1.086435,""))|V=None
+DK|ANT_1|F=IF(IFERROR(INDEX(dSucessao!$F:$F,MATCH($A2,dSucessao!$A:$A,0)),"NAO")<>"SIM",0,IFERROR(INDEX(dSucessao!$B:$B,MATCH($A2,dSucessao!$A:$A,0)),0))|V=0
+DL|PESO_1|F=IF($DK2=0,0,IFERROR(INDEX(dSucessao!$C:$C,MATCH($A2,dSucessao!$A:$A,0)),0))|V=0
+DM|ANT_2|F=IF(IFERROR(INDEX(dSucessao!$F:$F,MATCH($A2,dSucessao!$A:$A,0)),"NAO")<>"SIM",0,IFERROR(INDEX(dSucessao!$D:$D,MATCH($A2,dSucessao!$A:$A,0)),0))|V=0
+DN|PESO_2|F=IF($DM2=0,0,IFERROR(INDEX(dSucessao!$E:$E,MATCH($A2,dSucessao!$A:$A,0)),0))|V=0
+DO|CHECK_SUCESSAO|F=IF(COUNTIF(dSucessao!$B$3:$B$300,$A2)+COUNTIF(dSucessao!$D$3:$D$300,$A2)>0,"VERIFICAR SUCESSAO","")|V=None
+DP|NIVEL_BASE_MARGEM_VAREJO|F=IF($CZ2="",0,IF($CZ2<0,3,IF($CZ2<Parametros!$B$22,2,IF($CZ2<Parametros!$B$21,1,0))))|V=0
+DQ|NIVEL_MARGEM_VAREJO|F=IF(AND($AX2<>"A",$DP2>0),MIN($DP2+1,3),$DP2)|V=0
+DR|CRED_TOTAL_EMPIRICO|F=IF(OR($BH2=0,$BI2=0),"",MAX(0,1-$BI2/$BH2))|V=None

@@ -1,0 +1,25 @@
+# dbt
+dbt/compras/target/
+dbt/compras/dbt_packages/
+dbt/compras/logs/
+dbt/env_server/
+*.log
+
+# credenciais
+.env
+profiles.yml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# referencia pesada (25 MB) - copiar a mao quando precisar
+referencia/*.xlsx
+
+# OS / IDE
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

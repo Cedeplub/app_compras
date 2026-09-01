@@ -1,0 +1,520 @@
+/* Dashboard de Compras CEDEP — CSS proprio, sem build, sem CDN.
+   Mobile primeiro: estilos base valem para telas pequenas; @media(min-width:768px)
+   adiciona o layout de mesa (tabela em vez de cartao, navegacao horizontal). */
+
+:root {
+  --cor-fundo: #f4f5f7;
+  --cor-texto: #1c2430;
+  --cor-texto-suave: #5b6472;
+  --cor-borda: #d7dbe2;
+  --cor-card: #ffffff;
+  --cor-primaria: #1f3864;
+  --cor-primaria-clara: #2e5090;
+  --cor-perigo: #b3261e;
+  --cor-perigo-fundo: #fdecea;
+  --cor-sucesso: #1e7a34;
+  --cor-sucesso-fundo: #e8f5ea;
+  --cor-alerta: #b3261e;
+  --cor-alerta-fundo: #fdecea;
+  --cor-aviso: #8a5a00;
+  --cor-aviso-fundo: #fff4dd;
+  --raio: 10px;
+  --sombra: 0 1px 3px rgba(20, 24, 33, .12);
+  --espaco: 12px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+a { color: var(--cor-primaria-clara); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1 { font-size: 1.25rem; margin: 0 0 var(--espaco); }
+h2 { font-size: 1.05rem; margin: 1.25rem 0 .5rem; }
+
+main {
+  padding: var(--espaco);
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 84px; /* espaco para a nav fixa no rodape, no celular */
+}
+
+/* ---------------------------------------------------------- cabecalho ---- */
+
+/* .cabecalho-app e' a barra colorida, de ponta a ponta da viewport (fundo
+   escuro sem margem). .cabecalho-conteudo, dentro dela, tem o MESMO
+   max-width e padding do <main> - e' o que faz marca/nav/usuario alinharem
+   com o conteudo da pagina em vez de pararem num ponto arbitrario. */
+.cabecalho-app {
+  background: var(--cor-primaria);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.cabecalho-conteudo {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px var(--espaco);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "marca usuario";
+  align-items: center;
+  gap: 8px;
+}
+
+.marca { grid-area: marca; font-weight: 700; font-size: 1rem; white-space: nowrap; }
+
+.usuario-info {
+  grid-area: usuario;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .85rem;
+}
+
+.usuario-info .so-leitura {
+  background: rgba(255,255,255,.18);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: .72rem;
+}
+
+.usuario-info form { margin: 0; }
+
+.botao-sair {
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: .8rem;
+  cursor: pointer;
+}
+
+/* Navegacao: barra fixa no rodape no celular (alcance do polegar);
+   vira barra horizontal normal no topo em telas de mesa. */
+.nav-principal {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: #fff;
+  border-top: 1px solid var(--cor-borda);
+  display: flex;
+  z-index: 20;
+  box-shadow: 0 -2px 6px rgba(20,24,33,.08);
+}
+
+.nav-principal a {
+  flex: 1;
+  text-align: center;
+  padding: 10px 4px 8px;
+  font-size: .72rem;
+  color: var(--cor-texto-suave);
+  text-decoration: none;
+  border-top: 3px solid transparent;
+}
+
+.nav-principal a .icone { display: block; font-size: 1.15rem; line-height: 1; margin-bottom: 2px; }
+
+.nav-principal a.ativo {
+  color: var(--cor-primaria);
+  border-top-color: var(--cor-primaria);
+  font-weight: 600;
+}
+
+@media (min-width: 768px) {
+  .nav-principal {
+    grid-area: nav;
+    position: static;
+    box-shadow: none;
+    border-top: none;
+    justify-content: flex-start;
+    gap: 4px;
+    background: transparent;
+  }
+  .nav-principal a {
+    flex: none;
+    padding: 6px 12px;
+    border-top: none;
+    border-radius: 8px;
+  }
+  .nav-principal a.ativo { background: rgba(255,255,255,.15); border-top: none; }
+  main { padding-bottom: var(--espaco); }
+
+  /* Em mesa a barra ganha 3 colunas: marca a esquerda, navegacao no meio
+     (perto da marca), usuario/sair na ponta direita - a mesma barra, sem
+     costura, do inicio ao fim da largura da tela. */
+  .cabecalho-conteudo {
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-areas: "marca nav . usuario";
+  }
+}
+
+/* ------------------------------------------------------------- cartoes --- */
+
+.card {
+  background: var(--cor-card);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  padding: var(--espaco);
+  margin-bottom: 10px;
+}
+
+.card-titulo { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.card-titulo .codigo { font-weight: 700; color: var(--cor-primaria); }
+.card-titulo .descricao { font-weight: 600; }
+
+.card-linha { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: .88rem; }
+.card-linha .rotulo { color: var(--cor-texto-suave); }
+
+/* ------------------------------------------------------------- etiquetas - */
+
+.etiqueta {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.etiqueta-alerta { background: var(--cor-alerta-fundo); color: var(--cor-alerta); white-space: normal; text-align: left; }
+.etiqueta-neutra { background: #eef0f3; color: var(--cor-texto-suave); }
+.etiqueta-ok { background: var(--cor-sucesso-fundo); color: var(--cor-sucesso); }
+.etiqueta-aviso { background: var(--cor-aviso-fundo); color: var(--cor-aviso); }
+
+/* ------------------------------------------------------------- filtros --- */
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: var(--espaco);
+  background: var(--cor-card);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: var(--espaco);
+}
+
+.filtros > * { flex: 1 1 140px; min-width: 120px; }
+.filtros .botao-filtrar { flex: 0 0 auto; }
+
+label { display: block; font-size: .78rem; color: var(--cor-texto-suave); margin-bottom: 2px; }
+
+input[type=text], input[type=password], input[type=date], select {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--cor-borda);
+  border-radius: 8px;
+  font-size: .95rem;
+  background: #fff;
+  color: var(--cor-texto);
+}
+
+input:focus, select:focus { outline: 2px solid var(--cor-primaria-clara); outline-offset: 1px; }
+
+button, .botao {
+  display: inline-block;
+  background: var(--cor-primaria);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: .92rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+button.secundario, .botao.secundario {
+  background: #fff;
+  color: var(--cor-primaria);
+  border: 1px solid var(--cor-primaria);
+}
+
+button:disabled { opacity: .55; cursor: not-allowed; }
+
+/* --------------------------------------------------- campo pedido/preco -- */
+
+.campo-pedido { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.campo-pedido input { width: 90px; flex: none; }
+
+/* Na MESA, o campo de pedido e' o que dita a altura da linha: input + botao numa
+   faixa e a legenda ("caixa c/ 24 · sug. 2.940") em outra empilhavam para ~98px
+   de altura, e so' cinco produtos cabiam na tela. Para quem varre 8.777 SKUs
+   procurando o que comprar, densidade E' usabilidade.
+   A legenda vira uma faixa estreita de largura total dentro da propria celula,
+   com line-height curto: mantem a informacao da UNIDADE - que e' a que evita o
+   erro de pedir 100 litros achando que sao 100 caixas - sem dobrar a linha. */
+@media (min-width: 768px) {
+  .celula-pedido .campo-pedido { gap: 4px; row-gap: 0; }
+  .celula-pedido .campo-pedido .texto-suave {
+    flex-basis: 100%;
+    font-size: .7rem;
+    line-height: 1.1;
+    margin-top: 1px;
+  }
+  .celula-pedido .campo-pedido input { padding-top: 4px; padding-bottom: 4px; }
+  .celula-pedido .campo-pedido button { padding: 4px 10px; }
+}
+.unidade-pedido { font-size: .78rem; color: var(--cor-texto-suave); }
+
+.feedback-gravacao {
+  font-size: .78rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  display: inline-block;
+}
+.feedback-gravacao.ok { background: var(--cor-sucesso-fundo); color: var(--cor-sucesso); }
+.feedback-gravacao.erro { background: var(--cor-perigo-fundo); color: var(--cor-perigo); }
+
+/* ------------------------------------------------------------- tabela ---- */
+
+.tabela-scroll { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--cor-card);
+  font-size: .88rem;
+}
+
+table th, table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cor-borda);
+  text-align: left;
+  white-space: nowrap;
+}
+
+table th {
+  background: #eef0f3;
+  color: var(--cor-texto-suave);
+  font-weight: 600;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+table tbody tr:hover { background: #f7f8fa; }
+
+/* No celular a tabela vira lista de cartoes; some por completo.
+   Em telas de mesa, o cartao some e a tabela aparece. */
+.somente-mobile { display: block; }
+.somente-mesa { display: none; }
+
+@media (min-width: 768px) {
+  .somente-mobile { display: none; }
+  .somente-mesa { display: block; }
+}
+
+/* Tabela de compra: uma div por SKU (#linha-CODIGO) e' o mesmo elemento no
+   celular e na mesa - so muda o que fica visivel via CSS. Isso e' o que
+   permite o hx-target da gravacao apontar sempre para o MESMO id, sem
+   precisar de swap "out-of-band" duplicado (cartao e linha nunca divergem).
+
+   Cada linha de mesa (.linha-desktop) e' o SEU PROPRIO grid CSS, com o
+   MESMO grid-template-columns do cabecalho (.cabecalho-tabela) - as colunas
+   alinham porque o template se repete em cada linha, nao porque compartilham
+   um pai comum. Isso evita display:contents dentro de display:table, que
+   gera caixas anonimas de tabela com suporte irregular entre navegadores
+   (foi a causa da bagunca de alinhamento na 1a versao desta tela).
+
+   .tabela-scroll (classe existente do projeto) e' quem rola na horizontal
+   quando as 15 colunas nao cabem - o CONTAINER rola, a pagina nunca. */
+
+:root {
+  /* A coluna de ALERTA (6a) tem largura minima maior que as vizinhas de
+     proposito: ela carrega N etiquetas, nao um valor. Com menos que isto, duas
+     etiquetas ja' nao cabem lado a lado e a linha dobra de altura.
+     As colunas de titulo longo (MEDIA JANELA, SUG. COBERTURA, EMBAL. COMPRA)
+     tambem ganharam largura: estavam cortando o proprio cabecalho. */
+  --colunas-tabela-compra: 68px minmax(200px, 2.2fr) 150px 110px 64px
+    minmax(230px, 1.6fr) 96px 116px 96px 132px 190px 116px 116px 88px 118px;
+}
+
+.tabela-produtos-wrap { display: block; }
+
+@media (min-width: 768px) {
+  .tabela-produtos-wrap {
+    display: inline-block;
+    min-width: 100%;
+    background: var(--cor-card);
+    font-size: .88rem;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+  }
+}
+
+.cabecalho-tabela { display: none; }
+
+@media (min-width: 768px) {
+  .cabecalho-tabela {
+    display: grid;
+    grid-template-columns: var(--colunas-tabela-compra);
+  }
+}
+
+.cabecalho-tabela > div {
+  padding: 8px 10px;
+  background: #eef0f3;
+  color: var(--cor-texto-suave);
+  font-weight: 600;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  border-bottom: 1px solid var(--cor-borda);
+  white-space: nowrap;
+}
+
+.linha-produto { display: block; }
+
+.linha-desktop { display: none; }
+
+@media (min-width: 768px) {
+  .linha-desktop {
+    display: grid;
+    grid-template-columns: var(--colunas-tabela-compra);
+    border-bottom: 1px solid var(--cor-borda);
+  }
+  .linha-desktop:hover { background: #f7f8fa; }
+}
+
+.linha-desktop > div {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Celulas que NAO podem cortar conteudo: alertas (varias etiquetas, quebra
+   linha) e o formulario de pedido (input + botao). */
+/* display:flex FALTAVA aqui: sem ele, `flex-wrap` e `gap` abaixo eram inertes e
+   as etiquetas, sendo inline-block numa coluna estreita, empilhavam UMA POR
+   LINHA - o que esticava a altura da linha inteira para ~98px. Com flex + wrap
+   elas ficam lado a lado e so' quebram quando a coluna acaba de verdade. */
+.linha-desktop .celula-alertas {
+  display: flex;
+  align-items: center;
+  white-space: normal;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: visible;
+  text-overflow: clip;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.linha-desktop .celula-pedido {
+  overflow: visible;
+  text-overflow: clip;
+  align-items: flex-start;
+}
+
+/* Etiquetas curtas de alerta (uma por tipo, texto completo no title=) -
+   usadas no cartao mobile e na celula de alerta da mesa. */
+.lista-alertas { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.cartao-mobile { display: block; }
+
+@media (min-width: 768px) {
+  .cartao-mobile { display: none; }
+}
+
+.desabilitado { pointer-events: none; opacity: .4; }
+
+/* --------------------------------------------------------------- misc ---- */
+
+.faixa-preco {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+@media (min-width: 640px) {
+  .faixa-preco { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 992px) {
+  .faixa-preco.faixa-atacado { grid-template-columns: repeat(3, 1fr); }
+}
+
+.cenario {
+  background: var(--cor-card);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: var(--espaco);
+}
+.cenario h3 { margin: 0 0 8px; font-size: .85rem; color: var(--cor-texto-suave); text-transform: uppercase; letter-spacing: .02em; }
+.cenario .preco { font-size: 1.3rem; font-weight: 700; color: var(--cor-primaria); }
+.cenario .linha { display: flex; justify-content: space-between; font-size: .85rem; padding: 3px 0; }
+
+.decisao-final {
+  background: #fff8e6;
+  border: 1px solid #ead9a0;
+  border-radius: var(--raio);
+  padding: var(--espaco);
+}
+
+.aviso-vazio {
+  color: var(--cor-texto-suave);
+  font-style: italic;
+}
+
+.pill-vazio { color: var(--cor-texto-suave); }
+
+.paginacao { display: flex; justify-content: space-between; align-items: center; margin-top: var(--espaco); }
+
+.texto-suave { color: var(--cor-texto-suave); font-size: .85rem; }
+
+.erro-form {
+  background: var(--cor-perigo-fundo);
+  color: var(--cor-perigo);
+  border: 1px solid #f2c6c2;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: var(--espaco);
+  font-size: .9rem;
+}
+
+.pagina-auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--espaco);
+}
+
+.caixa-auth {
+  background: var(--cor-card);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  padding: 24px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.caixa-auth h1 { text-align: center; margin-bottom: 4px; }
+.caixa-auth .subtitulo { text-align: center; color: var(--cor-texto-suave); font-size: .85rem; margin-bottom: 18px; }
+.caixa-auth button { width: 100%; margin-top: 6px; }
+
+.vazio-lista {
+  text-align: center;
+  color: var(--cor-texto-suave);
+  padding: 32px 12px;
+}
+
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline; }
+.htmx-request.htmx-indicator { display: inline; }

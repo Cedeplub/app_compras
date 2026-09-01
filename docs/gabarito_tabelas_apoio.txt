@@ -1,0 +1,294 @@
+##### Leia-me rows: 27
+1 : A=MODELO DE COMPRAS CEDEP - PROTOTIPO (fornecedor YPF)
+2 : A=None
+3 : A=Este arquivo demonstra a arquitetura da Fase 1 com dados reais.
+4 : A=None
+5 : A=COMO USAR
+6 : A=1. Preencha somente as celulas com fundo AMARELO.
+7 : A=2. Colunas de entrada na aba pedido: PEDIDO, ST, MARGEM_ALVO.
+8 : A=3. Todos os parametros fiscais ficam na aba Parametros - nunca dentro de formula.
+9 : A=4. Fatores de embalagem ficam na aba dEmbalagem - nunca dentro de formula.
+10 : A=None
+11 : A=ABAS
+12 : A=Parametros   - aliquotas, fatores e regras. Alterar aqui recalcula tudo.
+13 : A=dEmbalagem   - 114 embalagens com unidades e litros por embalagem.
+14 : A=fVenda       - historico de venda YPF (base congelada 09/2022 a 07/2026).
+15 : A=f220         - export 220 tratado, com custo/valor corrigidos de texto para numero.
+16 : A=pedido       - motor de analise e simulacao de compra.
+17 : A=None
+18 : A=O QUE MUDOU EM RELACAO AO MODELO ANTIGO
+19 : A=- Nao existe mais uma aba por mes. Mes e um campo da tabela fVenda.
+20 : A=- Nao existe constante fiscal dentro de formula.
+21 : A=- Nao existe cadeia de IF para embalagem. E uma tabela de consulta.
+22 : A=- A media de venda usa os 3 ultimos meses FECHADOS, definidos nos cabecalhos.
+23 : A=- Para mudar o periodo de media, altere as datas em pedido!M1, N1 e O1.
+24 : A=None
+25 : A=VALIDACAO
+26 : A=Codigo 6771 (ELAION FS 540): estoque deve dar 2.484,25 e custo 17,839.
+27 : A=Se o custo aparecer 17839, a correcao de decimal falhou.
+
+##### Parametros rows: 31
+1 : A=PARAMETRO | B=VALOR | C=ONDE ESTAVA CHUMBADO NO MODELO ANTIGO
+2 : A=PIS_COFINS | B=9.2499999999999999E-2 | C=0,0925 dentro do IF de margem
+3 : A=— linha reservada — | B=None | C=None
+4 : A=COMISSAO | B=0.04 | C=0,04 dentro do IF de margem
+5 : A=FATOR_PRAZO | B=1.0317000000000001 | C=DA2*1,0317
+6 : A=— linha reservada — | B=None | C=None
+7 : A=— linha reservada — | B=None | C=None
+8 : A=— linha reservada — | B=None | C=None
+9 : A=— linha reservada — | B=None | C=None
+10 : A=CORTE_ABC | B=2.2000000000000001E-3 | C=0,0022 dentro do IF de classificacao
+11 : A=— linha reservada — | B=None | C=None
+12 : A=MES_REF_ULT_FECHADO | B=46204 | C=novo: ultimo mes FECHADO. A janela de media termina aqui.
+13 : A=COD_TRIB_ICMS_PADRAO | B=26 | C=usado quando o produto nao esta na 8105 ainda
+14 : A=COD_TRIB_PISCOFINS_PADRAO | B=1 | C=usado quando o produto nao esta na 8105 ainda
+15 : A=— linha reservada — | B=None
+16 : A=ALIQ_ICMS_INTERNA_BA | B=0.20499999999999999 | C=aliquota interna usada na base ST (custo x (1+MVA) x aliq)
+17 : A=DIAS_SEM_ESTOQUE_ALERTA | B=5 | C=dias sem estoque no mes fechado, acima disso dispara CHECK_RUPTURA
+18 : A=TX_DEVOLUCAO_ALERTA | B=0.1 | C=taxa de devolucao (3 meses), acima disso dispara CHECK_DEVOLUCAO_ALTA (p75 real = 5,3%; p90 = 14,6%)
+19 : A=MEDIDA_PEDIDO | B=LITROS | C=escolha: LITROS, PESO ou UNIDADE_MASTER - controla a coluna PEDIDO_NA_MEDIDA
+20 : A=PALETE_LIMIAR | B=0.7 | C=se o pedido chegar a esse % de completar +1 palete, sugere arredondar (so classe A)
+21 : A=MARGEM_ALERTA_MIN | B=0.12 | C=abaixo disso (no pior cenario), dispara ALERTA DE MARGEM - referencia: custo aproximado da empresa
+22 : A=MARGEM_CRITICA_MIN | B=0.05 | C=abaixo disso (no pior cenario), dispara MARGEM CRITICA
+23 : A=ICMS_ST | B=0.20499999999999999 | C=duplicata de ALIQ_ICMS_INTERNA_BA (B16), que e o parametro vivo
+24 : A=DESC_INTERNO | B=6.9400000000000003E-2 | C=desconto interno do modelo antigo; o custo da 220 ja vem liquido
+25 : A=FATOR_ST_TABELA | B=1.3328 | C=1+(1+62,35%)x20,5% - so vale para MVA 62,35%. A MVA agora vem do dICMS
+26 : A=FATOR_ST_CUSTO | B=1.3307 | C=equivalente a MVA 61,32%; origem nao identificada
+27 : A=MULT_ST_NF | B=1.2403175 | C=multiplicador da auditoria de preco; equivale a MVA 17,23%
+28 : A=COBERTURA_ALVO_MESES | B=2 | C=substituido pela coluna COBERTURA_ALVO do dFornecedor, por fornecedor
+29 : A=PERC_NF_NORMAL_INGRAX | B=0.8 | C=Ingrax: % do valor do produto que vem na NF normal (resto e cessao de direito de imagem, gerencial, fora do fluxo fiscal)
+30 : A=Alterar qualquer valor acima NAO tem efeito nenhum. Mantidos apenas como registro.
+31 : A=O ICMS-ST e calculado com a MVA propria de cada item, lida da aba dICMS.
+
+##### dFornecedor rows: 60
+1 : A=FORNECEDOR | B=MESES_MEDIA | C=COBERTURA_ALVO | D=PEDIDO_EM | E=COMPRADOR | F=OBS
+2 : A=OUTROS | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+3 : A=TECFIL | B=6 | C=2 | D=UNIDADE | E=FELIPE | F=None
+4 : A=WEGA | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+5 : A=PETROBRAS | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+6 : A=INATIVOS | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+7 : A=MANN | B=6 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+8 : A=PETRONAS | B=3 | C=2 | D=MASTER | E=FELIPE | F=None
+9 : A=TEXACO | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+10 : A=YPF | B=3 | C=2 | D=MASTER | E=FELIPE | F=None
+11 : A=3M | B=12 | C=2 | D=UNIDADE | E=FELIPE | F=None
+12 : A=SHELL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+13 : A=INGRAX | B=6 | C=2 | D=MASTER | E=FELIPE | F=None
+14 : A=PARKER | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+15 : A=IPIRANGA | B=4 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+16 : A=DIVERSOS | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+17 : A=ORBI | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+18 : A=TECBRIL | B=3 | C=2 | D=UNIDADE | E=FELIPE | F=None
+19 : A=CENTRALSUL | B=3 | C=2 | D=UNIDADE | E=FELIPE | F=None
+20 : A=BOSCH | B=12 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+21 : A=MUNDIAL PR | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+22 : A=JOHNSON | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+23 : A=CASTROL | B=2 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+24 : A=KOUBE | B=3 | C=2 | D=MASTER | E=FELIPE | F=None
+25 : A=ELETRODO | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+26 : A=RADIEX | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+27 : A=BARDAHL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+28 : A=IMPECA | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+29 : A=ACESSORIOS TROCA DE OLEO | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+30 : A=TECOVEL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+31 : A=MOBIL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+32 : A=AUTOIMPACT | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+33 : A=CAR 80 | B=6 | C=2 | D=UNIDADE | E=FELIPE | F=None
+34 : A=VALVOLINE | B=3 | C=2 | D=MASTER | E=FELIPE | F=None
+35 : A=CLICK | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+36 : A=JVC | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+37 : A=BETILIMP | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+38 : A=BRASCOM | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+39 : A=PARAFLU | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+40 : A=AREON | B=3 | C=2 | D=UNIDADE | E=FELIPE | F=None
+41 : A=ESTOPA | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+42 : A=PENSYL-TEX | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+43 : A=MOTUL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+44 : A=AC DELCO | B=4 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+45 : A=BOZZA/JACTOIL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+46 : A=TRABASIL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+47 : A=MATERIAL P/  CONSUMO | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+48 : A=DRAFT | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+49 : A=LATAS VAZIAS | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+50 : A=BRINDES | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+51 : A=KITS DE QUEROSENE | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+52 : A=PENSYL-TEX(INVENTARIO) | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+53 : A=TRW | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+54 : A=UFI | B=3 | C=2 | D=UNIDADE | E=FELIPE | F=None
+55 : A=MULTIGRAX | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+56 : A=DX FUEL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+57 : A=PREMIUM QUIMICA | B=6 | C=2 | D=UNIDADE | E=FELIPE | F=None
+58 : A=PALLET | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+59 : A=QUEROSENE A GRANEL | B=3 | C=2 | D=UNIDADE | E=A DEFINIR | F=confirmar comprador real com Washington/gestao
+60 : A=CADILLAC | B=3 | C=2 | D=UNIDADE | E=FELIPE | F=None
+
+##### dICMS rows: 17
+1 : A=MVA EXTRAIDA DA DESCRICAO DA 8105 - CONFERIR COM O FISCAL ANTES DE PRECIFICAR
+2 : A=COD_TRIBUTACAO | B=DESCRICAO (8105) | C=SKUs | D=MODALIDADE | E=MVA | F=ALIQ_ICMS_SAIDA | G=REDUCAO_BASE | H=ICMS_EF_SAIDA | I=ORIGEM DO VALOR | J=ICMS_EF_SEM_REDUCAO | K=base cheia: filiais fora da 02 e 09
+3 : A=24 | B=REDUÇÃO 41,176% COM PIS/COFINS | C=3265 | D=NORMAL | E=None | F=0.20499999999999999 | G=0.41176000000000001 | H=0.12058919999999999 [F:IF(LEFT($D3,2)="ST",0,$F3*(1-$G3))] | I=ICMS na saida: reducao da descricao | J=0.20499999999999999 [F:IF(LEFT($D3,2)="ST",0,$F3)]
+4 : A=31 | B=RE ST BA MVA 71,78% C/PIS | C=1868 | D=ST_SUBSTITUTO | E=0.71779999999999999 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+5 : A=26 | B=RE ST BA MVA 62,35% LUBRI C/PIS | C=1861 | D=ST_SUBSTITUTO | E=0.62350000000000005 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+6 : A=32 | B=RE ST BA MVA 71,78% S/PIS | C=841 | D=ST_SUBSTITUTO | E=0.71779999999999999 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+7 : A=8 | B=SUBS TRIBUT ESTADUAL SEM PIS | C=264 | D=ST_RECOLHIDO | E=None | F=0 | G=0 | H=0 | I=ST ja recolhido antes (compra na BA): nao entra no custo | J=0
+8 : A=25 | B=REDUÇÃO 41.176% SEM PIS/COFINS | C=180 | D=NORMAL | E=None | F=0.20499999999999999 | G=0.41176000000000001 | H=0.12058919999999999 | I=ICMS na saida: reducao da descricao | J=0.20499999999999999
+9 : A=5 | B=SUBS TRIBUT ESTADUAL LUBRIFICANTE C/ PIS | C=137 | D=ST_RECOLHIDO | E=None | F=0 | G=0 | H=0 | I=ST ja recolhido antes (compra na BA): nao entra no custo | J=0
+10 : A=50 | B=RE ST BA MVA 32,5% LUBRI C/PIS | C=65 | D=ST_SUBSTITUTO | E=0.32500000000000001 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+11 : A=30 | B=RE ST BA MVA 65% C/PIS | C=55 | D=ST_SUBSTITUTO | E=0.65 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+12 : A=7 | B=SUBS TRIBUT ESTADUAL COM PIS | C=53 | D=ST_RECOLHIDO | E=None | F=0 | G=0 | H=0 | I=ST ja recolhido antes (compra na BA): nao entra no custo | J=0
+13 : A=28 | B=RE ST BA MVA 35% C/PIS | C=18 | D=ST_SUBSTITUTO | E=0.35 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+14 : A=29 | B=RE ST BA MVA 55% C/PIS | C=5 | D=ST_SUBSTITUTO | E=0.55000000000000004 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+15 : A=3 | B=ICMS 12% INTERESTADUAL COM PIS | C=3 | D=NORMAL | E=None | F=0.12 | G=0 | H=0.12 | I=ICMS na saida: aliquota direta | J=0.12
+16 : A=20 | B=20,5% ICMS RED.  57,07% ALIQ. 8,8% C/PIS | C=1 | D=NORMAL | E=None | F=0.20499999999999999 | G=0.57069999999999999 | H=8.8006500000000001E-2 | I=ICMS na saida: reducao da descricao | J=0.20499999999999999
+17 : A=39 | B=F9 ST ESTADUAL MVA 71,78% S/PIS | C=1 | D=ST_SUBSTITUTO | E=0.71779999999999999 | F=0 | G=0 | H=0 | I=CEDEP e substituta: ST entra no custo via MVA | J=0
+
+##### dCredito rows: 25
+1 : A=CREDITO DE COMPRA POR FORNECEDOR x CODIGO ICMS - calibrado com EMBALMASTER da 8105
+2 : A=FORNECEDOR | B=COD_ICMS | C=REGIME | D=SKUs_BASE | E=CREDITO | F=ERRO_MEDIANO | G=CHAVE
+3 : A=3M | B=24 | C=REDUÇÃO 41,176% COM PIS/COFINS | D=100 | E=0.1565 | F=2.3E-2 | G=3M|24 [F:$A3&"|"&$B3]
+4 : A=3M | B=29 | C=RE ST BA MVA 55% C/PIS | D=3 | E=0.156 | F=2E-3 | G=3M|29
+5 : A=3M | B=31 | C=RE ST BA MVA 71,78% C/PIS | D=3 | E=0.20150000000000001 | F=0 | G=3M|31
+6 : A=AREON | B=25 | C=REDUÇÃO 41.176% SEM PIS/COFINS | D=23 | E=0.04 | F=2E-3 | G=AREON|25
+7 : A=CAR80 | B=24 | C=REDUÇÃO 41,176% COM PIS/COFINS | D=36 | E=0.156 | F=7.0000000000000001E-3 | G=CAR80|24
+8 : A=CAR80 | B=26 | C=RE ST BA MVA 62,35% LUBRI C/PIS | D=2 | E=9.2499999999999999E-2 | F=1E-3 | G=CAR80|26
+9 : A=CENTRALSUL | B=24 | C=REDUÇÃO 41,176% COM PIS/COFINS | D=41 | E=0.151 | F=3.0000000000000001E-3 | G=CENTRALSUL|24
+10 : A=CENTRALSUL | B=25 | C=REDUÇÃO 41.176% SEM PIS/COFINS | D=14 | E=5.7500000000000002E-2 | F=1E-3 | G=CENTRALSUL|25
+11 : A=INGRAX | B=26 | C=RE ST BA MVA 62,35% LUBRI C/PIS | D=66 | E=9.2499999999999999E-2 | F=0 | G=INGRAX|26
+12 : A=INGRAX | B=50 | C=RE ST BA MVA 32,5% LUBRI C/PIS | D=24 | E=9.2499999999999999E-2 | F=0 | G=INGRAX|50
+13 : A=KOUBE | B=24 | C=REDUÇÃO 41,176% COM PIS/COFINS | D=54 | E=0.1525 | F=6.0000000000000001E-3 | G=KOUBE|24
+14 : A=PETRONAS | B=24 | C=REDUÇÃO 41,176% COM PIS/COFINS | D=13 | E=0.14649999999999999 | F=0 | G=PETRONAS|24
+15 : A=PETRONAS | B=26 | C=RE ST BA MVA 62,35% LUBRI C/PIS | D=148 | E=9.2499999999999999E-2 | F=0 | G=PETRONAS|26
+16 : A=TECBRIL | B=7 | C=SUBS TRIBUT ESTADUAL COM PIS | D=14 | E=7.1499999999999994E-2 | F=0 | G=TECBRIL|7
+17 : A=TECBRIL | B=24 | C=REDUÇÃO 41,176% COM PIS/COFINS | D=42 | E=0.1535 | F=3.6999999999999998E-2 | G=TECBRIL|24
+18 : A=TECBRIL | B=25 | C=REDUÇÃO 41.176% SEM PIS/COFINS | D=4 | E=7.0000000000000007E-2 | F=0.11799999999999999 | G=TECBRIL|25
+19 : A=TECFIL | B=31 | C=RE ST BA MVA 71,78% C/PIS | D=721 | E=0.14499999999999999 | F=2.5999999999999999E-2 | G=TECFIL|31
+20 : A=TECFIL | B=32 | C=RE ST BA MVA 71,78% S/PIS | D=276 | E=3.7999999999999999E-2 | F=2E-3 | G=TECFIL|32
+21 : A=UFI | B=31 | C=RE ST BA MVA 71,78% C/PIS | D=3 | E=0.1225 | F=0 | G=UFI|31
+22 : A=VALVOLINE | B=24 | C=REDUÇÃO 41,176% COM PIS/COFINS | D=2 | E=0.14399999999999999 | F=0 | G=VALVOLINE|24
+23 : A=VALVOLINE | B=26 | C=RE ST BA MVA 62,35% LUBRI C/PIS | D=32 | E=8.9499999999999996E-2 | F=1E-3 | G=VALVOLINE|26
+24 : A=YPF | B=5 | C=SUBS TRIBUT ESTADUAL LUBRIFICANTE C/ PIS | D=3 | E=9.1999999999999998E-2 | F=7.0000000000000001E-3 | G=YPF|5
+25 : A=YPF | B=26 | C=RE ST BA MVA 62,35% LUBRI C/PIS | D=91 | E=9.0499999999999997E-2 | F=2E-3 | G=YPF|26
+
+##### dICMS_Origem rows: 17
+1 : A=ALIQUOTA DE ICMS NA COMPRA, POR UF DE ORIGEM - regra padrao interestadual (destino BA)
+2 : A=UF_ORIGEM | B=ALIQ_ICMS_COMPRA | C=REGRA
+3 : A=SP | B=7.0000000000000007E-2 | C=Sul/Sudeste (exceto ES) -> Nordeste = 7%
+4 : A=RJ | B=7.0000000000000007E-2 | C=Sul/Sudeste (exceto ES) -> Nordeste = 7%
+5 : A=MG | B=7.0000000000000007E-2 | C=Sul/Sudeste (exceto ES) -> Nordeste = 7%
+6 : A=PR | B=7.0000000000000007E-2 | C=Sul/Sudeste (exceto ES) -> Nordeste = 7%
+7 : A=RS | B=7.0000000000000007E-2 | C=Sul/Sudeste (exceto ES) -> Nordeste = 7%
+8 : A=SC | B=7.0000000000000007E-2 | C=Sul/Sudeste (exceto ES) -> Nordeste = 7%
+9 : A=GO | B=0.12 | C=Centro-Oeste -> Nordeste = 12%
+10 : A=CE | B=0.12 | C=Nordeste -> Nordeste = 12% (mesma regiao, conferir)
+11 : A=PE | B=0.12 | C=Nordeste -> Nordeste = 12% (mesma regiao, conferir)
+12 : A=AM | B=0.12 | C=Norte -> Nordeste = 12%
+13 : A=ES | B=0.12 | C=Regra especial ES -> Nordeste = 12% (CONFIRMAR com contabilidade)
+14 : A=BA | B=0.20499999999999999 | C=Operacao interna BA = 20,5% (nao e credito interestadual)
+15 : A=IMPORTANTE: nao ha flag de produto IMPORTADO nos relatorios atuais.
+16 : A=Produtos importados tem ICMS de 4% (Res. Senado 13/2012), nao a aliquota da UF.
+17 : A=CHECK_IMPORTADO sinaliza quando o credito estimado parece incompativel com produto nacional.
+
+##### dPISCOFINS rows: 5
+1 : A=CONFERIR COM O FISCAL ANTES DE PRECIFICAR
+2 : A=CODTRIBPISCOFINS | B=DESCRICAO (8105) | C=SKUs | D=ALIQ_EFETIVA | E=OBS
+3 : A=1 | B=TRIBUTADA INTEGRAL | C=7325 | D=9.2499999999999999E-2 | E=regime normal - 9,25% na saida
+4 : A=2 | B=MONOFASICO | C=1024 | D=0 | E=monofasico: tributado na origem -> 0 na revenda. CONFIRMAR
+5 : A=4 | B=EXCEÇÃO | C=273 | D=0 | E=excecao: assumido 0. CONFIRMAR com o fiscal
+
+##### fEstFabrica rows: 5
+1 : A=COD_FAB | B=DESCRICAO | C=DISPONIVEL | D=UN | E=LOCAL | F=FORNECEDOR
+2 : A=50605.32.3 | B=ATF DIII - 12LT | C=7 | D=CX | E=MKLOG | F=YPF
+3 : A=50605.12.3 | B=ATF DIII - 20LT | C=667 | D=BB | E=MKLOG | F=YPF
+4 : A=50607.25.3 | B=DIELECTRICO BI - 200LT | C=58 | D=TB | E=MKLOG | F=YPF
+5 : A=50519.32.3 | B=ELAION AURO D1 020 - 12LT | C=648 | D=CX | E=MKLOG | F=YPF
+
+##### dSucessao rows: 27
+1 : A=HERANCA DE HISTORICO - nada e aplicado enquanto ATIVO nao for SIM
+2 : A=CODIGO_NOVO | B=ANTIGO_1 | C=PESO_1 | D=ANTIGO_2 | E=PESO_2 | F=ATIVO | G=SOMA_PESOS_DO_ANTIGO_1 | H=DESC_NOVO | I=DESC_ANTIGO_1 | J=SCORE | K=OBS
+3 : A=8581 | B=9 | C=1 | D=None | E=None | F=NAO | G=2 [F:SUMIF($B:$B,$B3,$C:$C)+SUMIF($D:$D,$B3,$E:$E)] | H=LUBRAX TOP TURBO  15W40 CI-4/SL  20LT | I=LUBRAX EXTRA TURBO CH-4 15W40 20 LTS | J=10 | K=candidato automatico - CONFERIR
+4 : A=8436 | B=9 | C=1 | D=None | E=None | F=NAO | G=2 | H=LUBRAX TOP TURBO 15W40 CI4 228.3 70K 20L | I=LUBRAX EXTRA TURBO CH-4 15W40 20 LTS | J=10 | K=candidato automatico - CONFERIR
+5 : A=8326 | B=11 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP AUTO 15W40 SN SEMI 1LT | I=LUBRAX EXTRA TURBO CH-4 15W40 1 LT | J=8 | K=candidato automatico - CONFERIR
+6 : A=8311 | B=2096 | C=1 | D=None | E=None | F=NAO | G=3 | H=LUBRAX TOP AUTO 5W30 C2,C3 (OFFROAD) 1LT | I=LUBRAX VALORA SN PLUS 5W30 1 LT | J=10 | K=candidato automatico - CONFERIR
+7 : A=8355 | B=2096 | C=1 | D=None | E=None | F=NAO | G=3 | H=LUBRAX TOP AUTO 5W30 SQ SINT 1LT | I=LUBRAX VALORA SN PLUS 5W30 1 LT | J=10 | K=candidato automatico - CONFERIR
+8 : A=8350 | B=2096 | C=1 | D=None | E=None | F=NAO | G=3 | H=LUBRAX TOP AUTO 5W30 SQ DX1 SINT 1LT | I=LUBRAX VALORA SN PLUS 5W30 1 LT | J=8 | K=candidato automatico - CONFERIR
+9 : A=8463 | B=2689 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP TURBO CH-4 20W50 VIGOROS 20LT | I=LUBRAX TURBO VIGOROS 20W50 20 LTS | J=9.4 | K=candidato automatico - CONFERIR
+10 : A=8455 | B=2848 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP AUTO SL 25W50 ALT.KM 1LT | I=LUBRAX ESSENCIAL ALTA RODAGEM 25W50 1 LT | J=9.5 | K=candidato automatico - CONFERIR
+11 : A=6656 | B=3836 | C=1 | D=None | E=None | F=NAO | G=1 | H=INGRAX UNI PREMIUM SL 20W50 1 LT | I=INGRAX UNI COMPETICAO SPORT SL 20W50 1 L | J=10 | K=candidato automatico - CONFERIR
+12 : A=8491 | B=4743 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP AUTO MINERAL 20W50 SL 500 ML | I=LUBRAX ESSENCIAL SL 20W50 500ML | J=9.8000000000000007 | K=candidato automatico - CONFERIR
+13 : A=8458 | B=6575 | C=1 | D=None | E=None | F=NAO | G=2 | H=LUBRAX TOP MOTO 20W50 MA 1LT | I=LUBRAX MOTO 4T 20W50 1LT | J=8 | K=candidato automatico - CONFERIR
+14 : A=8325 | B=6575 | C=1 | D=None | E=None | F=NAO | G=2 | H=LUBRAX TOP AUTO SL 20W50 1LT | I=LUBRAX MOTO 4T 20W50 1LT | J=6.5 | K=candidato automatico - CONFERIR
+15 : A=8351 | B=6719 | C=1 | D=None | E=None | F=NAO | G=2 | H=LUBRAX TOP AUTO 5W40 502/505 SINT 1LT | I=LUBRAX VALORA FLEX SN 5W40 502/505 1 LT | J=8 | K=candidato automatico - CONFERIR
+16 : A=8454 | B=6719 | C=1 | D=None | E=None | F=NAO | G=2 | H=LUBRAX TOP AUTO 5W40 A3/B4 508.509 1LT | I=LUBRAX VALORA FLEX SN 5W40 502/505 1 LT | J=8 | K=candidato automatico - CONFERIR
+17 : A=8459 | B=6720 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP MOTO 10W30 MA2 SEMI 1LT | I=LUBRAX TECNO PROF SN 10W30 1L | J=8 | K=candidato automatico - CONFERIR
+18 : A=8317 | B=7091 | C=1 | D=None | E=None | F=NAO | G=2 | H=LUBRAX TOP AUTO 10W40 SN SEMI SIN 1LT | I=LUBRAX TOP TURBO PRO S 10W40 1LT | J=8 | K=candidato automatico - CONFERIR
+19 : A=8465 | B=7091 | C=1 | D=None | E=None | F=NAO | G=2 | H=LUBRAX TOP TURBO 10W40 CI-4 SINT 1LT | I=LUBRAX TOP TURBO PRO S 10W40 1LT | J=8 | K=candidato automatico - CONFERIR
+20 : A=8460 | B=7092 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP TURBO 10W40 CI-4 SINT 20LT | I=LUBRAX TOP TURBO PRO S 10W40 20LT | J=10 | K=candidato automatico - CONFERIR
+21 : A=8316 | B=7095 | C=1 | D=None | E=None | F=NAO | G=4 | H=LUBRAX TOP AUTO 15W40 SL SEMI SIN 1LT | I=LUBRAX TOP TURBO ESSENCIAL 15W40 1LT | J=10 | K=candidato automatico - CONFERIR
+22 : A=8438 | B=7095 | C=1 | D=None | E=None | F=NAO | G=4 | H=LUBRAX TOP TURBO 15W40 CI-4/SL 1LT | I=LUBRAX TOP TURBO ESSENCIAL 15W40 1LT | J=10 | K=candidato automatico - CONFERIR
+23 : A=8464 | B=7095 | C=1 | D=None | E=None | F=NAO | G=4 | H=LUBRAX TOP TURBO 15W40 CH-4 1LT | I=LUBRAX TOP TURBO ESSENCIAL 15W40 1LT | J=10 | K=candidato automatico - CONFERIR
+24 : A=8437 | B=7095 | C=1 | D=None | E=None | F=NAO | G=4 | H=LUBRAX TOP TURBO 15W40 CI4 228.3 70K 1LT | I=LUBRAX TOP TURBO ESSENCIAL 15W40 1LT | J=10 | K=candidato automatico - CONFERIR
+25 : A=8582 | B=7113 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP TURBO 15W40 CH-4 20LT | I=LUBRAX TOP TURBO PRO CK-4 15W40 20LT | J=9.8000000000000007 | K=candidato automatico - CONFERIR
+26 : A=8356 | B=7426 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP AUTO 0W20 SQ DX1 SINT 1LT | I=LUBRAX SUPERA PREMIUM SP 0W20 GF-6 1LT | J=9.6999999999999993 | K=candidato automatico - CONFERIR
+27 : A=8453 | B=8144 | C=1 | D=None | E=None | F=NAO | G=1 | H=LUBRAX TOP AUTO 0W20 SQ SINT 1LT | I=LUBRAX VALORA SP 0W20 1LT | J=8 | K=candidato automatico - CONFERIR
+
+##### dEmbalagem rows: 146
+1 : A=EMBALAGEM | B=UNID_POR_EMB | C=LITROS_POR_EMB | D=LITROS_POR_UNIDADE
+2 : A=1 | B=1 | C=1 | D=1
+3 : A=100x1 | B=100 | C=100 | D=1
+4 : A=10X1 | B=10 | C=10 | D=1
+5 : A=10x1 | B=10 | C=10 | D=1
+6 : A=12X 1L | B=12 | C=12 | D=1
+7 : A=12X 300ML | B=12 | C=3.6 | D=0.3
+8 : A=12X 450 ML | B=12 | C=5.4 | D=0.45
+9 : A=12X 500 ML | B=12 | C=6 | D=0.5
+10 : A=12X1 | B=12 | C=12 | D=1
+11 : A=12X1 KG | B=12 | C=0 | D=0
+12 : A=12X1 L | B=12 | C=12 | D=1
+13 : A=12X1 LT | B=12 | C=12 | D=1
+14 : A=12X10 GR | B=12 | C=0 | D=0
+15 : A=12X100 GR | B=12 | C=0 | D=0
+16 : A=12X100ML | B=12 | C=1.2 | D=0.1
+17 : A=12X160 ML | B=12 | C=1.92 | D=0.16
+18 : A=12X1L | B=12 | C=12 | D=1
+19 : A=12X1LT | B=12 | C=12 | D=1
+20 : A=12X2 | B=12 | C=24 | D=2
+21 : A=12X200 GR | B=12 | C=0 | D=0
+22 : A=12X200 ML | B=12 | C=2.4 | D=0.2
+23 : A=12X200GR | B=12 | C=0 | D=0
+24 : A=12X200ML | B=12 | C=2.4 | D=0.2
+25 : A=12X220ML | B=12 | C=2.64 | D=0.22
+26 : A=12X235ML | B=12 | C=2.82 | D=0.23499999999999999
+27 : A=12X250 G | B=12 | C=0 | D=0
+28 : A=12X250 GR | B=12 | C=0 | D=0
+29 : A=12X250 ML | B=12 | C=3 | D=0.25
+30 : A=12X250G | B=12 | C=0 | D=0
+31 : A=12X250ML | B=12 | C=3 | D=0.25
+32 : A=12X3 GR | B=12 | C=0 | D=0
+33 : A=12X300 GR | B=12 | C=0 | D=0
+34 : A=12X300 ML | B=12 | C=3.6 | D=0.3
+35 : A=12X300ML | B=12 | C=3.6 | D=0.3
+36 : A=12X400 ML | B=12 | C=4.8 | D=0.4
+37 : A=12X400ML | B=12 | C=4.8 | D=0.4
+38 : A=12X45 ML | B=12 | C=0.54 | D=4.4999999999999998E-2
+39 : A=12X50 GR | B=12 | C=0 | D=0
+40 : A=12X500 | B=12 | C=6 | D=0.5
+41 : A=12X500 GR | B=12 | C=0 | D=0
+42 : A=12X500 ML | B=12 | C=6 | D=0.5
+43 : A=12X500ML | B=12 | C=6 | D=0.5
+44 : A=12X60 GR | B=12 | C=0 | D=0
+45 : A=12X7 GR | B=12 | C=0 | D=0
+46 : A=12X73 GR | B=12 | C=0 | D=0
+47 : A=12X85 GR | B=12 | C=0 | D=0
+48 : A=12X946 ML | B=12 | C=11.352 | D=0.94599999999999995
+49 : A=12X946ML | B=12 | C=11.352 | D=0.94599999999999995
+50 : A=12x1 | B=12 | C=12 | D=1
+51 : A=12x1 LT | B=12 | C=12 | D=1
+52 : A=12x300 ML | B=12 | C=3.6 | D=0.3
+53 : A=12x470 GR | B=12 | C=0 | D=0
+54 : A=15X1 | B=15 | C=15 | D=1
+55 : A=16X1 | B=16 | C=16 | D=1
+56 : A=17X1 | B=17 | C=17 | D=1
+57 : A=18X80 GR | B=18 | C=0 | D=0
+58 : A=1X 500 ML | B=1 | C=0.5 | D=0.5
+59 : A=1X1 | B=1 | C=1 | D=1
+60 : A=1X120 GR | B=1 | C=0 | D=0
+

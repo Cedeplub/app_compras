@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block titulo %}Indicadores{% endblock %}
+{% block conteudo %}
+<h1>Indicadores por fornecedor</h1>
+
+<p class="texto-suave">
+  Duas médias de margem oficial convivem aqui e respondem perguntas diferentes:
+  <strong>simples</strong> trata cada SKU igual, independente do quanto ele pesa em estoque;
+  <strong>ponderada pelo estoque</strong> responde "qual a margem do dinheiro parado" neste
+  fornecedor. Nenhuma das duas é somável entre fornecedores.
+</p>
+
+{% if not fornecedores %}
+<p class="vazio-lista">Nenhum fornecedor cadastrado.</p>
+{% endif %}
+
+{% for f in fornecedores %}
+<div class="card somente-mobile">
+  <div class="card-titulo">
+    <div>
+      <div class="descricao">{{ f.fornecedor }}</div>
+      <div class="texto-suave">{{ f.comprador }}</div>
+    </div>
+    {% if f.qtd_sku_com_alerta %}<span class="etiqueta etiqueta-alerta">{{ m.inteiro(f.qtd_sku_com_alerta) }} c/ alerta</span>{% endif %}
+  </div>
+  <div class="card-linha"><span class="rotulo">SKUs (ativos)</span><span>{{ m.inteiro(f.qtd_sku) }} ({{ m.inteiro(f.qtd_sku_ativo) }})</span></div>
+  <div class="card-linha"><span class="rotulo">Ruptura / margem instável / fora de linha</span><span>{{ m.inteiro(f.qtd_sku_ruptura) }} / {{ m.inteiro(f.qtd_sku_margem_instavel) }} / {{ m.inteiro(f.qtd_sku_fora_de_linha) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Valor em estoque</span><span>{{ m.moeda(f.valor_estoque) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Valor em pedido</span><span>{{ m.moeda(f.valor_pedido) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Margem oficial — simples</span><span>{{ m.percentual(f.margem_oficial_media) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Margem oficial — ponderada (estoque)</span><span>{{ m.percentual(f.margem_oficial_pond_estoque) }}</span></div>
+  <p><a href="?fornecedor={{ f.fornecedor | urlencode }}">Ver evolução mensal »</a></p>
+</div>
+{% endfor %}
+
+{% if fornecedores %}
+<div class="tabela-scroll somente-mesa">
+<table>
+<thead>
+<tr>
+  <th>Fornecedor</th><th>Comprador</th><th>Qtd SKU</th><th>Ativos</th><th>Com alerta</th>
+  <th>Ruptura</th><th>Margem instável</th><th>Fora de linha</th>
+  <th>Valor estoque</th><th>Valor pedido</th>
+  <th>Margem oficial — simples</th><th>Margem oficial — ponderada (estoque)</th>
+</tr>
+</thead>
+<tbody>
+{% for f in fornecedores %}
+<tr>
+  <td><a href="?fornecedor={{ f.fornecedor | urlencode }}">{{ f.fornecedor }}</a></td>
+  <td>{{ f.comprador }}</td>
+  <td>{{ m.inteiro(f.qtd_sku) }}</td>
+  <td>{{ m.inteiro(f.qtd_sku_ativo) }}</td>
+  <td>{{ m.inteiro(f.qtd_sku_com_alerta) }}</td>
+  <td>{{ m.inteiro(f.qtd_sku_ruptura) }}</td>
+  <td>{{ m.inteiro(f.qtd_sku_margem_instavel) }}</td>
+  <td>{{ m.inteiro(f.qtd_sku_fora_de_linha) }}</td>
+  <td>{{ m.moeda(f.valor_estoque) }}</td>
+  <td>{{ m.moeda(f.valor_pedido) }}</td>
+  <td>{{ m.percentual(f.margem_oficial_media) }}</td>
+  <td>{{ m.percentual(f.margem_oficial_pond_estoque) }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+
+<h2>Evolução mensal {% if fornecedor %}— {{ fornecedor }}{% endif %}</h2>
+<form class="filtros" method="get" action="/indicadores">
+  <div>
+    <label for="f-fornecedor-mensal">Fornecedor</label>
+    <select id="f-fornecedor-mensal" name="fornecedor" onchange="this.form.requestSubmit()">
+      <option value="">Todos</option>
+      {% for f in fornecedores %}
+      <option value="{{ f.fornecedor }}" {% if fornecedor == f.fornecedor %}selected{% endif %}>{{ f.fornecedor }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="botao-filtrar">Filtrar</button>
+</form>
+
+{% if not mensal %}
+<p class="vazio-lista">Sem dados de venda mensal para este filtro.</p>
+{% endif %}
+
+{% for mes in mensal %}
+<div class="card somente-mobile">
+  <div class="card-linha"><span class="rotulo">Mês</span><span>{{ mes.mes }}</span></div>
+  <div class="card-linha"><span class="rotulo">Valor líquido</span><span>{{ m.moeda(mes.valor_liquido) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Quantidade líquida</span><span>{{ m.numero(mes.quantidade_liquida) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Valor devolução</span><span>{{ m.moeda(mes.valor_devolucao) }}</span></div>
+</div>
+{% endfor %}
+
+{% if mensal %}
+<div class="tabela-scroll somente-mesa">
+<table>
+<thead><tr><th>Mês</th><th>Valor líquido</th><th>Quantidade líquida</th><th>Valor devolução</th></tr></thead>
+<tbody>
+{% for mes in mensal %}
+<tr>
+  <td>{{ mes.mes }}</td>
+  <td>{{ m.moeda(mes.valor_liquido) }}</td>
+  <td>{{ m.numero(mes.quantidade_liquida) }}</td>
+  <td>{{ m.moeda(mes.valor_devolucao) }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

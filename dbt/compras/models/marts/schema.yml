@@ -1,0 +1,300 @@
+version: 2
+
+models:
+  # ───────────────────────────────────────────────────────────────────────────
+  # fat_pedido — as 122 colunas da aba `pedido`. O critério de aceite final.
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: fat_pedido
+    description: >
+      AS 122 COLUNAS DA ABA `pedido`, NA ORDEM EXATA DO GABARITO
+      (docs/gabarito_pedido_formulas.txt), uma linha por SKU. É o artefato que
+      fecha o critério de aceite do projeto (CONTEXTO.md §7): comparado célula
+      a célula com a planilha v10 por validar/validar_pedido.py, tolerância
+      0,01. Não há cálculo aqui - é a junção dos dez models de produto por
+      `codigo`, e a regra de negócio de cada coluna mora no intermediate que a
+      produz (ver models/intermediate/schema.yml, coluna por coluna).
+      Os NOMES das colunas são contrato com o validador, que casa pelo slug do
+      cabeçalho da aba: renomear quebra o aceite em silêncio.
+      ⚠ Desde 21/08/2026 este model DIVERGE DE PROPÓSITO do xlsx em
+      referencia/ em oito colunas - CC, CH, CY, CO, CP, DE, DF e BO -, mais o
+      que delas deriva (D=ALERTA e a cadeia de custo/ICMS-ST dos 41 SKUs de
+      "CAR 80"). São as três decisões do Diretor de Compras registradas em
+      PENDENCIAS_DIRETORIA.md (itens 1, 3 e 4) e em CONTEXTO.md §6.4; o arquivo
+      de referência é a versão ANTERIOR a elas. Divergência ali é ESPERADA e não
+      deve ser "consertada" de volta. O item 5 continua aberto e reproduzido
+      como a planilha faz.
+    columns:
+      - name: codigo
+        description: "A | CODIGO. Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+
+      - name: alerta
+        description: >
+          D | ALERTA. Concatena os 14 CHECK_* com "; ", NA ORDEM DO EXCEL
+          (X, Y, AL, AV, AO, AP, AY, BS, CC, CD, CE, CL, DO, DB - não a das
+          letras, não a alfabética). ⚠ O critério de aceite dela NÃO é zero
+          divergência (CONTEXTO.md §6.1.1): é coluna derivada, e dois dos seus
+          componentes são voláteis (CHECK_ESTOQUE_PARADO, CHECK_FORA_DE_LINHA)
+          e dois dependem de decisão humana (CHECK_FABRICA, CHECK_INATIVO). O
+          que se exige é zero divergência em cada CHECK_* ESTRUTURAL, e que toda
+          divergência de ALERTA seja atribuível a um componente volátil ou de
+          decisão. Para filtrar e contar por tipo, use fat_alerta - não faça
+          parsing desta string.
+
+      - name: classe
+        description: >
+          AX | CLASSE. ZERO divergência é critério de aceite, sem ressalva.
+          Recalculada a cada build sobre DOIS universos separados
+          (CONTEXTO.md regra 5).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['A', 'B/C', 'S/VEND']
+
+      - name: modalidade
+        description: >
+          BL | MODALIDADE. ZERO divergência é critério de aceite, sem ressalva.
+          NULA nos 5 SKUs com codst = 0, que não existem no seed_icms
+          (CONTEXTO.md §6.2) - é reprodução deliberada, não dado faltando.
+        data_tests:
+          - accepted_values:
+              values: ['NORMAL', 'ST_SUBSTITUTO', 'ST_RECOLHIDO']
+
+      - name: custo_tot_gerencial
+        description: >
+          BY | CUSTO_TOT_GERENCIAL. ZERO divergência é critério de aceite, sem
+          ressalva. É a base de TODA margem e TODO preço sugerido, e o único
+          lugar por onde o ajuste Ingrax (BX) entra - nunca na base fiscal de
+          ICMS-ST (CONTEXTO.md regra 2). Nula nos mesmos 5 SKUs sem modalidade.
+
+      - name: fator_exibicao
+        description: >
+          K | FATOR_EXIBICAO. Divide praticamente toda quantidade exibida
+          (CONTEXTO.md regra 6). Vale EMBAL_COMPRA quando o departamento tem
+          PEDIDO_EM = 'MASTER', senão 1 - nunca zero, ou toda quantidade viraria
+          divisão por zero.
+        data_tests: [not_null]
+
+      - name: pedido
+        description: >
+          BA | PEDIDO. DECISÃO HUMANA, de APP_DECISAO_PEDIDO por left join.
+          Ausência de decisão vale ZERO (e não nulo, como em ALT_PV_*), porque
+          BB/BC/BF a usam em aritmética. Só aparece aqui depois do próximo
+          `dbt run`. ⚠ MELHORIA A5 (MELHORIAS.md; CONTEXTO.md §6.0): BB
+          (PEDIDO_UNIDADES) e o que descende dela - BC, BD, BE, BF - usam o
+          FATOR_EXIBICAO CONGELADO na decisão, não o corrente da coluna K.
+          Sem decisão gravada não há congelado e vale K, que é o caso de 100%
+          dos SKUs hoje.
+        data_tests: [not_null]
+
+      - name: alt_pv_at_av
+        description: >
+          CU | ALT_PV_AT_AV. DECISÃO HUMANA. NUNCA preenchida com uma das
+          sugestões calculadas (CONTEXTO.md regra 10). Hoje 100% nula, porque
+          APP_DECISAO_PRECO está vazia - é o estado correto.
+
+      - name: alt_pv_var_av
+        description: "DI | ALT_PV_VAR_AV. A segunda DECISÃO HUMANA, mesma regra de CU."
+
+      - name: margem_alvo
+        description: "CN | MARGEM_ALVO. Padrão 20% (MARGEM_ALVO_PADRAO) sem decisão gravada."
+        data_tests: [not_null]
+
+      - name: margem_alvo_varejo
+        description: "DD | MARGEM_ALVO_VAREJO. Coluna digitada SEPARADA de CN, mesmo padrão."
+        data_tests: [not_null]
+
+      - name: nao_usado
+        description: >
+          I | (nao usado). Coluna VAZIA na planilha, mantida aqui só para que a
+          contagem de 122 e a posição das demais batam com o gabarito. O
+          validador a ignora explicitamente (LETRAS_IGNORADAS).
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # fat_alerta — os 14 CHECK_* despivotados, para filtrar e contar por tipo
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: fat_alerta
+    description: >
+      As 14 colunas CHECK_* da aba `pedido` despivotadas. Grão: 1 linha por SKU
+      x TIPO DE ALERTA ATIVO - SKU sem alerta não aparece, SKU com quatro
+      alertas aparece quatro vezes. Existe para que o dashboard (Etapa 6) filtre
+      e conte por tipo sem dar parsing na string concatenada da coluna D.
+      ⚠ Contagem sobre esta tabela conta ALERTAS, não PRODUTOS: para produtos é
+      `count(distinct codigo)`.
+      Ver tests/compras_fat_alerta_grao_unico.sql e
+      tests/compras_alerta_componentes_completos.sql.
+    columns:
+      - name: codigo
+        description: "SKU. NÃO é único aqui - o grão é (codigo, tipo_alerta)."
+        data_tests: [not_null]
+      - name: tipo_alerta
+        description: >
+          A chave limpa do alerta. Os 14 valores correspondem, um a um, às
+          colunas CHECK_* do gabarito.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['FABRICA', 'INATIVO', 'RUPTURA', 'DEVOLUCAO', 'PARADO',
+                       'FORA_DE_LINHA', 'LITRAGEM', 'IMPORTADO', 'TRIB', 'MVA',
+                       'CUSTO', 'MARGEM_INSTAVEL', 'SUCESSAO',
+                       'MARGEM_INSTAVEL_VAREJO']
+      - name: texto_alerta
+        description: >
+          A frase exata da coluna CHECK_* correspondente - o mesmo texto que
+          aparece dentro de ALERTA. Nunca nulo: alerta inativo não vira linha.
+        data_tests: [not_null]
+      - name: ordem_exibicao
+        description: >
+          1..14 na ORDEM DA COLUNA D (Excel), não alfabética. Carrega a ordem
+          para que a tela reproduza a sequência que o comprador conhece.
+        data_tests: [not_null]
+      - name: fornecedor
+        description: "Recorte. Texto do DEPARTAMENTO (CONTEXTO.md regra 7)."
+      - name: comprador
+        description: "Recorte. De quem é a fila de trabalho."
+      - name: classe
+        description: "Recorte. Curva ABC do SKU."
+      - name: descricao
+        description: "Para a tela não precisar de um join só para mostrar o nome."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Dimensões — o que já existe, organizado para consumo. Sem regra nova.
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: dim_produto
+    description: >
+      O SKU e seus atributos DESCRITIVOS: identificação, embalagem, fatores,
+      departamento, comprador e curva ABC. Grão: 1 linha por `codigo`. Existe
+      para que filtro, seletor e resolução de código não precisem varrer as 122
+      colunas de fat_pedido. Não carrega medida do período (estoque, venda,
+      custo, margem, preço) - isso é fato, e duplicá-lo aqui criaria duas
+      verdades. CLASSE é a exceção deliberada, por ser recorte de tela.
+    columns:
+      - name: codigo
+        description: "A | CODIGO. Grão da tabela."
+        data_tests:
+          - unique
+          - not_null
+      - name: descricao
+        description: "C | DESCRICAO."
+      - name: status
+        description: "E | STATUS. 'Ativo', 'Inativo' ou '?' quando o cadastro não diz."
+      - name: fornecedor
+        description: >
+          F | FORNECEDOR. ⚠ É o texto do DEPARTAMENTO, não o fornecedor legal da
+          NF (CONTEXTO.md regra 7). Chave de junção com dim_fornecedor.
+        data_tests: [not_null]
+      - name: comprador
+        description: "G | COMPRADOR. 'A DEFINIR' quando o departamento não está no seed."
+      - name: fator_exibicao
+        description: "K | FATOR_EXIBICAO. Ver fat_pedido."
+        data_tests: [not_null]
+      - name: embalagem_cadastrada
+        description: >
+          'S'/'N'. 'N' = embalagem sem linha no seed_embalagem, o que explica
+          L_POR_UNIDADE = 0 e dispara CHECK_LITRAGEM. Não confundir com
+          "litragem zero": 161 SKUs têm cadastro E litragem 0, legitimamente.
+        data_tests:
+          - accepted_values:
+              values: ['S', 'N']
+      - name: classe
+        description: "AX | CLASSE. Recalculada a cada build - não é atributo estável."
+        data_tests:
+          - accepted_values:
+              values: ['A', 'B/C', 'S/VEND']
+      - name: universo
+        description: >
+          De qual dos DOIS universos da curva o SKU participa. Sem isso, duas
+          classes 'B/C' parecem comparáveis e têm denominadores diferentes.
+        data_tests:
+          - accepted_values:
+              values: ['COM_LITRAGEM', 'SEM_LITRAGEM']
+
+  - name: dim_fornecedor
+    description: >
+      A aba `dFornecedor` com o alcance real de cada linha medido no catálogo.
+      Grão: 1 linha por FORNECEDOR - que aqui é o texto do DEPARTAMENTO
+      (CONTEXTO.md regra 7), não o fornecedor legal da NF. O grão é a UNIÃO do
+      seed com os departamentos observados no cadastro: os dois lados existem e
+      nenhum contém o outro, e a coluna `tem_regra_cadastrada` separa os dois.
+      Os fallbacks do Excel NÃO são aplicados aqui (as colunas do seed saem
+      nulas quando não há linha) - quem calcula com fallback é o intermediate.
+    columns:
+      - name: chave_fornecedor
+        description: "Grão da tabela: upper(FORNECEDOR). O join com o seed ignora caixa."
+        data_tests:
+          - unique
+          - not_null
+      - name: fornecedor
+        description: "O texto como o CADASTRO grafa; cai no do seed quando não há SKU."
+        data_tests: [not_null]
+      - name: tem_regra_cadastrada
+        description: >
+          'N' = departamento sem linha no dFornecedor, cujos SKUs caem nos
+          fallbacks do Excel (comprador 'A DEFINIR', N_MESES 3, cobertura 2,
+          PEDIDO_EM 'UNIDADE'). É a lista do que falta cadastrar.
+        data_tests:
+          - accepted_values:
+              values: ['S', 'N']
+      - name: meses_media
+        description: "AB | N_MESES. SELETOR da coluna de média: 2, 3, 4, 6, 9 ou 12."
+      - name: cobertura_alvo
+        description: "Alimenta AZ | SUG_COBERTURA."
+      - name: pedido_em
+        description: >
+          K | FATOR_EXIBICAO. 'MASTER' faz o fator valer EMBAL_COMPRA e divide
+          toda quantidade exibida do departamento inteiro (CONTEXTO.md regra 6).
+      - name: comprador
+        description: "G | COMPRADOR."
+      - name: qtd_sku
+        description: "Quantos SKUs do cadastro têm este departamento. 0 = regra sem alcance."
+        data_tests: [not_null]
+
+  - name: dim_tributacao
+    description: >
+      A aba `dICMS` com o alcance real de cada código medido no catálogo. Grão:
+      1 linha por COD_TRIBUTACAO (ICMS). O PIS/COFINS NÃO entra: é outro espaço
+      de código, e uma dimensão de grão (cod_icms, cod_piscof) inventaria
+      combinações que não existem. As DUAS alíquotas efetivas do mesmo código
+      são dois regimes, não uma antiga e uma nova: com redução (atacado) e cheia
+      (varejo) - CONTEXTO.md regra 3.
+    columns:
+      - name: cod_tributacao
+        description: "Grão da tabela: o código de tributação de ICMS."
+        data_tests:
+          - unique
+          - not_null
+      - name: modalidade
+        description: "BL | MODALIDADE."
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['NORMAL', 'ST_SUBSTITUTO', 'ST_RECOLHIDO']
+      - name: mva
+        description: >
+          BM | MVA. Nula fora de ST_SUBSTITUTO - só o substituto tem MVA a
+          cobrar. Ver tests/compras_icms_st_exige_mva.sql.
+      - name: icms_saida_ef
+        description: "CA | ICMS_SAIDA_EF. Alíquota efetiva COM redução de base - atacado."
+      - name: icms_sem_red
+        description: >
+          CB | ICMS_SEM_RED. Alíquota CHEIA. É a que o varejo usa sempre, e -
+          desde a decisão do Diretor de 21/08/2026 (PENDENCIAS_DIRETORIA.md item
+          1, CONTEXTO.md §6.4) - também a do cenário "ST s/Valor", nos dois
+          canais: CH, CY, CO e DE. Antes essas quatro liam CA (reduzida), o que
+          era erro da planilha.
+      - name: exige_mva
+        description: "'S' só para ST_SUBSTITUTO. Torna explícita a regra do ICMS-ST."
+        data_tests:
+          - accepted_values:
+              values: ['S', 'N']
+      - name: qtd_sku
+        description: >
+          Quantos SKUs usam este código. NÃO mostra o inverso (código usado e
+          ausente do seed) - esses não viram linha aqui de propósito; estão em
+          `fat_pedido where modalidade is null`.
+        data_tests: [not_null]

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block titulo %}Decisão de compra{% endblock %}
+{% block conteudo %}
+<h1>Decisão de compra</h1>
+
+<div hx-boost="true" hx-select="#lista-compra" hx-target="#lista-compra" hx-swap="outerHTML"
+     hx-push-url="true" hx-indicator="#carregando-compra">
+
+  <form class="filtros" method="get" action="/compra">
+    <div>
+      <label for="f-busca">Buscar</label>
+      <input type="text" id="f-busca" name="busca" placeholder="código ou descrição" value="{{ filtros.busca or '' }}">
+    </div>
+    <div>
+      <label for="f-tipo-alerta">Tipo de alerta</label>
+      <select id="f-tipo-alerta" name="tipo_alerta" onchange="this.form.requestSubmit()">
+        <option value="">Todos</option>
+        {% for t in opcoes.tipos_alerta %}
+        <option value="{{ t }}" {% if filtros.tipo_alerta == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="f-fornecedor">Fornecedor</label>
+      <select id="f-fornecedor" name="fornecedor" onchange="this.form.requestSubmit()">
+        <option value="">Todos</option>
+        {% for f in opcoes.fornecedores %}
+        <option value="{{ f }}" {% if filtros.fornecedor == f %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="f-comprador">Comprador</label>
+      <select id="f-comprador" name="comprador" onchange="this.form.requestSubmit()">
+        <option value="">Todos</option>
+        {% for c in opcoes.compradores %}
+        <option value="{{ c }}" {% if filtros.comprador == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="f-classe">Curva ABC</label>
+      <select id="f-classe" name="classe" onchange="this.form.requestSubmit()">
+        <option value="">Todas</option>
+        {% for c in opcoes.classes %}
+        <option value="{{ c }}" {% if filtros.classe == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="botao-filtrar">Filtrar<span class="htmx-indicator" id="carregando-compra"> …</span></button>
+  </form>
+
+  <div id="lista-compra">
+    <p class="texto-suave">{{ m.inteiro(total) }} produto(s) — página {{ pagina }} de {{ total_paginas }}</p>
+
+    {% if not linhas %}
+      <p class="vazio-lista">Nenhum SKU encontrado com esses filtros.</p>
+    {% endif %}
+
+    {% if linhas %}
+    <div class="tabela-scroll">
+      <div class="tabela-produtos-wrap">
+        <div class="cabecalho-tabela">
+          <div>Código</div><div>Descrição</div><div>Fornecedor</div><div>Comprador</div><div>Classe</div>
+          <div>Alerta</div><div>Est. disp.</div><div>Média janela</div><div>Meses est.</div><div>Sug. cobertura</div>
+          <div>Pedido</div><div>Pedido (unid.)</div><div>Valor pedido</div><div>Fator exib.</div><div>Embal. compra</div>
+        </div>
+        {% for linha in linhas %}
+          {% include "compra_linha.html" %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% set qs = "tipo_alerta=" ~ (filtros.tipo_alerta or "")|urlencode
+              ~ "&fornecedor=" ~ (filtros.fornecedor or "")|urlencode
+              ~ "&comprador=" ~ (filtros.comprador or "")|urlencode
+              ~ "&classe=" ~ (filtros.classe or "")|urlencode
+              ~ "&busca=" ~ (filtros.busca or "")|urlencode %}
+    <div class="paginacao">
+      <a href="/compra?{{ qs }}&pagina={{ pagina - 1 }}" class="botao secundario{% if pagina <= 1 %} desabilitado{% endif %}">« anterior</a>
+      <span class="texto-suave">{{ pagina }} / {{ total_paginas }}</span>
+      <a href="/compra?{{ qs }}&pagina={{ pagina + 1 }}" class="botao secundario{% if pagina >= total_paginas %} desabilitado{% endif %}">próxima »</a>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

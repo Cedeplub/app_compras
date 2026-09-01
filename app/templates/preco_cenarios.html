@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block titulo %}Preço {{ p.codigo }}{% endblock %}
+{% block conteudo %}
+<p><a href="/preco">« busca</a></p>
+<h1>{{ p.codigo }} — {{ p.descricao }}</h1>
+<p class="texto-suave">{{ p.fornecedor }}</p>
+
+{% if erro %}<p class="erro-form">{{ erro }}</p>{% endif %}
+
+{% if p.decisao_atualizado_por %}
+<p class="feedback-gravacao ok" style="display:block">
+  Última decisão registrada por <strong>{{ p.decisao_atualizado_por }}</strong>
+  {% if p.decisao_atualizado_em %}em {{ m.dataHora(p.decisao_atualizado_em) }}{% endif %}.
+</p>
+{% else %}
+<p class="aviso-vazio">Nenhuma decisão de preço registrada ainda para este SKU.</p>
+{% endif %}
+
+<h2>Atacado</h2>
+<div class="card">
+  <div class="card-linha"><span class="rotulo">PV atacado (atual)</span><span>{{ m.moeda(p.pv_atacado) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Margem ST s/ valor</span><span>{{ m.percentual(p.margem_st_s_valor) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Margem oficial</span><span>{{ m.percentual(p.margem_oficial) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Margem sem redução</span><span>{{ m.percentual(p.margem_sem_red) }}</span></div>
+</div>
+
+<p class="texto-suave">Faixa de preço sugerida — 3 bases de cálculo, à vista (AV) e a prazo (AP):</p>
+<div class="faixa-preco faixa-atacado">
+  <div class="cenario">
+    <h3>ST s/ valor</h3>
+    <div class="linha"><span>À vista</span><span class="preco">{{ m.moeda(p.pv_sug_st_s_valor_av) }}</span></div>
+    <div class="linha"><span>A prazo</span><span>{{ m.moeda(p.pv_sug_st_s_valor_ap) }}</span></div>
+  </div>
+  <div class="cenario">
+    <h3>Oficial</h3>
+    <div class="linha"><span>À vista</span><span class="preco">{{ m.moeda(p.pv_sug_oficial_av) }}</span></div>
+    <div class="linha"><span>A prazo</span><span>{{ m.moeda(p.pv_sug_oficial_ap) }}</span></div>
+  </div>
+  <div class="cenario">
+    <h3>Sem redução</h3>
+    <div class="linha"><span>À vista</span><span class="preco">{{ m.moeda(p.pv_sug_sem_red_av) }}</span></div>
+    <div class="linha"><span>A prazo</span><span>{{ m.moeda(p.pv_sug_sem_red_ap) }}</span></div>
+  </div>
+</div>
+<p class="texto-suave">Preço final a prazo (calculado a partir da decisão à vista): {{ m.moeda(p.alt_pv_at_ap) }}</p>
+
+<h2>Varejo</h2>
+<div class="card">
+  <div class="card-linha"><span class="rotulo">PV varejo (atual)</span><span>{{ m.moeda(p.pv_varejo) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Margem ST s/ valor</span><span>{{ m.percentual(p.margem_st_s_valor_varejo) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Margem sem redução</span><span>{{ m.percentual(p.margem_sem_red_varejo) }}</span></div>
+</div>
+
+<p class="texto-suave">Faixa de preço sugerida — 2 bases de cálculo, à vista (AV) e a prazo (AP):</p>
+<div class="faixa-preco">
+  <div class="cenario">
+    <h3>ST s/ valor</h3>
+    <div class="linha"><span>À vista</span><span class="preco">{{ m.moeda(p.pv_sug_st_s_valor_var_av) }}</span></div>
+    <div class="linha"><span>A prazo</span><span>{{ m.moeda(p.pv_sug_st_s_valor_var_ap) }}</span></div>
+  </div>
+  <div class="cenario">
+    <h3>Sem redução</h3>
+    <div class="linha"><span>À vista</span><span class="preco">{{ m.moeda(p.pv_sug_sem_red_var_av) }}</span></div>
+    <div class="linha"><span>A prazo</span><span>{{ m.moeda(p.pv_sug_sem_red_var_ap) }}</span></div>
+  </div>
+</div>
+<p class="texto-suave">Preço final a prazo (calculado a partir da decisão à vista): {{ m.moeda(p.alt_pv_var_ap) }}</p>
+
+<h2>Decisão do Diretor de Compras</h2>
+{% if usuario.eh_diretoria %}
+<form class="decisao-final" method="post" action="/preco/{{ p.codigo }}"
+      onsubmit="return confirm('Confirma gravar a decisão de preço do SKU {{ p.codigo }}?');">
+  <div class="filtros" style="background:transparent;border:none;padding:0">
+    <div>
+      <label for="margem_alvo">Margem alvo atacado (fração, ex.: 0,20)</label>
+      <input type="text" inputmode="decimal" id="margem_alvo" name="margem_alvo" value="{{ m.editavel(p.margem_alvo, 4) }}">
+    </div>
+    <div>
+      <label for="margem_alvo_varejo">Margem alvo varejo (fração)</label>
+      <input type="text" inputmode="decimal" id="margem_alvo_varejo" name="margem_alvo_varejo" value="{{ m.editavel(p.margem_alvo_varejo, 4) }}">
+    </div>
+    <div>
+      <label for="alt_pv_at_av">Preço final atacado à vista</label>
+      <input type="text" inputmode="decimal" id="alt_pv_at_av" name="alt_pv_at_av" value="{{ m.editavel(p.alt_pv_at_av, 2) }}"
+             placeholder="vazio = não decidido">
+    </div>
+    <div>
+      <label for="alt_pv_var_av">Preço final varejo à vista</label>
+      <input type="text" inputmode="decimal" id="alt_pv_var_av" name="alt_pv_var_av" value="{{ m.editavel(p.alt_pv_var_av, 2) }}"
+             placeholder="vazio = não decidido">
+    </div>
+  </div>
+  <p class="texto-suave">
+    Campo vazio = nenhuma decisão registrada; nunca é preenchido automaticamente com a sugestão acima —
+    compare as colunas e digite o valor final escolhido.
+  </p>
+  <button type="submit">Gravar decisão</button>
+</form>
+{% else %}
+<p class="texto-suave">Apenas a Diretoria de Compras grava preço. Esta tela é somente leitura para o seu perfil.</p>
+{% endif %}
+{% endblock %}

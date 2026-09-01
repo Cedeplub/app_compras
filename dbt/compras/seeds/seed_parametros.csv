@@ -1,0 +1,29 @@
+PARAMETRO;VALOR;ATIVO;OBS
+PIS_COFINS;0.0925;S;0,0925 dentro do IF de margem
+COMISSAO;0.04;S;0,04 dentro do IF de margem
+FATOR_PRAZO;1.0317;S;DA2*1,0317
+CORTE_ABC;0.0022;S;0,0022 dentro do IF de classificacao
+MES_REF_ULT_FECHADO;2026-07-01;N;serial do Excel convertido para data, aqui o mes de referencia vem de max(mes)
+COD_TRIB_ICMS_PADRAO;26;S;usado quando o produto nao esta na 8105 ainda
+COD_TRIB_PISCOFINS_PADRAO;1;S;usado quando o produto nao esta na 8105 ainda
+ALIQ_ICMS_INTERNA_BA;0.205;S;aliquota interna usada na base ST (custo x (1+MVA) x aliq)
+DIAS_SEM_ESTOQUE_ALERTA;5;S;dias sem estoque no mes fechado, acima disso dispara CHECK_RUPTURA
+TX_DEVOLUCAO_ALERTA;0.1;S;taxa de devolucao (3 meses), acima disso dispara CHECK_DEVOLUCAO_ALTA (p75 real = 5,3%, p90 = 14,6%)
+MEDIDA_PEDIDO;LITROS;S;escolha: LITROS, PESO ou UNIDADE_MASTER - controla a coluna PEDIDO_NA_MEDIDA
+PALETE_LIMIAR;0.7;S;se o pedido chegar a esse % de completar +1 palete, sugere arredondar (so classe A)
+MARGEM_ALERTA_MIN;0.12;S;abaixo disso (no pior cenario), dispara ALERTA DE MARGEM - referencia: custo aproximado da empresa
+MARGEM_CRITICA_MIN;0.05;S;abaixo disso (no pior cenario), dispara MARGEM CRITICA
+ICMS_ST;0.205;N;duplicata de ALIQ_ICMS_INTERNA_BA, que e o parametro vivo
+DESC_INTERNO;0.0694;N;desconto do modelo antigo, o custo ja vem liquido da origem
+FATOR_ST_TABELA;1.3328;N;so valia para MVA 62,35%, a MVA agora vem do seed_icms
+FATOR_ST_CUSTO;1.3307;N;origem nao identificada na planilha
+MULT_ST_NF;1.2403175;N;multiplicador de auditoria de preco, fora do fluxo de calculo
+COBERTURA_ALVO_MESES;2;N;substituido por COBERTURA_ALVO do seed_fornecedor, que e por fornecedor
+PERC_NF_NORMAL_INGRAX;0.8;S;Ingrax: % do valor do produto que vem na NF normal (resto e cessao de direito de imagem, gerencial, fora do fluxo fiscal)
+FATOR_PRAZO_VAREJO;1.086435;S;estava chumbado na formula do varejo (CONTEXTO 6.1)
+DIAS_ESTOQUE_PARADO;90;S;estava chumbado em CHECK_ESTOQUE_PARADO
+TEND_LIMIAR;0.15;S;estava chumbado na coluna TEND
+MARGEM_ALVO_PADRAO;0.2;S;usado quando nao ha decisao humana gravada em APP_DECISAO_PRECO
+COBERTURA_ALVO_PADRAO;2;S;fallback de AZ|SUG_COBERTURA quando o departamento nao tem linha no seed_fornecedor (hoje ADIBRAX, ROBUST e TODOS OS DEPARTAMENTOS)
+N_MESES_PADRAO;3;S;fallback de AB|N_MESES quando o departamento nao tem linha no seed_fornecedor
+CRED_IMPORTADO_LIMIAR;0.6;S;BS|CHECK_IMPORTADO dispara quando o credito real fica abaixo de 60% do esperado pela UF

@@ -1,0 +1,89 @@
+version: 2
+
+sources:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CEDEP — o ERP WinThor. SOMENTE LEITURA, sem excecao.
+  #
+  # O usuario COMPRAS tem GRANT SELECT nominal nestas 19 tabelas e nenhum
+  # privilegio de escrita (ver sql/01_usuario_compras.sql). A lista e exatamente
+  # o conjunto usado pelas duas consultas de origem - nada sobrando, nada
+  # faltando. Tabela nova aqui exige GRANT novo no banco.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: cedep
+    schema: cedep
+    description: >
+      Tabelas do ERP WinThor (TOTVS) usadas pelo modelo de compras. Origem dos dois
+      relatorios que a planilha consome hoje: posicao de estoque/fiscal (41 colunas)
+      e historico mensal por produto (19 colunas).
+    tables:
+      # cadastro e classificacao
+      - name: pcprodut
+        description: "Cadastro de produto. OBS2 = 'FL' marca fora de linha (valor gravado para ativo sao dois espacos, nao NULL)."
+      - name: pcfornec
+        description: "Fornecedor legal da nota. ATENCAO: nao e o FORNECEDOR do modelo, que e o texto do departamento."
+      - name: pcdepto
+        description: "Departamento. A descricao daqui e o que o modelo chama de FORNECEDOR."
+      - name: pcsecao
+        description: "Secao do produto."
+
+      # estoque
+      - name: pcest
+        description: "Posicao de estoque por produto e filial. O modelo usa a filial 2."
+      - name: pcprodfilial
+        description: "Dados do produto por filial. Fornece QTTOTPAL (quantidade por palete)."
+      - name: pchistest
+        description: "Historico diario de estoque. QTESTGER = 0 conta como dia sem estoque (criterio da rotina 2080)."
+
+      # tributacao
+      - name: pctabtrib
+        description: "Tributacao por produto, filial e UF de destino."
+      - name: pctribut
+        description: "Descricao do codigo de tributacao (a MVA e extraida deste texto)."
+      - name: pctribpiscofins
+        description: "Descricao do codigo de tributacao de PIS/COFINS."
+      - name: pctabpr
+        description: "Tabela de preco por regiao. NUMREGIAO 1 = varejo, 2 = atacado."
+
+      # movimentacao (faturamento e devolucao)
+      - name: pcmov
+        description: "Movimentacao de itens. CODOPER S/SM/SB = faturamento; ED = entrada por devolucao de cliente."
+      - name: pcmovcomple
+        description: "Complemento do item. VLSUBTOTITEM e a fonte preferida do valor faturado."
+      - name: pcnfsaid
+        description: "Nota fiscal de saida. Criterios de nota valida seguem a rotina 1464."
+      - name: pcnfent
+        description: "Nota fiscal de entrada. Devolucao de cliente pelos criterios da 1464."
+      - name: pcestcom
+        description: "Liga a nota de entrada de devolucao a nota de venda original."
+
+      # cliente e regiao
+      - name: pcclient
+        description: "Cliente. Usado tambem para detectar 'cliente proprio' (transferencia entre filiais) pela raiz do CNPJ."
+      - name: pcfilial
+        description: "Filiais da empresa. O CNPJ daqui identifica os clientes proprios."
+      - name: pcregiao
+        description: "Regiao de venda. A regiao vem do PEDIDO, nao de PCCLIENT.NUMREGIAOCLI, que esta incorreto na base."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # COMPRAS / APP_* — o que o dashboard grava.
+  #
+  # O dbt LE estas tabelas e NUNCA escreve nelas. Sao a volta da decisao humana
+  # para dentro do modelo: margem alvo, preco final e pedido decidido entram no
+  # fat_pedido por left join. Consequencia: decisao gravada no dashboard so
+  # aparece no modelo depois do proximo `dbt run`.
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: compras_app
+    schema: compras
+    description: "Tabelas escritas pela aplicacao (dashboard). O dbt so le."
+    tables:
+      - name: app_decisao_preco
+        description: >
+          Decisao vigente de margem e preco por produto. Linha ausente = sem decisao;
+          MARGEM_ALVO nula = sem decisao de margem (o padrao de 20% e aplicado no model,
+          nao na tabela). ALT_PV_* nulo NUNCA e preenchido automaticamente com uma
+          sugestao calculada.
+      - name: app_decisao_pedido
+        description: >
+          Pedido decidido por produto, com o FATOR_EXIBICAO congelado no instante da
+          decisao. unidades = PEDIDO x FATOR_EXIBICAO. O fator e snapshot de proposito:
+          recalcula-lo depois mudaria retroativamente o significado da decisao.

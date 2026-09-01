@@ -1,0 +1,1458 @@
+version: 2
+
+models:
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_cadastro_estoque — relatório de posição de estoque/fiscal (query.py)
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_cadastro_estoque
+    description: >
+      Relatório de posição de estoque/fiscal, 41 colunas. Origem:
+      relatorios_compras/query.py. Grão: 1 linha por SKU (codprod), na filial
+      de estoque var('compras_filial_estoque', '2'). p.dtexclusao IS NULL é
+      condição fixa e global neste model (CONTEXTO.md regra 11, primeiro
+      caso) - diferente do relatório mensal.
+    columns:
+      - name: codprod
+        description: "Código do produto (PCPRODUT.CODPROD). Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: codfab
+        description: "Código do fabricante"
+      - name: produto
+        description: "Descrição do produto"
+      - name: status
+        description: "Ativo/Inativo (derivado de OBS2)"
+      - name: unidade
+        description: "Unidade de medida"
+      - name: embalagem
+        description: "Descrição da embalagem"
+      - name: embal_compra
+        description: "Unidades por embalagem de compra. Divide praticamente toda quantidade exibida."
+      - name: embal_venda
+        description: "Unidades por embalagem de venda"
+      - name: qt_palete
+        description: "Unidades por palete"
+      - name: pesoliq
+        description: "Peso líquido"
+      - name: pesobruto
+        description: "Peso bruto"
+      - name: codfilial
+        description: "Filial de estoque (var compras_filial_estoque)"
+      - name: codfornec
+        description: "Código do fornecedor legal da NF"
+      - name: fornecedor_legal_nf
+        description: >
+          Fornecedor legal da nota fiscal (pcfornec.fornecedor). NÃO é o
+          FORNECEDOR de negócio do modelo - ver coluna `departamento` e
+          CONTEXTO.md regra 7.
+      - name: uf_origem
+        description: "UF de origem do fornecedor"
+      - name: codepto
+        description: "Código do departamento"
+      - name: departamento
+        description: "Texto do departamento - é este o FORNECEDOR de negócio do modelo (CONTEXTO.md regra 7), não fornecedor_legal_nf."
+      - name: codsec
+        description: "Código da seção"
+      - name: secao
+        description: "Descrição da seção"
+      - name: ufdestino
+        description: "UF de destino usada no ON do join com tributação (var compras_uf_destino)"
+      - name: cod_tributacao
+        description: "Código de tributação ICMS"
+      - name: tributacao
+        description: "Descrição da tributação ICMS"
+      - name: ncm
+        description: "NCM padrão"
+      - name: ncm_excecao
+        description: "NCM de exceção"
+      - name: codtribpiscofins
+        description: "Código de tributação PIS/COFINS"
+      - name: descricaotribpiscofins
+        description: "Descrição da tributação PIS/COFINS"
+      - name: estoque
+        description: "Quantidade em estoque"
+      - name: gerencial
+        description: "Quantidade gerencial"
+      - name: qtpedida
+        description: "Quantidade pedida (em trânsito)"
+      - name: qtbloqueada
+        description: "Quantidade bloqueada, líquida de avaria"
+      - name: qtavaria
+        description: "Quantidade em avaria"
+      - name: qtreserv
+        description: "Quantidade reservada"
+      - name: qtdisp
+        description: "Quantidade disponível de venda (equivalente ao processo 'V' da PKG_ESTOQUE)"
+      - name: dt_ult_ent
+        description: "Data da última entrada"
+      - name: qt_ult_ent
+        description: "Quantidade da última entrada"
+      - name: dt_ult_saida
+        description: "Data da última saída"
+      - name: qt_ult_saida
+        description: "Quantidade da última saída (S/ST)"
+      - name: custo_ult_ent
+        description: "Custo unitário da última entrada"
+      - name: vl_ult_ent
+        description: "Valor da última entrada. NUNCA dividido pela embalagem de compra - já vem unitário (CONTEXTO.md regra 8)."
+      - name: pv_atacado
+        description: "Preço de venda tabelado, região atacado (id_regiao=2)"
+      - name: pv_varejo
+        description: "Preço de venda tabelado, região varejo (id_regiao=1)"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_periodo_mensal — janela temporal do relatório mensal, calculada 1 vez
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_periodo_mensal
+    description: >
+      Janela temporal (data_inicio/data_fim) do relatório mensal, calculada
+      UMA VEZ e materializada em 1 linha. Existe para que int_faturamento_mensal,
+      int_devolucao_mensal, int_dias_sem_estoque_mensal e int_venda_mensal leiam
+      a MESMA janela por ref() em vez de reavaliar SYSDATE cada um por conta
+      própria - ver o cabeçalho do model para o cenário de build parcial que
+      isso evita.
+    columns:
+      - name: data_inicio
+        description: "Início da janela (inclusive). ADD_MONTHS(TRUNC(SYSDATE,'MM'), -(N-1))."
+        data_tests:
+          - not_null
+      - name: data_fim
+        description: "Fim da janela (exclusivo - intervalo semiaberto). TRUNC(SYSDATE,'MM') + 1 mês."
+        data_tests:
+          - not_null
+      - name: qtd_meses
+        description: "N configurado em var('compras_meses_historico', 24)"
+      - name: mes_corrente
+        description: "TRUNC(SYSDATE,'MM') - o mês em andamento no instante do build"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Cadeia do relatório mensal (query_mensal.py) - grão mês × produto
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_faturamento_mensal
+    description: >
+      Faturamento BRUTO mensal (S/SM/SB), origem relatorios_compras/query_mensal.py.
+      Grão: (mes, id_produto). O líquido nasce em int_venda_mensal.
+    columns:
+      - name: mes
+        description: "Primeiro dia do mês do movimento (TRUNC(data_movimento,'MM')). Parte do grão composto (mes, id_produto) - testado em tests/compras_faturamento_mensal_grao_unico.sql, pois não há dbt_utils para unicidade composta em yml."
+        data_tests:
+          - not_null
+      - name: id_produto
+        description: "Código do produto. Parte do grão composto (mes, id_produto)."
+        data_tests:
+          - not_null
+      - name: quantidade_total
+        description: "Quantidade faturada bruta no mês (DECODE por condvenda=7 já aplicado)"
+      - name: valor_total
+        description: "Valor faturado bruto no mês"
+      - name: quantidade_clientes_atacado
+        description: "Quantidade de clientes distintos da região ATACADO"
+      - name: quantidade_clientes_varejo
+        description: "Quantidade de clientes distintos da região VAREJO"
+
+  - name: int_devolucao_mensal
+    description: >
+      Devolução BRUTA mensal (codoper='ED'), origem relatorios_compras/query_mensal.py.
+      Grão: (mes, id_produto). O líquido nasce em int_venda_mensal. Pode
+      legitimamente não ter linha em um (mes, id_produto) sem devolução -
+      isso não é falha de grão.
+    columns:
+      - name: mes
+        description: "Primeiro dia do mês da entrada de devolução (TRUNC(data_entrada,'MM')). Parte do grão composto (mes, id_produto) - testado em tests/compras_devolucao_mensal_grao_unico.sql, pois não há dbt_utils para unicidade composta em yml."
+        data_tests:
+          - not_null
+      - name: id_produto
+        description: "Código do produto. Parte do grão composto (mes, id_produto)."
+        data_tests:
+          - not_null
+      - name: quantidade_devolucao
+        description: "Quantidade devolvida no mês"
+      - name: valor_devolucao
+        description: "Valor devolvido bruto no mês (quantidade_efetiva * preco_calc_unit)"
+      - name: valor_devolucao_liq
+        description: "Valor devolvido ajustado por repasse e ST/FECP (valor_devolucao1 do original)"
+
+  - name: int_dias_sem_estoque_mensal
+    description: >
+      Dias sem estoque (QTESTGER=0) por mês, restrito à filial de estoque
+      (var compras_filial_estoque). Única coluna do relatório mensal
+      específica de filial. Grão: (mes, id_produto). Pode legitimamente não
+      ter linha em um (mes, id_produto) sem ruptura - isso não é falha de grão.
+    columns:
+      - name: mes
+        description: "Primeiro dia do mês do histórico (TRUNC(data,'MM')). Parte do grão composto (mes, id_produto) - testado em tests/compras_dias_sem_estoque_mensal_grao_unico.sql, pois não há dbt_utils para unicidade composta em yml."
+        data_tests:
+          - not_null
+      - name: id_produto
+        description: "Código do produto. Parte do grão composto (mes, id_produto)."
+        data_tests:
+          - not_null
+      - name: dias_sem_estoque
+        description: "Contagem de dias distintos com QTESTGER=0 no mês, na filial de estoque"
+
+  - name: int_venda_mensal
+    description: >
+      Espinha final do relatório mensal (19 colunas), sempre LÍQUIDA (faturado
+      - devolvido). Grão: (mes, codigo_produto). Base do pivot mensal: todo SKU
+      que apareceu em qualquer mês, inclusive o corrente (CONTEXTO.md regra 9).
+      Julho/2026: 2.839 linhas idênticas contra a rotina 1464.
+    columns:
+      - name: mes
+        description: "Primeiro dia do mês. Parte do grão composto (mes, codigo_produto) - testado em tests/compras_venda_mensal_grao_unico.sql, pois não há dbt_utils para unicidade composta em yml."
+        data_tests:
+          - not_null
+      - name: codigo_produto
+        description: "Código do produto (k.id_produto). Parte do grão composto (mes, codigo_produto)."
+        data_tests:
+          - not_null
+      - name: produto
+        description: "Descrição do produto"
+      - name: teve_venda
+        description: "'S' quando houve faturamento no mês, 'N' caso contrário"
+      - name: fora_de_linha
+        description: "Marcador S/N de produto fora de linha (OBS2='FL')"
+      - name: codepto
+        description: "Código do departamento"
+      - name: departamento
+        description: "Texto do departamento"
+      - name: codsec
+        description: "Código da seção"
+      - name: secao
+        description: "Descrição da seção"
+      - name: quantidade_total
+        description: "Quantidade faturada bruta no mês (0 quando não houve faturamento)"
+      - name: valor_total
+        description: "Valor faturado bruto no mês (0 quando não houve faturamento)"
+      - name: quantidade_devolucao
+        description: "Quantidade devolvida no mês (0 quando não houve devolução)"
+      - name: valor_devolucao
+        description: "Valor devolvido bruto no mês (0 quando não houve devolução)"
+      - name: quantidade_liquida
+        description: "quantidade_total - quantidade_devolucao"
+      - name: valor_liquido
+        description: "valor_total - valor_devolucao"
+      - name: preco_medio
+        description: "valor_liquido / quantidade_liquida, arredondado a 2 casas (NULL quando quantidade_liquida=0)"
+      - name: dias_sem_estoque
+        description: "Dias sem estoque no mês, na filial de estoque (0 quando não houve ruptura)"
+      - name: quantidade_clientes_atacado
+        description: "Quantidade de clientes distintos da região ATACADO"
+      - name: quantidade_clientes_varejo
+        description: "Quantidade de clientes distintos da região VAREJO"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_venda_mensal_pivot — consolidação por SKU (aba fVendaMes)
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_venda_mensal_pivot
+    description: >
+      Consolidação por SKU de int_venda_mensal (35 colunas), origem
+      docs/gabarito_powerquery.m `shared fVendaMes`. Grão: 1 linha por SKU.
+      A base é TODO SKU que apareceu em qualquer mês, inclusive o corrente
+      (CONTEXTO.md regra 9) - não só quem tem mês fechado. Q00..Q11/V00..V05
+      via agregação condicional sobre offset_mes = MONTHS_BETWEEN(mes_atual,
+      mes) - 1: Q00 é o ÚLTIMO MÊS FECHADO (offset 0), não o corrente (offset
+      -1). Sempre LÍQUIDO, exceto TX_DEVOLUCAO_3M (bruto, CONTEXTO.md regra 1).
+      Nulo vira 0, exceto fora_de_linha (vira 'N').
+    columns:
+      - name: codigo_produto
+        description: "Código do produto. Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: q00
+        description: "Quantidade líquida do último mês FECHADO (offset 0)"
+      - name: q01
+        description: "Quantidade líquida, offset 1"
+      - name: q02
+        description: "Quantidade líquida, offset 2"
+      - name: q03
+        description: "Quantidade líquida, offset 3"
+      - name: q04
+        description: "Quantidade líquida, offset 4"
+      - name: q05
+        description: "Quantidade líquida, offset 5"
+      - name: q06
+        description: "Quantidade líquida, offset 6"
+      - name: q07
+        description: "Quantidade líquida, offset 7"
+      - name: q08
+        description: "Quantidade líquida, offset 8"
+      - name: q09
+        description: "Quantidade líquida, offset 9"
+      - name: q10
+        description: "Quantidade líquida, offset 10"
+      - name: q11
+        description: "Quantidade líquida, offset 11"
+      - name: v00
+        description: "Valor líquido do último mês FECHADO (offset 0)"
+      - name: v01
+        description: "Valor líquido, offset 1"
+      - name: v02
+        description: "Valor líquido, offset 2"
+      - name: v03
+        description: "Valor líquido, offset 3"
+      - name: v04
+        description: "Valor líquido, offset 4"
+      - name: v05
+        description: "Valor líquido, offset 5"
+      - name: qatual
+        description: "Quantidade líquida do mês CORRENTE (offset -1)"
+      - name: vatual
+        description: "Valor líquido do mês corrente (offset -1)"
+      - name: cli_atac_atual
+        description: "Clientes atacado distintos, mês corrente"
+      - name: cli_var_atual
+        description: "Clientes varejo distintos, mês corrente"
+      - name: dias_sem_est_atual
+        description: "Dias sem estoque, mês corrente"
+      - name: fora_de_linha
+        description: "S/N do mês corrente. Único campo que vira 'N' (não 0) quando nulo."
+      - name: tx_devolucao_3m
+        description: >
+          sum(quantidade_devolucao)/sum(quantidade_total) nos offsets 0..2 -
+          ÚNICO campo do model que usa quantidade BRUTA (CONTEXTO.md regra 1).
+          0 quando o faturado bruto é 0, nunca nulo.
+      - name: cli_atac_00
+        description: "Clientes atacado distintos, offset 0 (último mês fechado)"
+      - name: cli_var_00
+        description: "Clientes varejo distintos, offset 0"
+      - name: dias_sem_est_00
+        description: "Dias sem estoque, offset 0"
+      - name: med02
+        description: "Média de q00..q01 / 2. Nulo se a janela tiver menos de 2 meses fechados (revisão etapa 3, item A: antes só med09/med12 tinham essa guarda)."
+      - name: med03
+        description: "Média de q00..q02 / 3. Nulo se a janela tiver menos de 3 meses fechados."
+      - name: med04
+        description: "Média de q00..q03 / 4. Nulo se a janela tiver menos de 4 meses fechados."
+      - name: med06
+        description: "Média de q00..q05 / 6. Nulo se a janela tiver menos de 6 meses fechados."
+      - name: med09
+        description: "Média de q00..q08 / 9. Nulo se a janela tiver menos de 9 meses fechados."
+      - name: med12
+        description: "Média de q00..q11 / 12. Nulo se a janela tiver menos de 12 meses fechados."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_venda_mensal_sucessao — herança de histórico de produto descontinuado
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_venda_mensal_sucessao
+    description: >
+      Aplica seed_sucessao sobre int_venda_mensal_pivot: soma ao histórico
+      próprio o histórico do(s) antecessor(es) ponderado por PESO_1/PESO_2,
+      só quando ATIVO='SIM'. Grão: 1 linha por SKU, mesmo grão do pivot.
+      Herda QATUAL, Q00..Q11 e as médias MED02..MED12 com os DOIS pesos
+      (gabarito_pedido_formulas.txt colunas AC/AD/AE/AF/AG), e VD_ANT_3M
+      TAMBÉM com os dois - na planilha (coluna AQ) só existe o termo de PESO_1,
+      e a MELHORIA D1 fechou essa assimetria (MELHORIAS.md; CONTEXTO.md §6.0;
+      impacto ZERO hoje). Ver o cabeçalho do model. V00..V05, VATUAL, CLI_*, DIAS_SEM_EST*,
+      FORA_DE_LINHA e TX_DEVOLUCAO_3M passam direto do próprio SKU, sem
+      herança nenhuma. Hoje as 25 linhas de seed_sucessao estão ATIVO='NAO' -
+      o resultado tem que ser idêntico ao pivot nas colunas compartilhadas
+      (tests/compras_venda_mensal_sucessao_identico_sem_ativo.sql; vd_ant_3m
+      fica fora dessa comparação por não ter equivalente no pivot).
+    columns:
+      - name: codigo_produto
+        description: "Código do produto. Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: q00
+        description: "HERDA (os dois pesos): quantidade líquida do último mês FECHADO (offset 0), somada a peso_1*antecessor_1 + peso_2*antecessor_2 quando ATIVO='SIM'."
+      - name: q01
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: q02
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: q03
+        description: "HERDA (os dois pesos). Ver q00. Também é lida (sem herança própria, só via vd_ant_3m) para compor VD_ANT_3M a partir do valor PRÓPRIO do SKU."
+      - name: q04
+        description: "HERDA (os dois pesos). Ver q00 e a nota de q03."
+      - name: q05
+        description: "HERDA (os dois pesos). Ver q00 e a nota de q03."
+      - name: q06
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: q07
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: q08
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: q09
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: q10
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: q11
+        description: "HERDA (os dois pesos). Ver q00."
+      - name: v00
+        description: "PASSA DIRETO, sem herança - valor líquido do último mês fechado do próprio SKU."
+      - name: v01
+        description: "PASSA DIRETO. Ver v00."
+      - name: v02
+        description: "PASSA DIRETO. Ver v00."
+      - name: v03
+        description: "PASSA DIRETO. Ver v00."
+      - name: v04
+        description: "PASSA DIRETO. Ver v00."
+      - name: v05
+        description: "PASSA DIRETO. Ver v00."
+      - name: qatual
+        description: "HERDA (os dois pesos): quantidade líquida do mês corrente (gabarito coluna AC, VD MES ATUAL)."
+      - name: vatual
+        description: "PASSA DIRETO, sem herança - valor líquido do mês corrente do próprio SKU."
+      - name: cli_atac_atual
+        description: "PASSA DIRETO, sem herança."
+      - name: cli_var_atual
+        description: "PASSA DIRETO, sem herança."
+      - name: dias_sem_est_atual
+        description: "PASSA DIRETO, sem herança."
+      - name: fora_de_linha
+        description: "PASSA DIRETO, sem herança."
+      - name: tx_devolucao_3m
+        description: "PASSA DIRETO, sem herança. Único campo BRUTO do model (CONTEXTO.md regra 1) - não herda nem aqui nem no pivot."
+      - name: cli_atac_00
+        description: "PASSA DIRETO, sem herança."
+      - name: cli_var_00
+        description: "PASSA DIRETO, sem herança."
+      - name: dias_sem_est_00
+        description: "PASSA DIRETO, sem herança."
+      - name: vd_ant_3m
+        description: >
+          HERDA com os DOIS pesos. ⚠ MELHORIA D1 (MELHORIAS.md; CONTEXTO.md
+          §6.0): na planilha (gabarito coluna AQ) o termo com $DN2/PESO_2
+          simplesmente não existe, e AQ herdava só com peso_1 - assimetria
+          contra as colunas irmãs AD/AE/AF e AG, que somam os dois. Fechamos a
+          assimetria; divergência DELIBERADA da planilha, com impacto ZERO hoje
+          (nenhuma linha de seed_sucessao tem ANTIGO_2 e todas estão
+          ATIVO='NAO'). Calculada como (q03+q04+q05 do PRÓPRIO SKU
+          + peso_1 * (q03+q04+q05 do antecessor_1)
+          + peso_2 * (q03+q04+q05 do antecessor_2)) / 3, lendo Q03..Q05 do
+          pivot. NÃO dividida por FATOR_EXIBICAO (decisão da Etapa 4). DIVIDIDA
+          por 3 aqui (a média de 3 meses é parte do significado da coluna, não
+          da exibição) - ver decisão documentada no cabeçalho do model.
+      - name: med02
+        description: "HERDA (os dois pesos, recalculada a partir de q00/q01 já herdados - algebricamente idêntico a herdar a média pronta, ver cabeçalho). Nulo se a janela tiver menos de 2 meses fechados."
+      - name: med03
+        description: "HERDA (os dois pesos). Ver med02. Nulo se a janela tiver menos de 3 meses fechados."
+      - name: med04
+        description: "HERDA (os dois pesos). Ver med02. Nulo se a janela tiver menos de 4 meses fechados."
+      - name: med06
+        description: "HERDA (os dois pesos). Ver med02. Nulo se a janela tiver menos de 6 meses fechados."
+      - name: med09
+        description: "HERDA (os dois pesos). Ver med02. Nulo se a janela tiver menos de 9 meses fechados."
+      - name: med12
+        description: "HERDA (os dois pesos). Ver med02. Nulo se a janela tiver menos de 12 meses fechados."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_cliente_proprio — exclusão de transferência entre filiais
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_cliente_proprio
+    description: >
+      "Clientes" que são a própria empresa (transferência entre filiais,
+      detectada por raiz de CNPJ). Usado por int_faturamento_mensal e
+      int_devolucao_mensal para excluir transferência do faturamento/devolução.
+      Grão: id_cliente. NUNCA pode ficar vazia - ver tests/compras_cliente_proprio_nao_vazio.sql:
+      vazia, a exclusão vira no-op e todo transferência entra como venda.
+    columns:
+      - name: id_cliente
+        description: "Código do cliente cuja raiz de CNPJ casa com alguma filial. Grão da tabela."
+        data_tests:
+          - unique
+          - not_null
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_parametro — a aba Parametros pivotada em UMA linha, para cross join
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_parametro
+    description: >
+      seed_parametros pivotado em UMA linha larga, para `cross join` nos models
+      de cálculo. Existe para que nenhuma alíquota, fator, corte ou limiar
+      apareça chumbado dentro de SQL - requisito explícito da planilha, cujo
+      "Leia-me" registra em qual fórmula cada constante estava. VALOR é
+      VARCHAR2 no seed (guarda número E texto: MEDIDA_PEDIDO = 'LITROS'), então
+      a conversão acontece aqui, com máscara e NLS_NUMERIC_CHARACTERS
+      explícitos. SÓ entram os parâmetros com ATIVO = 'S': os 7 com 'N' estão no
+      seed como registro histórico e a própria planilha declara que não têm
+      efeito - um parâmetro desativado nem vira coluna, então usá-lo quebra no
+      compile em vez de calcular preço errado. Grão: 1 linha, sempre.
+      Ver tests/compras_parametro_completo.sql.
+    columns:
+      - name: pis_cofins
+        description: "Parametros!$B$2. Entra no somatório de alíquotas de margem e de PV sugerido."
+        data_tests: [not_null]
+      - name: comissao
+        description: "Parametros!$B$4. Idem."
+        data_tests: [not_null]
+      - name: fator_prazo
+        description: "Parametros!$B$5. PV a prazo do ATACADO = a vista x fator."
+        data_tests: [not_null]
+      - name: fator_prazo_varejo
+        description: >
+          Fator a prazo do VAREJO. Estava chumbado dentro da fórmula
+          (1,086435) enquanto o atacado usava Parametros!$B$5 - CONTEXTO.md 6.1:
+          mesmo número, só muda onde a constante mora.
+        data_tests: [not_null]
+      - name: corte_abc
+        description: "Parametros!$B$10. Participação acima disso é classe 'A' (coluna AX)."
+        data_tests: [not_null]
+      - name: cod_trib_icms_padrao
+        description: "Parametros!$B$13. Fallback de BJ quando o produto ainda não está na 8105."
+        data_tests: [not_null]
+      - name: cod_trib_piscofins_padrao
+        description: "Parametros!$B$14. Fallback de BK."
+        data_tests: [not_null]
+      - name: aliq_icms_interna_ba
+        description: "Parametros!$B$16. Base do ICMS-ST: custo x (1 + MVA) x alíquota."
+        data_tests: [not_null]
+      - name: perc_nf_normal_ingrax
+        description: "Parametros!$B$29. Ingrax 80/20: % do valor que vem na NF normal (coluna BX)."
+        data_tests: [not_null]
+      - name: dias_sem_estoque_alerta
+        description: "Parametros!$B$17. Limiar de AL (CHECK_RUPTURA)."
+        data_tests: [not_null]
+      - name: tx_devolucao_alerta
+        description: "Parametros!$B$18. Limiar de AV (CHECK_DEVOLUCAO_ALTA)."
+        data_tests: [not_null]
+      - name: dias_estoque_parado
+        description: "Estava chumbado (90) em AO (CHECK_ESTOQUE_PARADO)."
+        data_tests: [not_null]
+      - name: tend_limiar
+        description: "Estava chumbado (0,15) em AS (TEND)."
+        data_tests: [not_null]
+      - name: margem_alerta_min
+        description: "Parametros!$B$21. Nível 1 de O/DP (NIVEL_BASE_MARGEM)."
+        data_tests: [not_null]
+      - name: margem_critica_min
+        description: "Parametros!$B$22. Nível 2 de O/DP."
+        data_tests: [not_null]
+      - name: cred_importado_limiar
+        description: "Estava chumbado (0,6) em BS (CHECK_IMPORTADO)."
+        data_tests: [not_null]
+      - name: palete_limiar
+        description: "Parametros!$B$20. Limiar de BE (SUG_PALETE)."
+        data_tests: [not_null]
+      - name: n_meses_padrao
+        description: "Fallback de AB (N_MESES) quando o departamento não tem linha no seed_fornecedor."
+        data_tests: [not_null]
+      - name: cobertura_alvo_padrao
+        description: "Fallback de AZ (SUG_COBERTURA), mesmo caso."
+        data_tests: [not_null]
+      - name: margem_alvo_padrao
+        description: >
+          CN/DD (MARGEM_ALVO). Usado quando NÃO há decisão humana gravada em
+          APP_DECISAO_PRECO - nunca como substituto de uma sugestão de preço.
+        data_tests: [not_null]
+      - name: medida_pedido
+        description: >
+          Parametros!$B$19, ÚNICO parâmetro de texto. 'LITROS' | 'PESO' |
+          qualquer outro valor cai no ramo UNIDADE_MASTER da coluna BC.
+        data_tests: [not_null]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_base — colunas A a N da aba `pedido`
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_base
+    description: >
+      Identificação e fatores do SKU - colunas A a N da aba `pedido`
+      (docs/gabarito_pedido_formulas.txt). Grão: 1 linha por SKU; a espinha é
+      int_cadastro_estoque (a mesma dCadastroTI que a planilha cola na aba),
+      então todo SKU do cadastro aparece, inclusive quem nunca vendeu. A coluna
+      D (ALERTA) e a I (não usado) não estão aqui: D é concatenação de 14
+      colunas de check (leva seguinte) e I é coluna vazia na planilha.
+    columns:
+      - name: codigo
+        description: "A | CODIGO. Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: cod_fab
+        description: "B | COD_FAB. Chave de busca de W (EST_FABRICA) em fEstFabrica."
+      - name: descricao
+        description: "C | DESCRICAO."
+      - name: status
+        description: "E | STATUS. dCadastroTI!$D; vazio vira '?'. 'Inativo' dispara Y (CHECK_INATIVO)."
+        data_tests: [not_null]
+      - name: fornecedor
+        description: >
+          F | FORNECEDOR. É o texto do DEPARTAMENTO (dCadastroTI!$M), NÃO o
+          fornecedor legal da NF (CONTEXTO.md regra 7). Sem departamento vira
+          'NAO MAPEADO'. É a chave de busca de G, K, AB, AZ, BO e do teste
+          $F2='INGRAX' da coluna BX - trocar a fonte muda imposto e preço.
+        data_tests: [not_null]
+      - name: comprador
+        description: "G | COMPRADOR. dFornecedor!$E por FORNECEDOR; sem linha vira 'A DEFINIR'."
+        data_tests: [not_null]
+      - name: embalagem
+        description: "H | EMBALAGEM. Chave de busca de L em dEmbalagem - upper() sim, trim() não."
+      - name: embal_compra
+        description: "J | EMBAL_COMPRA. dCadastroTI!$G; vazio vira 1."
+        data_tests: [not_null]
+      - name: fator_exibicao
+        description: >
+          K | FATOR_EXIBICAO. EMBAL_COMPRA quando dFornecedor.PEDIDO_EM =
+          'MASTER', senão 1 (o IFERROR do Excel devolve 'UNIDADE' para
+          departamento fora do seed, ou seja, fator 1). Divide praticamente toda
+          quantidade exibida - CONTEXTO.md regra 6.
+          Ver tests/compras_fator_exibicao_valido.sql.
+        data_tests: [not_null]
+      - name: l_por_unidade
+        description: >
+          L | L_POR_UNIDADE. dEmbalagem!$D por EMBALAGEM, sem linha vira 0.
+          Join com upper() e SEM trim() (CONTEXTO.md 6.2): 158 SKUs só casam
+          ignorando caixa, e 5 valores com espaço à direita não casam nem no
+          Excel. Decide de qual universo da curva ABC o SKU participa, então
+          errar o join muda a CLASSE de TODOS os SKUs (regra 5).
+        data_tests: [not_null]
+      - name: peso_unitario_kg
+        description: "M | PESO_UNITARIO_KG. dCadastroTI!$AG; vazio vira 0."
+        data_tests: [not_null]
+      - name: qt_palete
+        description: "N | QT_PALETE. dCadastroTI!$AH; vazio vira 0."
+        data_tests: [not_null]
+      - name: embalagem_cadastrada
+        description: >
+          COLUNA DE APOIO, não é do gabarito. 'S'/'N' de
+          ISNA(MATCH($H2,dEmbalagem!$A:$A,0)), que a coluna AY (CHECK_LITRAGEM)
+          precisa. Existe porque L_POR_UNIDADE = 0 é ambíguo: pode ser "não achou
+          no cadastro" ou "achou e o produto não tem litragem" (12X1 KG, 36X80 GR
+          estão no seed com 0). AY dispara só no primeiro caso.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['S', 'N']
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_demanda — colunas Q a AW (menos alertas) + AZ
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_demanda
+    description: >
+      Estoque, venda, tendência e sugestão de cobertura - colunas Q a AW da aba
+      `pedido` (menos as de alerta, que vêm na leva seguinte) mais AZ. Grão: 1
+      linha por SKU, espinha int_produto_base. 4.860 dos 8.776 SKUs não têm
+      linha de venda: o left join com nvl(...,0) reproduz o IFERROR(...,0) do
+      Excel, que trata "código ausente em fVendaMes" como "vendeu zero". A
+      herança de sucessão já vem aplicada de int_venda_mensal_sucessao - TODAS as
+      colunas herdam com os DOIS pesos, inclusive VD_ANT_3M, que na planilha
+      herdava só com PESO_1 (MELHORIA D1; CONTEXTO.md §6.0, impacto ZERO hoje);
+      aqui sobra só a divisão por FATOR_EXIBICAO. Quais colunas dividem e quais NÃO dividem está no
+      cabeçalho do model, conferido linha a linha contra o gabarito.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: est_disp
+        description: "Q | EST_DISP. dCadastroTI!$W / FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: qt_bloqueada
+        description: "R | QT_BLOQUEADA. NÃO divide por FATOR_EXIBICAO - continua em unidades."
+        data_tests: [not_null]
+      - name: qt_avaria
+        description: "S | QT_AVARIA. NÃO divide."
+        data_tests: [not_null]
+      - name: qt_reservada
+        description: "T | QT_RESERVADA. NÃO divide."
+        data_tests: [not_null]
+      - name: pendente
+        description: "U | PENDENTE. dCadastroTI!$S / FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: est_pend
+        description: "V | EST+PEND. est_disp + pendente (as duas parcelas já divididas)."
+        data_tests: [not_null]
+      - name: est_fabrica
+        description: >
+          W | EST_FABRICA. fEstFabrica!$C por COD_FAB, dividido por
+          FATOR_EXIBICAO. NULO quando o COD_FAB não está no seed (o IFERROR do
+          Excel devolve "", não 0) - hoje 55 dos 8.776 SKUs têm valor. É o que
+          X (CHECK_FABRICA) usa para não disparar em quem não tem fábrica.
+      - name: dt_ult_ent
+        description: "Z | DT_ULT_ENT."
+      - name: qt_ult_ent
+        description: "AA | QT_ULT_ENT. dCadastroTI!$Y / FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: n_meses
+        description: >
+          AB | N_MESES. dFornecedor!$B por FORNECEDOR, fallback N_MESES_PADRAO.
+          É o SELETOR de qual MED* vira MEDIA_JANELA (2->MED02 ... 12->MED12);
+          valor fora de {2,3,4,6,9,12} faz o Excel devolver erro e a média virar
+          0. Medido hoje: nenhum departamento está fora da lista.
+        data_tests: [not_null]
+      - name: vd_mes_atual
+        description: "AC | VD MES ATUAL. QATUAL (com herança) / FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: vd_m1
+        description: "AD | VD M-1. Q00 (com herança dos DOIS pesos) / FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: vd_m2
+        description: "AE | VD M-2. Q01 / FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: vd_m3
+        description: "AF | VD M-3. Q02 / FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: media_janela
+        description: >
+          AG | MEDIA_JANELA. A MED* escolhida por N_MESES, com herança de
+          sucessão, dividida por FATOR_EXIBICAO. Zero aqui é o que faz AX virar
+          'S/VEND'.
+        data_tests: [not_null]
+      - name: media_l
+        description: >
+          AH | MEDIA_L. MEDIA_JANELA x FATOR_EXIBICAO x L_POR_UNIDADE - o único
+          lugar que MULTIPLICA de volta pelo fator, para voltar a unidades antes
+          de aplicar a litragem unitária. É a grandeza do universo COM litragem
+          da curva ABC.
+        data_tests: [not_null]
+      - name: qt_cli_atacado
+        description: "AI | QT_CLI_ATACADO. fVendaMes!$AA = CLI_ATAC_00 (último mês FECHADO). NÃO divide."
+        data_tests: [not_null]
+      - name: qt_cli_varejo
+        description: "AJ | QT_CLI_VAREJO. CLI_VAR_00. NÃO divide."
+        data_tests: [not_null]
+      - name: dias_sem_estoque
+        description: "AK | DIAS_SEM_ESTOQUE. DIAS_SEM_EST_00. NÃO divide. Limiar de AL."
+        data_tests: [not_null]
+      - name: dt_ult_saida
+        description: "AM | DT_ULT_SAIDA."
+      - name: dias_sem_venda
+        description: >
+          AN | DIAS_SEM_VENDA. TODAY() - DT_ULT_SAIDA; NULO quando não há data.
+          Depende do dia do build, igual à planilha, que recalcula ao abrir -
+          comparação contra o original tem que ser no mesmo dia.
+      - name: vd_ant_3m
+        description: >
+          AQ | VD_ANT_3M. Já vem de int_venda_mensal_sucessao dividida por 3 e
+          com a herança dos DOIS pesos aplicada (MELHORIA D1 - a planilha só
+          somava PESO_1; impacto ZERO hoje); aqui só se divide por
+          FATOR_EXIBICAO.
+        data_tests: [not_null]
+      - name: tend_perc
+        description: "AR | TEND %. (AD+AE+AF)/3/AQ - 1. NULO quando VD_ANT_3M = 0."
+      - name: tend
+        description: >
+          AS | TEND. Compara TEND % com TEND_LIMIAR do int_parametro (não com
+          0,15 chumbado). 'SEM BASE' quando TEND % é vazio.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['ALTA', 'QUEDA', 'ESTAVEL', 'SEM BASE']
+      - name: var_pv
+        description: >
+          AT | VAR_PV. Razão entre o preço médio dos 3 meses recentes e o dos 3
+          anteriores. NULO em qualquer denominador zerado (o IFERROR da
+          planilha). Usa V00..V05 do PRÓPRIO SKU: a fórmula não aplica herança
+          de sucessão no valor, só na quantidade.
+      - name: tx_devolucao_3m
+        description: >
+          AU | TX_DEVOLUCAO_3M. Único número do modelo calculado sobre
+          quantidade BRUTA (CONTEXTO.md regra 1) - vem pronto do pivô. NÃO divide.
+        data_tests: [not_null]
+      - name: meses_est
+        description: "AW | MESES_EST. EST+PEND / MEDIA_JANELA. NULO quando MEDIA_JANELA = 0."
+      - name: sug_cobertura
+        description: >
+          AZ | SUG_COBERTURA. MAX(0, ROUND(MEDIA_JANELA x COBERTURA_ALVO -
+          EST+PEND, 0)), com COBERTURA_ALVO do seed_fornecedor e fallback
+          COBERTURA_ALVO_PADRAO. Nunca negativa.
+        data_tests: [not_null]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_classe_abc — coluna AX
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_classe_abc
+    description: >
+      Coluna AX (CLASSE) da aba `pedido`. DOIS universos separados, cada um com
+      seu próprio denominador (CONTEXTO.md regra 5): quem tem litragem é medido
+      em litros/mês (MEDIA_L), quem não tem é medido em unidades/mês
+      (MEDIA_JANELA x FATOR_EXIBICAO) - somar os dois num total único não
+      significaria nada. O denominador é sum() over (partition by universo),
+      recalculado a cada build; travá-lo em valor fixo é o bug real que esta
+      planilha já teve (PDF §12). MEDIA_JANELA = 0 devolve 'S/VEND' antes de
+      qualquer conta, mas a linha continua DENTRO do denominador (contribuindo
+      0), como no SUMPRODUCT do Excel. Grão: 1 linha por SKU.
+      Ver tests/compras_classe_abc_participacao_soma_um.sql.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: universo
+        description: >
+          COLUNA DE APOIO. 'COM_LITRAGEM' (L_POR_UNIDADE > 0) ou 'SEM_LITRAGEM'
+          (= 0). Como a litragem nunca é negativa, os dois particionam o
+          catálogo inteiro.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['COM_LITRAGEM', 'SEM_LITRAGEM']
+      - name: base_participacao
+        description: "COLUNA DE APOIO. O numerador: MEDIA_L ou MEDIA_JANELA x FATOR_EXIBICAO."
+        data_tests: [not_null]
+      - name: total_universo
+        description: >
+          COLUNA DE APOIO. O denominador do universo da linha, via sum() over
+          (partition by universo) - o mesmo valor para todas as linhas do
+          universo. Exposto para que dê para conferir no banco que ele mudou
+          junto com o build.
+        data_tests: [not_null]
+      - name: participacao
+        description: >
+          COLUNA DE APOIO. base_participacao / total_universo, 0 quando o total
+          é 0 (o IFERROR do meio da fórmula). Soma 1 dentro de cada universo.
+        data_tests: [not_null]
+      - name: classe
+        description: >
+          AX | CLASSE. 'S/VEND' quando MEDIA_JANELA = 0; senão 'A' se a
+          participação passa CORTE_ABC (do int_parametro, não 0,0022 chumbado),
+          senão 'B/C'. Zero divergência é critério de aceite.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['A', 'B/C', 'S/VEND']
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_fiscal — colunas BH a BS, mais BZ, CA, CB e DR
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_fiscal
+    description: >
+      Tributação do SKU - colunas BH a BS da aba `pedido`, mais BZ (PISCOF_EF),
+      CA (ICMS_SAIDA_EF), CB (ICMS_SEM_RED) e DR (CRED_TOTAL_EMPIRICO). Grão: 1
+      linha por SKU, espinha int_produto_base. BZ/CA/CB moram aqui, e não no
+      model de margem, porque são lookups da MESMA linha de dICMS/dPISCOFINS já
+      lida para MODALIDADE/MVA, pela MESMA chave - separá-las por letra da
+      coluna obrigaria a repetir o join e abriria a chance de dois models
+      buscarem a alíquota com chaves diferentes. Duas armadilhas reproduzidas de
+      propósito (CONTEXTO.md §6.2) - o código de tributação 0 NÃO cai no padrão
+      (só a célula vazia cai), o que deixa 5 SKUs sem MODALIDADE e sem alíquota.
+      Já a busca de crédito por "CAR 80" foi CORRIGIDA por decisão do Diretor em
+      21/08/2026 (CONTEXTO.md §6.4): o seed tinha CAR80 sem espaço, a busca
+      falhava, e agora casa - 41 SKUs saem do crédito empírico.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: vl_ent_unit
+        description: >
+          BH | VL_ENT_UNIT. dCadastroTI!$AA, vazio vira 0. Já vem UNITÁRIO -
+          nunca é dividido pela embalagem de compra (CONTEXTO.md regra 8). É a
+          base do ICMS-ST sobre o valor (BT), do termo de crédito das duas
+          colunas de ST e do ajuste Ingrax (BX).
+        data_tests: [not_null]
+      - name: custo_ult_ent
+        description: >
+          BI | CUSTO_ULT_ENT. dCadastroTI!$Z, vazio vira 0. Base do ICMS-ST
+          sobre o custo (BU) e parcela de BV/BW.
+        data_tests: [not_null]
+      - name: cod_icms
+        description: >
+          BJ | COD_ICMS. dCadastroTI!$N; célula VAZIA vira COD_TRIB_ICMS_PADRAO
+          (26). Código 0 NÃO é vazio - não cai no padrão, falha o MATCH em dICMS
+          e deixa MODALIDADE/MVA/CA/CB em branco (5 SKUs hoje). É o
+          comportamento da planilha, reproduzido de propósito.
+        data_tests: [not_null]
+      - name: cod_piscof
+        description: >
+          BK | COD_PISCOF. dCadastroTI!$Q; célula VAZIA vira
+          COD_TRIB_PISCOFINS_PADRAO (1). Mesma regra de zero-não-é-vazio.
+        data_tests: [not_null]
+      - name: modalidade
+        description: >
+          BL | MODALIDADE. seed_icms por COD_ICMS; sem linha fica NULA. Decide
+          se há ICMS-ST a recolher - só ST_SUBSTITUTO gera imposto (PDF §8.1);
+          ST_RECOLHIDO já foi recolhido antes na cadeia e NORMAL não está no
+          regime, os dois valem 0. Zero divergência é critério de aceite.
+        data_tests:
+          - accepted_values:
+              values: ['ST_SUBSTITUTO', 'ST_RECOLHIDO', 'NORMAL']
+      - name: mva
+        description: >
+          BM | MVA. seed_icms por COD_ICMS. Margem de valor agregado da base de
+          ST. Dois vazios DIFERENTES, como no Excel: código sem linha em dICMS
+          (MATCH falha) fica NULO; código com linha e célula de MVA vazia (todo
+          NORMAL e todo ST_RECOLHIDO, 4.040 SKUs) vira 0, porque INDEX sobre
+          célula vazia devolve zero. A prova está no gabarito - a linha de
+          amostra tem COD_ICMS 24, célula vazia no seed, e V=0. Sem efeito no
+          cálculo (BT/BU só leem MVA em ST_SUBSTITUTO, que sempre a tem - ver
+          tests/compras_icms_st_exige_mva.sql); é fidelidade da coluna exibida.
+      - name: uf_origem
+        description: >
+          BN | UF_ORIGEM. dCadastroTI!$K, vazio vira '?'. Chave de
+          ALIQ_ICMS_ORIGEM.
+        data_tests: [not_null]
+      - name: cred_total
+        description: >
+          BO | CRED_TOTAL. seed_credito pela chave FORNECEDOR|COD_ICMS; sem
+          linha cai no crédito empírico (DR).
+          ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
+          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 3, CONTEXTO.md §6.4): o
+          seed trazia CAR80 e o departamento da base é "CAR 80", COM ESPAÇO, de
+          modo que a busca falhava na própria planilha e 41 SKUs caíam no
+          empírico. A grafia do seed foi corrigida para "CAR 80" e esses 41
+          passam a usar o crédito TABELADO. A correção foi no DADO do seed, não
+          na regra de comparação - o espaço continua significativo, sem trim().
+          Alcance MEDIDO: o valor de BO muda em 39 dos 41 (nos outros 2 o
+          empírico já dava o tabelado), e NADA a jusante muda - esta coluna é
+          usada só por CHECK_IMPORTADO (BS), e quem alimenta CRED_ICMS é DR.
+      - name: aliq_icms_origem
+        description: >
+          BP | ALIQ_ICMS_ORIGEM. seed_icms_origem pela UF; sem linha vira 0. É o
+          crédito da modalidade NORMAL e a referência de CHECK_IMPORTADO.
+        data_tests: [not_null]
+      - name: cred_icms
+        description: >
+          BQ | CRED_ICMS. ST_RECOLHIDO vira 0 (já recolhido antes, não há
+          crédito a apropriar); NORMAL vira a alíquota da UF de origem; senão 0
+          se o empírico for vazio ou menor/igual a PISCOF_EF, senão empírico
+          menos PISCOF_EF. Lê DR (CRED_TOTAL_EMPIRICO), NÃO BO (CRED_TOTAL) -
+          trocar um pelo outro muda a base do ICMS-ST e o imposto recolhido.
+        data_tests: [not_null]
+      - name: cred_piscof
+        description: >
+          BR | CRED_PISCOF. 0 quando PISCOF_EF é 0 (monofásico/exceção não geram
+          crédito); senão MAX(0, (1 - CRED_ICMS) x PIS_COFINS). O crédito é
+          sobre a NF sem IPI, descontado o crédito de ICMS (PDF §8.3,
+          CONTEXTO.md regra 4).
+        data_tests: [not_null]
+      - name: check_importado
+        description: >
+          BS | CHECK_IMPORTADO. Dispara quando CRED_TOTAL existe e fica abaixo
+          de CRED_IMPORTADO_LIMIAR (60%, do int_parametro - não 0,6 chumbado) da
+          alíquota esperada pela UF. Importado costuma vir com 4% de ICMS na
+          origem. Única coluna CHECK_* desta leva; as demais são da leva de
+          alertas. NULA quando não dispara (o vazio do Excel).
+      - name: piscof_ef
+        description: >
+          BZ | PISCOF_EF. seed_piscofins por COD_PISCOF; sem linha fica NULA e
+          apaga toda margem e todo preço sugerido do SKU.
+      - name: icms_saida_ef
+        description: >
+          CA | ICMS_SAIDA_EF. seed_icms.ICMS_EF_SAIDA por COD_ICMS - a alíquota
+          efetiva COM redução de base, o benefício das filiais de atacado
+          (PDF §8.2). Alimenta os cenários ST s/Valor e Oficial. Nula sem linha
+          em dICMS.
+      - name: icms_sem_red
+        description: >
+          CB | ICMS_SEM_RED. seed_icms.ICMS_EF_SEM_REDUCAO por COD_ICMS - a
+          alíquota CHEIA. É a que o varejo paga sempre (PDF §8.2) e a do pior
+          cenário do atacado, base de NIVEL_BASE_MARGEM.
+      - name: cred_total_empirico
+        description: >
+          DR | CRED_TOTAL_EMPIRICO. MAX(0, 1 - CUSTO_ULT_ENT/VL_ENT_UNIT); NULO
+          quando qualquer um dos dois é 0 (o vazio do Excel). É a fonte primária
+          de CRED_ICMS no ramo ST e o fallback de CRED_TOTAL.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_custo — colunas BT a BY
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_custo
+    description: >
+      ICMS-ST e custo total - colunas BT a BY da aba `pedido`. Grão: 1 linha por
+      SKU, espinha int_produto_fiscal. Duas regras que não podem escorregar:
+      ICMS-ST só existe para MODALIDADE = ST_SUBSTITUTO (PDF §8.1), e o ajuste
+      Ingrax 80/20 entra no custo GERENCIAL e nunca na base fiscal de ICMS-ST,
+      que usa só o custo oficial (PDF §8.4, CONTEXTO.md regra 2). Ver
+      tests/compras_custo_gerencial_coerente.sql e
+      tests/compras_icms_st_so_substituto.sql.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: icms_st_s_valor
+        description: >
+          BT | ICMS_ST_s/VALOR. MAX(0, VL_ENT_UNIT x (1+MVA) x
+          ALIQ_ICMS_INTERNA_BA - VL_ENT_UNIT x CRED_ICMS), só para
+          ST_SUBSTITUTO; 0 nas outras modalidades e também quando MODALIDADE
+          está em branco. NULO quando falta MVA ou VL_ENT_UNIT é 0.
+      - name: icms_st_s_custo
+        description: >
+          BU | ICMS_ST_s/CUSTO. Idêntica a BT, trocando só o primeiro termo por
+          CUSTO_ULT_ENT. O guarda-corpo continua sendo VL_ENT_UNIT = 0, mesmo BU
+          não usando VL_ENT_UNIT na base - está assim no gabarito, e o efeito
+          (SKU com custo contábil e nota zerada sai em branco, não com o custo
+          puro) é reproduzido de propósito.
+      - name: custo_tot_s_valor
+        description: >
+          BV | CUSTO_TOT_s/VALOR. CUSTO_ULT_ENT + BT. Base do cenário ST
+          s/Valor, sempre SOMADA ao ajuste de imagem por quem a consome.
+      - name: custo_tot_oficial
+        description: >
+          BW | CUSTO_TOT_OFICIAL. CUSTO_ULT_ENT + BU. É o custo que a apuração
+          fiscal enxerga - só o que está formalmente registrado como custo do
+          produto (PDF §8.4). NUNCA soma o ajuste de imagem.
+      - name: custo_adicional_imagem
+        description: >
+          BX | CUSTO_ADICIONAL_IMAGEM. VL_ENT_UNIT x (1/PERC_NF_NORMAL_INGRAX -
+          1) x (1 - PISCOF_EF), só quando FORNECEDOR = INGRAX; 0 para todo o
+          resto. É a segunda nota, de cessão de direito de imagem (20%), que não
+          entra no sistema como custo do produto mas é custo real do negócio
+          (PDF §8.4). Coluna própria de propósito - assim a base fiscal e a base
+          gerencial não têm como se misturar por descuido.
+        data_tests: [not_null]
+      - name: custo_tot_gerencial
+        description: >
+          BY | CUSTO_TOT_GERENCIAL = BW + BX. A base de custo de TODA margem e
+          TODO preço sugerido, atacado e varejo. ZERO divergência é critério de
+          aceite (CONTEXTO.md §6.1.1) - erro aqui muda preço de venda real. O
+          ajuste de imagem entra aqui e NUNCA na base de ICMS-ST.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_margem — colunas CF a DC (menos alertas), mais O, P, DP, DQ
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_margem
+    description: >
+      Margem do preço de venda ATUAL sob cada cenário fiscal - colunas CF a DC
+      da aba `pedido` (menos CL e DB, que são alertas), mais O, P, DP e DQ.
+      Grão: 1 linha por SKU, espinha int_produto_custo. Fórmula única
+      (PDF §9.1): margem = (PV - PV x (alíquota + PIS/COFINS + comissão) -
+      custo) / PV. Os cenários diferem em exatamente duas escolhas - qual
+      alíquota e qual base de custo. Três no atacado; DOIS no varejo, porque a
+      redução de base não se aplica a ele e portanto não existe cenário Oficial
+      do varejo (PDF §8.2, CONTEXTO.md regra 3).
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: nivel_base_margem
+        description: >
+          O | NIVEL_BASE_MARGEM. Faixa de MARGEM_SEM_RED (o PIOR cenário) contra
+          MARGEM_CRITICA_MIN e MARGEM_ALERTA_MIN, os dois do int_parametro:
+          margem vazia vira 0, negativa vira 3, abaixo da crítica vira 2, abaixo
+          do alerta vira 1, senão 0. Margem vazia vira nível 0, e não nível
+          máximo - SKU sem tributação mapeada dispara CHECK_TRIB, não alerta de
+          margem.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3]
+              quote: false
+      - name: nivel_margem
+        description: >
+          P | NIVEL_MARGEM. O agravado em 1 (teto 3) quando a CLASSE não é 'A':
+          o mesmo aperto de margem num item de baixo giro é pior, porque não há
+          volume que o compense. É o que CHECK_MARGEM_INSTAVEL (CL) traduz em
+          texto na leva de alertas.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3]
+              quote: false
+      - name: pv_atacado
+        description: >
+          CF | PV_ATACADO. dCadastroTI!$AB (tabela de preço, região 2), vazio
+          vira 0. PV = 0 apaga as três margens de atacado.
+        data_tests: [not_null]
+      - name: mkp_atacado
+        description: >
+          CG | MKP_ATACADO. PV_ATACADO / CUSTO_TOT_GERENCIAL; NULO quando o
+          custo oficial é vazio ou 0.
+      - name: margem_st_s_valor
+        description: >
+          CH | MARGEM_ST_s/VALOR. Cenário 1 do atacado: alíquota ICMS_SEM_RED
+          (cheia) e custo CUSTO_TOT_s/VALOR + CUSTO_ADICIONAL_IMAGEM. É o
+          regime ST calculado sobre o valor da nota.
+          ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
+          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4): a
+          planilha antiga usava ICMS_SAIDA_EF (com redução), o que era erro -
+          substituição tributária e redução de base são mecânicas separadas.
+          Itens em regime ST não mudam (as duas alíquotas já eram idênticas);
+          ~1.240 SKUs de MODALIDADE = 'NORMAL' mudam, e neles CH passa a ser
+          idêntica a CJ.
+      - name: margem_oficial
+        description: >
+          CI | MARGEM_OFICIAL. Cenário 2 do atacado: alíquota ICMS_SAIDA_EF (com
+          redução) e custo CUSTO_TOT_GERENCIAL. É o cenário real das filiais com
+          o benefício (02/09 na documentação; '2'/'9' no dado).
+      - name: margem_sem_red
+        description: >
+          CJ | MARGEM_SEM_RED. Cenário 3 do atacado: alíquota ICMS_SEM_RED
+          (cheia) e custo CUSTO_TOT_GERENCIAL. É o PIOR cenário, e por isso a
+          base de NIVEL_BASE_MARGEM.
+      - name: gap_filial_pp
+        description: >
+          CK | GAP_FILIAL_pp. (MARGEM_OFICIAL - MARGEM_SEM_RED) x 100 - quanto a
+          redução de base vale, em pontos percentuais de margem.
+      - name: dif_mc_pp
+        description: >
+          CM | DIF_MC_pp. (MARGEM_OFICIAL - MARGEM_ST_s/VALOR) x 100 - quanto o
+          ST sobre o VALOR custa, em pp de margem.
+      - name: pv_varejo
+        description: >
+          CW | PV_VAREJO. dCadastroTI!$AC (tabela de preço, região 1), vazio
+          vira 0.
+        data_tests: [not_null]
+      - name: mkp_varejo
+        description: >
+          CX | MKP_VAREJO. PV_VAREJO / CUSTO_TOT_GERENCIAL; NULO quando o custo
+          oficial é vazio ou 0.
+      - name: margem_st_s_valor_varejo
+        description: >
+          CY | MARGEM_ST_s/VALOR_VAREJO. Cenário ST s/Valor do varejo, com
+          alíquota ICMS_SEM_RED (cheia).
+          ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
+          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4). A
+          planilha antiga usava ICMS_SAIDA_EF (com redução), contrariando o PDF
+          §8.2, que já mandava o varejo usar sempre a cheia. Fora do regime ST,
+          CY passa a ser idêntica a CZ.
+      - name: margem_sem_red_varejo
+        description: >
+          CZ | MARGEM_SEM_RED_VAREJO. Alíquota cheia e custo gerencial - o
+          cenário que o varejo de fato paga. Base de NIVEL_BASE_MARGEM_VAREJO.
+      - name: gap_filial_varejo_pp
+        description: "DA | GAP_FILIAL_VAREJO_pp. (CY - CZ) x 100."
+      - name: dif_mc_varejo_pp
+        description: >
+          DC | DIF_MC_VAREJO_pp. Fórmula IDÊNTICA a DA no gabarito - (CY - CZ) x
+          100. No atacado as duas irmãs são diferentes (CK compara Oficial x Sem
+          Redução, CM compara Oficial x ST s/Valor); como o varejo não tem
+          Oficial, as duas colapsaram na mesma conta. Reproduzido como está.
+      - name: nivel_base_margem_varejo
+        description: >
+          DP | NIVEL_BASE_MARGEM_VAREJO. Mesmo critério de O, sobre
+          MARGEM_SEM_RED_VAREJO.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3]
+              quote: false
+      - name: nivel_margem_varejo
+        description: >
+          DQ | NIVEL_MARGEM_VAREJO. Mesmo agravamento de P. É o que
+          CHECK_MARGEM_INSTAVEL_VAREJO (DB) traduz em texto.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3]
+              quote: false
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_preco_sugerido — colunas CN a CV e DD a DJ
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_preco_sugerido
+    description: >
+      Margem-alvo, os dez preços sugeridos e o campo de DECISÃO HUMANA - colunas
+      CN a CV e DD a DJ da aba `pedido`. Grão: 1 linha por SKU, espinha
+      int_produto_custo. A fórmula é a de margem invertida (PDF §9.2):
+      pv_sug = custo / (1 - alíquota - PIS/COFINS - comissão - margem_alvo).
+      Seis preços no atacado (3 cenários x à vista/a prazo) e quatro no varejo
+      (2 x à vista/a prazo). Os dois fatores de prazo saem do int_parametro -
+      inclusive o do varejo, que na planilha estava chumbado na fórmula
+      (CONTEXTO.md §6.1).
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: margem_alvo
+        description: >
+          CN | MARGEM_ALVO. De APP_DECISAO_PRECO por left join; sem decisão cai
+          em MARGEM_ALVO_PADRAO (20%), aplicado aqui e não na tabela APP_*.
+          Alimenta CO, CQ e CS - só o atacado.
+        data_tests: [not_null]
+      - name: pv_sug_st_s_valor_av
+        description: >
+          CO | PV_SUG_ST_s/VALOR_AV. Custo (BV + BX) sobre 1 - ICMS_SEM_RED -
+          PISCOF_EF - comissão - MARGEM_ALVO.
+          ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
+          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4): era
+          ICMS_SAIDA_EF. Fora do regime ST, CO passa a ser idêntica a CS.
+      - name: pv_sug_st_s_valor_ap
+        description: >
+          CP | PV_SUG_ST_s/VALOR_AP. CO x FATOR_PRAZO (1,0317, do
+          int_parametro). Muda por CONSEQUÊNCIA da correção em CO, sem
+          alteração própria de fórmula.
+      - name: pv_sug_oficial_av
+        description: >
+          CQ | PV_SUG_OFICIAL_AV. Custo gerencial sobre denominador com
+          ICMS_SAIDA_EF (alíquota COM redução). NÃO foi tocado pela decisão de
+          21/08/2026 - o cenário "Oficial" é justamente o das filiais que têm o
+          benefício.
+      - name: pv_sug_oficial_ap
+        description: "CR | PV_SUG_OFICIAL_AP. CQ x FATOR_PRAZO."
+      - name: pv_sug_sem_red_av
+        description: >
+          CS | PV_SUG_SEM_RED_AV. Custo gerencial sobre denominador com
+          ICMS_SEM_RED (alíquota cheia).
+      - name: pv_sug_sem_red_ap
+        description: "CT | PV_SUG_SEM_RED_AP. CS x FATOR_PRAZO."
+      - name: alt_pv_at_av
+        description: >
+          CU | ALT_PV_AT_AV. DECISÃO HUMANA. Vem de APP_DECISAO_PRECO por left
+          join e fica NULA enquanto não houver decisão. NUNCA é preenchida com
+          uma das sugestões calculadas (PDF §9.3, CONTEXTO.md regra 10) - é o
+          único ponto do modelo em que uma pessoa decide o número. Hoje 100%
+          nula, porque APP_DECISAO_PRECO está vazia. Ver
+          tests/compras_alt_pv_sem_decisao_e_nulo.sql.
+      - name: alt_pv_at_ap
+        description: >
+          CV | ALT_PV_AT_AP. CU x FATOR_PRAZO. Derivada do valor DIGITADO - nula
+          enquanto CU estiver nula.
+      - name: margem_alvo_varejo
+        description: >
+          DD | MARGEM_ALVO_VAREJO. Coluna digitada SEPARADA de CN, com o mesmo
+          fallback de 20%. Alimenta DE e DG. Usar CN no varejo erraria todo SKU
+          cujo Diretor tenha decidido metas diferentes por canal.
+        data_tests: [not_null]
+      - name: pv_sug_st_s_valor_var_av
+        description: >
+          DE | PV_SUG_ST_s/VALOR_VAR_AV. Custo (BV + BX) sobre denominador com
+          ICMS_SEM_RED e MARGEM_ALVO_VAREJO.
+          ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
+          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4): era
+          ICMS_SAIDA_EF. Fora do regime ST, DE passa a ser idêntica a DG.
+      - name: pv_sug_st_s_valor_var_ap
+        description: >
+          DF | PV_SUG_ST_s/VALOR_VAR_AP. DE x FATOR_PRAZO_VAREJO (1,086435 -
+          parâmetro, não chumbado). Muda por CONSEQUÊNCIA da correção em DE,
+          sem alteração própria de fórmula.
+      - name: pv_sug_sem_red_var_av
+        description: >
+          DG | PV_SUG_SEM_RED_VAR_AV. Custo gerencial sobre denominador com
+          ICMS_SEM_RED e MARGEM_ALVO_VAREJO.
+      - name: pv_sug_sem_red_var_ap
+        description: "DH | PV_SUG_SEM_RED_VAR_AP. DG x FATOR_PRAZO_VAREJO."
+      - name: alt_pv_var_av
+        description: >
+          DI | ALT_PV_VAR_AV. A segunda DECISÃO HUMANA, mesma regra de CU. Hoje
+          100% nula.
+      - name: alt_pv_var_ap
+        description: >
+          DJ | ALT_PV_VAR_AP. DI x FATOR_PRAZO_VAREJO. Nula enquanto DI estiver
+          nula.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_sucessao — colunas DK a DN
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_sucessao
+    description: >
+      Colunas DK a DN da aba `pedido`: de quem ESTE SKU herdou histórico, e com
+      que peso. Grão: 1 linha por SKU, espinha int_produto_base. A herança
+      propriamente dita acontece a montante, em int_venda_mensal_sucessao, que
+      lê o mesmo seed com a mesma regra de ATIVO - aqui é só a EXIBIÇÃO do
+      vínculo. A trava de ATIVO vale para a LINHA INTEIRA do dSucessao: não
+      existe antecessor 1 ativo com antecessor 2 desativado. Medido: as 25
+      linhas do seed têm ATIVO = 'NAO', então as quatro colunas saem zeradas -
+      é a sucessão desligada, não dado faltando.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: ant_1
+        description: >
+          DK | ANT_1. Código do antecessor 1, ou 0 (o IFERROR(...,0) do Excel) -
+          nunca nulo. Não confundir com CHECK_SUCESSAO, que é o oposto: "este
+          SKU é antecessor de alguém".
+        data_tests: [not_null]
+      - name: peso_1
+        description: "DL | PESO_1. Zero quando ANT_1 é zero - peso só vale com antecessor."
+        data_tests: [not_null]
+      - name: ant_2
+        description: "DM | ANT_2. Segundo antecessor (duas trocas em sequência, raro)."
+        data_tests: [not_null]
+      - name: peso_2
+        description: "DN | PESO_2. Zero quando ANT_2 é zero."
+        data_tests: [not_null]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_pedido — colunas BA a BG
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_pedido
+    description: >
+      Colunas BA a BG da aba `pedido`: a quantidade que o comprador decidiu
+      pedir e tudo que se calcula a partir dela. Grão: 1 linha por SKU, espinha
+      int_produto_base. BA é DECISÃO HUMANA (APP_DECISAO_PEDIDO), com a
+      diferença deliberada de que ausência de decisão vale ZERO e não nulo -
+      BB/BC/BF a usam em aritmética. ⚠ MELHORIA A5 (MELHORIAS.md; CONTEXTO.md
+      §6.0): BB usa o FATOR_EXIBICAO CONGELADO em APP_DECISAO_PEDIDO quando
+      existe decisão gravada, e o CORRENTE (K, o que o gabarito manda) só
+      quando não existe - decisão tomada não muda de tamanho porque o cadastro
+      atualizou depois. Propaga para BC, BD, BE e BF; NÃO propaga para BG, que
+      é estoque. A unidade do pedido (BC) e o limiar do palete (BE) saem do
+      int_parametro, nunca chumbados.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: pedido
+        description: >
+          BA | PEDIDO. DECISÃO HUMANA, na unidade de EXIBIÇÃO. Sem linha em
+          APP_DECISAO_PEDIDO vale 0. Hoje 100% zero, como na planilha.
+        data_tests: [not_null]
+      - name: fator_exibicao_pedido
+        description: >
+          Sem letra no Excel. O fator que ESTA linha usou em BB: o CONGELADO da
+          decisão quando há decisão, o corrente (K) quando não há (MELHORIA A5).
+          Exposto para que a divergência contra K seja auditável sem abrir a
+          APP_*, e para o teste singular
+          compras_pedido_unidades_usa_fator_congelado poder afirmar a regra.
+        data_tests: [not_null]
+      - name: pedido_unidades
+        description: >
+          BB | PEDIDO_UNIDADES. BA x FATOR_EXIBICAO_PEDIDO - o pedido em
+          unidades. ⚠ MELHORIA A5: o fator é o congelado na decisão, não o
+          corrente. Hoje 0 SKUs afetados (APP_DECISAO_PEDIDO vazia); a regra é
+          protegida pelo teste singular
+          compras_pedido_unidades_usa_fator_congelado.
+        data_tests: [not_null]
+      - name: pedido_na_medida
+        description: >
+          BC | PEDIDO_NA_MEDIDA. Litros, quilos ou caixas master, conforme
+          MEDIDA_PEDIDO (Parametros!$B$19). O terceiro ramo é o do IFERROR:
+          EMBAL_COMPRA zerado devolve 0, não erro.
+        data_tests: [not_null]
+      - name: valor_pedido
+        description: >
+          BD | VALOR_PEDIDO. BB x CUSTO_TOT_OFICIAL. NULA quando BW é vazio -
+          os 5 SKUs sem modalidade (CONTEXTO.md §6.2).
+      - name: sug_palete
+        description: >
+          BE | SUG_PALETE. Só classe A, com palete cadastrado e pedido > 0.
+          Mede a sobra da última camada contra PALETE_LIMIAR (do int_parametro).
+          Hoje 100% vazia, porque BB = 0 em todas as linhas.
+      - name: meses_est_ped
+        description: >
+          BF | MESES_EST+PED. (EST+PEND + BB) / MEDIA_JANELA. Vazia quando a
+          média é zero - sem venda não há cobertura em meses.
+      - name: valor_estoque
+        description: >
+          BG | VALOR_ESTOQUE. EST+PEND x FATOR_EXIBICAO x CUSTO_TOT_OFICIAL -
+          o fator sai antes de multiplicar pelo custo UNITÁRIO (CONTEXTO.md
+          regra 6). Nula pelos mesmos 5 SKUs de BD.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_alerta — os 14 CHECK_* e a coluna D
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_alerta
+    description: >
+      As 14 colunas CHECK_* da aba `pedido` (X, Y, AL, AO, AP, AV, AY, BS, CC,
+      CD, CE, CL, DO, DB) e a coluna D (ALERTA), que as concatena com "; " NA
+      ORDEM DO EXCEL - X, Y, AL, AV, AO, AP, AY, BS, CC, CD, CE, CL, DO, DB -,
+      que não é a das letras nem a alfabética. Grão: 1 linha por SKU, espinha
+      int_produto_base. Todos os limiares saem do int_parametro (dias sem
+      estoque, dias de estoque parado, taxa de devolução), nenhum chumbado.
+      ⚠ Critério de aceite (CONTEXTO.md §6.1.1): zero divergência em cada
+      CHECK_* ESTRUTURAL, individualmente. CHECK_ESTOQUE_PARADO e
+      CHECK_FORA_DE_LINHA são VOLÁTEIS; CHECK_FABRICA e CHECK_INATIVO dependem
+      de decisão humana. CHECK_TRIB é fórmula morta - PENDENCIAS_DIRETORIA.md,
+      item 4.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: check_fabrica
+        description: >
+          X | CHECK_FABRICA. Pedido acima do estoque da fábrica. DEPENDE DE
+          DECISÃO HUMANA (lê BA) e da existência de EST_FABRICA - sem estoque de
+          fábrica não há comparação, e não alertar é diferente de "estoque
+          zero". Hoje 100% vazio, como na planilha.
+      - name: check_inativo
+        description: >
+          Y | CHECK_INATIVO. Produto inativo com pedido > 0. DEPENDE DE DECISÃO
+          HUMANA. Hoje 100% vazio.
+      - name: check_ruptura
+        description: >
+          AL | CHECK_RUPTURA. Dias sem estoque no mês fechado acima de
+          DIAS_SEM_ESTOQUE_ALERTA. ESTRUTURAL - zero divergência exigida.
+      - name: check_estoque_parado
+        description: >
+          AO | CHECK_ESTOQUE_PARADO. Tem estoque, tem data de última saída e ela
+          é mais velha que DIAS_ESTOQUE_PARADO (parâmetro, não 90 chumbado).
+          ⚠ VOLÁTIL: depende de TODAY(), muda de um dia para o outro sem que
+          nada mude no dado.
+      - name: check_fora_de_linha
+        description: >
+          AP | CHECK_FORA_DE_LINHA. ⚠ MELHORIA A3 (MELHORIAS.md; CONTEXTO.md
+          §6.0): a planilha lê a coluna do MÊS CORRENTE e 71 SKUs com 'S' em mês
+          fechado saíam 'N' por não terem linha no mês, sem alertar. Passamos a
+          ler o registro MAIS RECENTE em que o SKU aparece — os 71 passam a
+          alertar (de 1 para 72 SKUs). Divergência DELIBERADA da planilha.
+          Limite conhecido: 4.205 SKUs marcados 'FL' no cadastro não aparecem em
+          mês nenhum de int_venda_mensal e seguem 'N'.
+      - name: check_devolucao_alta
+        description: >
+          AV | CHECK_DEVOLUCAO_ALTA. Taxa de devolução de 3 meses acima de
+          TX_DEVOLUCAO_ALERTA. ESTRUTURAL. ⚠ MELHORIA A4 (MELHORIAS.md;
+          CONTEXTO.md §6.0): a planilha imprime percentual INTEIRO com dois
+          dígitos ("05%") porque lê "0.0%" no locale pt-BR; passamos a imprimir
+          uma casa decimal com vírgula ("5,5%"). Divergência DELIBERADA do
+          texto - ver macros/compras_texto_percentual.sql.
+      - name: check_litragem
+        description: >
+          AY | CHECK_LITRAGEM. "SEM CADASTRO NA dEmbalagem" - a embalagem não
+          existe na tabela, NÃO "litragem = 0". São 1.001 sem cadastro contra
+          161 com cadastro e litragem 0 legítima. ESTRUTURAL.
+      - name: check_importado
+        description: >
+          BS | CHECK_IMPORTADO. Já calculado em int_produto_fiscal; aqui só
+          viaja junto para compor D. ESTRUTURAL.
+      - name: check_trib
+        description: >
+          CC | CHECK_TRIB. Dispara quando COD_ICMS está VAZIO **ou ZERO**.
+          ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
+          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 4, CONTEXTO.md §6.4). A
+          planilha só testava "vazio", e vazio nunca acontece
+          (COD_TRIB_ICMS_PADRAO sempre preenche): era fórmula morta, 0 células
+          em 8.772. Com o zero incluído passa a cobrir os 5 SKUs de
+          PCTABTRIB com codst = 0, que saem sem MODALIDADE, sem alíquota e com
+          margem em branco. Esses 5 também divergem em ALERTA (D), por tabela.
+          Ver tests/compras_check_trib_pega_codigo_zero.sql e
+          tests/compras_check_trib_sem_modalidade_alertado.sql.
+      - name: check_mva
+        description: >
+          CD | CHECK_MVA. Só para MODALIDADE = 'ST_SUBSTITUTO'. O nvl na
+          comparação é obrigatório: sem ele, os 5 SKUs sem modalidade ganhariam
+          "MVA PENDENTE", alerta que a planilha não dá. ESTRUTURAL.
+      - name: check_custo
+        description: >
+          CE | CHECK_CUSTO. Custo contábil acima do valor da nota, com a data da
+          última entrada no texto (dd/mm/aa). ESTRUTURAL.
+      - name: check_margem_instavel
+        description: >
+          CL | CHECK_MARGEM_INSTAVEL. CHOOSE(NIVEL_MARGEM) nos três textos, com
+          o PIOR cenário (MARGEM_SEM_RED, alíquota cheia) e o sufixo
+          " (fora da curva A)". ESTRUTURAL. ⚠ MELHORIA A4 (MELHORIAS.md;
+          CONTEXTO.md §6.0): o percentual passa a sair com uma casa decimal e
+          vírgula ("MARGEM CRITICA - pior cenario 5,5%") em vez do inteiro de
+          dois dígitos da planilha ("05%"). Divergência DELIBERADA do texto.
+      - name: check_sucessao
+        description: >
+          DO | CHECK_SUCESSAO. "este SKU é ANTECESSOR de alguém" - procura o
+          código nas colunas de ANTIGO, não nas de sucessor. Não olha ATIVO, e
+          conta uma vez mesmo quando vários sucessores reivindicam o mesmo
+          antecessor. ESTRUTURAL.
+      - name: check_margem_instavel_varejo
+        description: >
+          DB | CHECK_MARGEM_INSTAVEL_VAREJO. Mesmo desenho de CL, sobre
+          NIVEL_MARGEM_VAREJO e MARGEM_SEM_RED_VAREJO. ESTRUTURAL. ⚠ Mesma
+          MELHORIA A4 de CL: percentual com uma casa decimal e vírgula.
+      - name: alerta
+        description: >
+          D | ALERTA. A concatenação, na ordem do Excel, com o primeiro "; "
+          removido por substr(...,3) - o MID literal. NULA quando não há alerta
+          nenhum. Ver tests/compras_alerta_componentes_completos.sql.

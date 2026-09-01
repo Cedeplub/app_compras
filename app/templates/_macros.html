@@ -1,0 +1,81 @@
+{# Formatacao pt-BR em Jinja puro (sem filtro Python — este agente so toca
+   templates/static, nao app/*.py). Vírgula decimal, ponto de milhar,
+   percentual com uma casa. Usar em todo lugar em vez de "%.2f"|format. #}
+
+{%- macro numero(v, casas=2) -%}
+{%- if v is none -%}
+—
+{%- else -%}
+{%- set sinal = "-" if v < 0 else "" -%}
+{%- set v = v|abs -%}
+{%- set s = (("%." ~ casas ~ "f")|format(v)) -%}
+{%- if casas > 0 -%}
+{%- set partes = s.split(".") -%}
+{%- set inteiro = partes[0] -%}
+{%- set dec = partes[1] -%}
+{%- else -%}
+{%- set inteiro = s -%}
+{%- set dec = "" -%}
+{%- endif -%}
+{%- set rev = inteiro[::-1] -%}
+{%- set grupos = [] -%}
+{%- for i in range(0, rev|length, 3) -%}
+{%- set _ = grupos.append(rev[i:i+3]) -%}
+{%- endfor -%}
+{%- set agrupado = grupos|join(".") -%}
+{%- set agrupado = agrupado[::-1] -%}
+{{- sinal }}{{ agrupado }}{% if casas > 0 %},{{ dec }}{% endif -%}
+{%- endif -%}
+{%- endmacro -%}
+
+{# Reais: "R$ 1.234,50". None vira travessao, sem "R$". #}
+{%- macro moeda(v, casas=2) -%}
+{%- if v is none -%}
+—
+{%- else -%}
+R$ {{ numero(v, casas) }}
+{%- endif -%}
+{%- endmacro -%}
+
+{# Percentual: recebe a FRACAO (0.205) e mostra "20,5%". #}
+{%- macro percentual(v, casas=1) -%}
+{%- if v is none -%}
+—
+{%- else -%}
+{{ numero(v * 100, casas) }}%
+{%- endif -%}
+{%- endmacro -%}
+
+{# Valor para dentro de <input>: SEM ponto de milhar, só vírgula decimal.
+   Existe separado de numero() porque o back-end so' sabe desfazer vírgula
+   decimal simples (`valor.replace(",", ".")` em main.py) — um valor como
+   "1.234,50" viraria "1.234.50" e float() rejeitaria. Todo campo EDITÁVEL
+   usa este macro no `value=`; numero()/moeda() ficam só para exibição. #}
+{%- macro editavel(v, casas=2) -%}
+{%- if v is none -%}
+{%- else -%}
+{{ (("%." ~ casas ~ "f")|format(v))|replace(".", ",") }}
+{%- endif -%}
+{%- endmacro -%}
+
+{# Inteiro agrupado, sem casas decimais: "8.772". #}
+{%- macro inteiro(v) -%}
+{{ numero(v, 0) }}
+{%- endmacro -%}
+
+{# Data/hora curta pt-BR a partir de um datetime/date do Oracle. #}
+{%- macro dataHora(v) -%}
+{%- if v is none -%}
+—
+{%- else -%}
+{{ v.strftime("%d/%m/%Y %H:%M") }}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro data(v) -%}
+{%- if v is none -%}
+—
+{%- else -%}
+{{ v.strftime("%d/%m/%Y") }}
+{%- endif -%}
+{%- endmacro -%}

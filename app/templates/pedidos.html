@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block titulo %}Pedidos{% endblock %}
+{% block conteudo %}
+<h1>Pedidos por fornecedor</h1>
+<p class="texto-suave">
+  Fornecedores com pedido gravado no período — {{ m.inteiro(fornecedores|length) }} fornecedor(es).
+  O arquivo baixado <strong>vai direto para o fornecedor</strong>: só as colunas combinadas com a
+  Diretoria de Compras (sem margem, custo interno ou alerta).
+</p>
+
+<form class="filtros" method="get" action="/pedidos">
+  <div>
+    <label for="data_de">De</label>
+    <input type="date" id="data_de" name="data_de" value="{{ data_de }}">
+  </div>
+  <div>
+    <label for="data_ate">Até</label>
+    <input type="date" id="data_ate" name="data_ate" value="{{ data_ate }}">
+  </div>
+  <button type="submit" class="botao-filtrar">Filtrar</button>
+</form>
+
+{% if not fornecedores %}
+<p class="vazio-lista">Nenhum pedido gravado no período.</p>
+{% endif %}
+
+{% for f in fornecedores %}
+<div class="card somente-mobile">
+  <div class="card-titulo"><div class="descricao">{{ f.fornecedor }}</div></div>
+  <div class="card-linha"><span class="rotulo">SKUs</span><span>{{ m.inteiro(f.qtd_sku) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Total em unidades</span><span>{{ m.numero(f.total_unidades) }}</span></div>
+  <div class="card-linha"><span class="rotulo">Valor de referência</span><span>{{ m.moeda(f.valor_total) }}</span></div>
+  <a class="botao" style="display:block;text-align:center;margin-top:8px"
+     href="/pedidos/exportar?fornecedor={{ f.fornecedor | urlencode }}&data_de={{ data_de }}&data_ate={{ data_ate }}">
+    Baixar .xlsx para o fornecedor
+  </a>
+</div>
+{% endfor %}
+
+{% if fornecedores %}
+<div class="tabela-scroll somente-mesa">
+<table>
+<thead>
+<tr><th>Fornecedor</th><th>SKUs</th><th>Total em unidades</th><th>Valor de referência</th><th></th></tr>
+</thead>
+<tbody>
+{% for f in fornecedores %}
+<tr>
+  <td>{{ f.fornecedor }}</td>
+  <td>{{ m.inteiro(f.qtd_sku) }}</td>
+  <td>{{ m.numero(f.total_unidades) }}</td>
+  <td>{{ m.moeda(f.valor_total) }}</td>
+  <td>
+    <a class="botao secundario"
+       href="/pedidos/exportar?fornecedor={{ f.fornecedor | urlencode }}&data_de={{ data_de }}&data_ate={{ data_ate }}">
+      Baixar .xlsx
+    </a>
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

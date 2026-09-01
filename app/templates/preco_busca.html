@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block titulo %}Precificação{% endblock %}
+{% block conteudo %}
+<h1>Precificação</h1>
+<p class="texto-suave">Busque o SKU para ver os cenários de preço (atacado e varejo, à vista e a prazo).</p>
+
+<form class="filtros" method="get" action="/preco">
+  <div style="flex: 1 1 260px">
+    <label for="q">Código ou descrição</label>
+    <input type="text" id="q" name="q" placeholder="ex.: 12345 ou detergente" value="{{ q }}" autofocus>
+  </div>
+  <button type="submit" class="botao-filtrar">Buscar</button>
+</form>
+
+{% if q and not resultados %}
+  <p class="vazio-lista">Nenhum SKU encontrado para "{{ q }}".</p>
+{% endif %}
+
+{% if resultados %}
+<div class="tabela-scroll">
+{% for r in resultados %}
+  <a class="card" style="display:block" href="/preco/{{ r.codigo }}">
+    <div class="card-titulo">
+      <div>
+        <div class="codigo">{{ r.codigo }}</div>
+        <div class="descricao">{{ r.descricao }}</div>
+        <div class="texto-suave">{{ r.fornecedor }}</div>
+      </div>
+      <span class="texto-suave">›</span>
+    </div>
+  </a>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

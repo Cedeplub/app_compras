@@ -1,0 +1,144 @@
+name: 'compras'
+version: '1.0.0'
+config-version: 2
+
+profile: 'compras'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Materializacao centralizada aqui. {{ config() }} por arquivo so para DESVIO -
+# e desvio pede comentario explicando o porque, no cabecalho do model.
+models:
+  compras:
+    staging:
+      +materialized: view
+
+    intermediate:
+      +materialized: table
+
+    marts:
+      +materialized: table
+
+    # Camada de CONTRATO com o dashboard. O nome do arquivo E o nome fisico da
+    # tabela que a aplicacao le, e os aliases saem em MAIUSCULAS.
+    # Renomear coluna aqui quebra o dashboard - trate como interface publica.
+    app:
+      +materialized: table
+      +tags: ['app']
+
+# Janela de historico da venda mensal, em meses contados para tras a partir do
+# mes corrente. 24 cobre o que o modelo precisa: ano anterior completo + ano
+# corrente ate o mes em andamento (documentacao tecnica v10, secao 4.2).
+#
+# Sobre depender do dia: a janela DESTE projeto e' "os N meses que terminam no mes
+# corrente" - e' o contrato do relatorio, entao depender da data e' correto e a macro
+# compras_periodo_mensal faz isso de proposito. O que se rejeita do filtro_periodo do
+# powerbi_dbt e' outra coisa: "hoje" como DEFAULT SILENCIOSO de um parametro que
+# deveria ser explicito. A diferenca e' intencao declarada versus efeito colateral.
+vars:
+  compras_meses_historico: 24
+
+  # Filial de estoque usada pelo relatorio de posicao (query.py) e pela coluna
+  # de dias sem estoque do relatorio mensal (query_mensal.py). ATENCAO: o codigo
+  # e '2', SEM ZERO A ESQUERDA - PCEST.CODFILIAL e PCFILIAL.CODIGO sao VARCHAR2(2)
+  # e guardam '1'/'2'/'9', nao '01'/'02'/'09' (CONTEXTO.md regra 3).
+  compras_filial_estoque: '2'
+
+  # UF de destino usada no ON do join com pctabtrib (nunca no WHERE - no WHERE
+  # descartaria produto sem linha de tributacao para a UF).
+  compras_uf_destino: 'BA'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Seeds - as tabelas de apoio, extraidas das abas da planilha v10.
+#
+# +column_types explicito onde a coluna e ESPARSA: o dbt-oracle infere o tipo a
+# partir das primeiras linhas, e coluna quase toda nula vira o tipo errado.
+# ─────────────────────────────────────────────────────────────────────────────
+seeds:
+  compras:
+    +delimiter: ";"
+
+    # VALOR guarda numero E texto na mesma coluna (MEDIDA_PEDIDO = 'LITROS'),
+    # entao e VARCHAR2 e a conversao acontece no model int_parametro.
+    # ATIVO='N' marca parametro que a propria planilha declara sem efeito -
+    # estao aqui como registro historico e NAO devem ser usados em calculo.
+    seed_parametros:
+      +column_types:
+        PARAMETRO: VARCHAR2(40)
+        VALOR: VARCHAR2(40)
+        ATIVO: VARCHAR2(1)
+        OBS: VARCHAR2(400)
+
+    seed_fornecedor:
+      +column_types:
+        FORNECEDOR: VARCHAR2(60)
+        MESES_MEDIA: NUMBER(3)
+        COBERTURA_ALVO: NUMBER(6,2)
+        PEDIDO_EM: VARCHAR2(10)
+        COMPRADOR: VARCHAR2(40)
+
+    # MVA e nula em 6 das 15 linhas (so ST_SUBSTITUTO tem MVA) - o caso classico
+    # de inferencia errada.
+    seed_icms:
+      +column_types:
+        COD_TRIBUTACAO: NUMBER(6)
+        DESCRICAO: VARCHAR2(120)
+        MODALIDADE: VARCHAR2(20)
+        MVA: NUMBER(12,8)
+        ALIQ_ICMS_SAIDA: NUMBER(12,8)
+        REDUCAO_BASE: NUMBER(12,8)
+        ICMS_EF_SAIDA: NUMBER(12,8)
+        ICMS_EF_SEM_REDUCAO: NUMBER(12,8)
+
+    seed_icms_origem:
+      +column_types:
+        UF_ORIGEM: VARCHAR2(2)
+        ALIQ_ICMS_COMPRA: NUMBER(12,8)
+
+    seed_credito:
+      +column_types:
+        FORNECEDOR: VARCHAR2(60)
+        COD_ICMS: NUMBER(6)
+        CREDITO: NUMBER(12,8)
+
+    seed_piscofins:
+      +column_types:
+        CODTRIBPISCOFINS: NUMBER(6)
+        DESCRICAO: VARCHAR2(60)
+        ALIQ_EFETIVA: NUMBER(12,8)
+
+    seed_embalagem:
+      +column_types:
+        EMBALAGEM: VARCHAR2(40)
+        UNID_POR_EMB: NUMBER(12,4)
+        LITROS_POR_EMB: NUMBER(12,4)
+        LITROS_POR_UNIDADE: NUMBER(12,4)
+
+    # ANTIGO_2/PESO_2 sao nulos em praticamente toda linha (caso de duas trocas
+    # em sequencia, raro).
+    seed_sucessao:
+      +column_types:
+        CODIGO_NOVO: NUMBER(6)
+        ANTIGO_1: NUMBER(6)
+        PESO_1: NUMBER(9,6)
+        ANTIGO_2: NUMBER(6)
+        PESO_2: NUMBER(9,6)
+        ATIVO: VARCHAR2(3)
+
+    seed_est_fabrica:
+      +column_types:
+        COD_FAB: VARCHAR2(40)
+        DESCRICAO: VARCHAR2(120)
+        DISPONIVEL: NUMBER(14,4)
+        UN: VARCHAR2(10)
+        LOCAL: VARCHAR2(40)
+        FORNECEDOR: VARCHAR2(60)

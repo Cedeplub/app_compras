@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block titulo %}Dashboard de Compras{% endblock %} — CEDEP</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+<div class="cabecalho-app">
+  <div class="cabecalho-conteudo">
+    <span class="marca">Compras CEDEP</span>
+    <nav class="nav-principal">
+      <a href="/compra" class="{{ 'ativo' if request.url.path.startswith('/compra') else '' }}">
+        <span class="icone">&#128722;</span>Compra</a>
+      <a href="/preco" class="{{ 'ativo' if request.url.path.startswith('/preco') else '' }}">
+        <span class="icone">&#128181;</span>Preços</a>
+      <a href="/indicadores" class="{{ 'ativo' if request.url.path.startswith('/indicadores') else '' }}">
+        <span class="icone">&#128202;</span>Indicadores</a>
+      <a href="/pedidos" class="{{ 'ativo' if request.url.path.startswith('/pedidos') else '' }}">
+        <span class="icone">&#128230;</span>Pedidos</a>
+    </nav>
+    <div class="usuario-info">
+      <span>{{ usuario.nome }}{% if not usuario.eh_diretoria %}<span class="so-leitura">leitura</span>{% endif %}</span>
+      <form method="post" action="/logout">
+        <button type="submit" class="botao-sair">Sair</button>
+      </form>
+    </div>
+  </div>
+</div>
+<main>
+{% block conteudo %}{% endblock %}
+</main>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

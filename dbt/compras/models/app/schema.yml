@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Camada `app` — o contrato com o dashboard (Etapa 6). Projeção pura das
+  # três primeiras; a quarta é o único model com agregação.
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: compras_pedido
+    description: >
+      Tabela física COMPRAS_PEDIDO. Projeção PURA de fat_pedido: as mesmas
+      122 colunas, na mesma ordem, alias em MAIÚSCULA. Sem cálculo. Grão: 1
+      linha por SKU (CODIGO). Ver tests/compras_app_pedido_espelha_fat.sql.
+    columns:
+      - name: CODIGO
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+
+  - name: compras_alerta
+    description: >
+      Tabela física COMPRAS_ALERTA. Projeção PURA de fat_alerta, alias em
+      MAIÚSCULA. Grão: 1 linha por SKU x TIPO DE ALERTA ATIVO. ⚠ count(*)
+      conta ALERTAS, não PRODUTOS - para produtos é count(distinct CODIGO).
+    columns:
+      - name: CODIGO
+        description: "NÃO é único aqui - o grão é (CODIGO, TIPO_ALERTA)."
+        data_tests: [not_null]
+      - name: TIPO_ALERTA
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['FABRICA', 'INATIVO', 'RUPTURA', 'DEVOLUCAO', 'PARADO',
+                       'FORA_DE_LINHA', 'LITRAGEM', 'IMPORTADO', 'TRIB', 'MVA',
+                       'CUSTO', 'MARGEM_INSTAVEL', 'SUCESSAO',
+                       'MARGEM_INSTAVEL_VAREJO']
+      - name: TEXTO_ALERTA
+        data_tests: [not_null]
+
+  - name: compras_venda_mensal
+    description: >
+      Tabela física COMPRAS_VENDA_MENSAL. Projeção PURA de int_venda_mensal,
+      alias em MAIÚSCULA. ⚠ Grão: 1 linha por MÊS x PRODUTO - o único model
+      da camada `app` cujo grão NÃO é o SKU. O mês corrente está em
+      andamento; comparação mês a mês só fecha sobre meses fechados.
+    columns:
+      - name: MES
+        data_tests: [not_null]
+      - name: CODIGO_PRODUTO
+        data_tests: [not_null]
+
+  - name: compras_ind_fornecedor
+    description: >
+      Tabela física COMPRAS_IND_FORNECEDOR. ÚNICO model da camada `app` com
+      agregação. Grão: 1 linha por FORNECEDOR (texto do departamento,
+      CONTEXTO.md regra 7). Indicador NOVO, sem correspondência na planilha -
+      ver o cabeçalho do model para as definições de margem média simples x
+      ponderada por estoque. Espinha: dim_fornecedor, left join do agregado
+      de fat_pedido - departamento sem SKU sai com contagens zeradas, não some.
+    columns:
+      - name: FORNECEDOR
+        description: "Grão da tabela."
+        data_tests:
+          - unique
+          - not_null

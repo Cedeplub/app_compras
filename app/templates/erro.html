@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sistema ocupado — Dashboard de Compras CEDEP</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="pagina-auth">
+  <div class="caixa-auth">
+    <h1>Compras CEDEP</h1>
+    {# Esta tela NAO e' "deu erro". E' "esta ocupado agora". A diferenca importa:
+       a primeira faz o comprador abrir chamado, a segunda faz ele tentar de novo.
+       Nada aqui expoe detalhe tecnico - a mensagem vem de ConsultaEstourouTempo,
+       que e' escrita para quem usa, nao para quem mantem. #}
+    <p class="erro">{{ mensagem }}</p>
+    <p class="texto-suave">
+      Nenhuma decisão sua foi perdida — o que já estava gravado continua gravado.
+    </p>
+    <p><a href="/compra">Voltar para a lista de compra</a></p>
+  </div>
+</div>
+</body>
+</html>

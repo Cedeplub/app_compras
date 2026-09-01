@@ -1,0 +1,8 @@
+# Fixado na linha 1.9.x para casar com o projeto powerbi_dbt, que ja roda nesta maquina.
+# Consistencia entre os dois projetos dbt vale mais que estar na ultima versao.
+dbt-core>=1.9,<1.10
+dbt-oracle>=1.9,<1.10
+
+# Driver Oracle. O modo THICK e obrigatorio neste servidor (verificador 0x939) e ja vem
+# ligado pela variavel de sistema ORA_PYTHON_DRIVER_TYPE=thick. Ver CONTEXTO.md secao 3.
+oracledb>=2.0

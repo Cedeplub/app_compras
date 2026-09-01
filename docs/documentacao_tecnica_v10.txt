@@ -1,0 +1,361 @@
+===== PAGE 1 =====
+Modelo de Compras v10 · Documentação Técnica
+CEDEP COMÉRCIO LTDA
+Documentação Técnica — Modelo de 
+Compras e Precificação
+Versão v10 — arquitetura de dados, lógica de cálculo e premissas para 
+dashboard
+Preparado para a equipe de TI, a pedido de Felipe Anjos (Diretor de Compras e Logística)
+Agosto de 2026
+(75) 3602-5700  ·  @cedeplub  ·  Av. Deputado Luís Eduardo Magalhães, Km 525,5, Limoeiro, Feira de Santana-BA
+===== PAGE 2 =====
+   Modelo de Compras v10 · Documentação Técnica
+Sumário
+1. Objetivo deste documento
+2. Visão geral do sistema
+3. Arquitetura de dados — visão geral do fluxo
+4. Fontes de dados — os dois relatórios
+5. Camada intermediária — consolidação por SKU
+6. Tabelas de apoio e parâmetros
+7. A aba "pedido" — o motor de decisão
+8. Lógica de cálculo — fiscal e custo
+9. Lógica de cálculo — margem e preço sugerido
+10. Classificação ABC e sistema de alertas
+11. Sucessão de produtos
+12. Como a planilha é mantida atualizada hoje
+13. Objetivos e premissas para o dashboard
+14. Recomendações técnicas para a implementação
+Página 2 de 12
+===== PAGE 3 =====
+   Modelo de Compras v10 · Documentação Técnica
+ 01   Objetivo deste documento
+Este documento descreve, para a equipe de TI, como funciona o modelo de compras e precificação usado hoje 
+pela diretoria de Compras e Logística da CEDEP — de onde vêm os dados, como cada cálculo é feito e quais 
+premissas de negócio sustentam cada número. O objetivo final é permitir que a TI construa um dashboard 
+online, automático e acessível de qualquer lugar (incluindo celular), que reproduza os mesmos objetivos e a 
+mesma lógica de decisão do modelo atual, hoje operado em uma planilha Excel.
+O documento está organizado em quatro blocos:
+• De onde vêm os dados (arquitetura, dos sistemas de origem até a planilha)
+• Como os cálculos são feitos (regras de negócio fiscais, de custo, margem e preço)
+• Como a planilha é mantida atualizada hoje (rotina diária)
+• O que se espera do dashboard (objetivos, público e prioridades)
+ Este documento reflete o estado da planilha na versão "v10", com a reestruturação de agosto de 2026. Qualquer⚠  
+mudança de estrutura no modelo original deve ser refletida aqui também — ver seção 8.
+ 02   Visão geral do sistema
+A CEDEP é uma distribuidora de lubrificantes e produtos automotivos, com sede em Feira de Santana (BA) e 
+filiais no estado, operando tanto atacado (distribuição) quanto varejo (lojas próprias e troca de óleo). O portfólio 
+de fornecedores inclui Valvoline, Petronas, Texaco, Ipiranga, YPF, Ingrax, 3M, Tecfil, Koube, entre outros.
+O modelo de compras é uma planilha Excel ("MODELO_COMPRAS_CEDEP_v10.xlsx") com cerca de 8.772 SKUs 
+(produtos) e ~980 mil fórmulas, que serve três propósitos ao mesmo tempo:
+• Decisão de compra — quanto pedir de cada produto, com base em estoque, histórico de venda e 
+cobertura desejada
+• Precificação — qual preço sugerir, atacado e varejo, sob diferentes cenários fiscais, para atingir a margem-
+alvo definida pela diretoria
+• Monitoramento — classificação ABC, alertas de estoque parado/negativo, margem instável, produtos fora 
+de linha, devolução alta, entre outros
+Quem usa a planilha hoje: o Diretor de Compras e Logística (decisão e input de metas de margem), e a equipe 
+comercial (Cássio e Gabriela), que recebe os preços já decididos para lançar no sistema (Winthor). O dashboard 
+deve atender pelo menos esses dois perfis.
+ 03   Arquitetura de dados — visão geral do fluxo
+Os dados percorrem quatro camadas até chegar à decisão final. Nenhuma camada pula a anterior — é 
+importante que a TI replique essa mesma cadeia (ou uma equivalente) para não perder nenhuma regra de 
+negócio embutida nela.
+Camada O que é Onde vive hoje
+1. ERP Winthor/Oracle — sistema transacional da 
+CEDEP (estoque, compras, vendas, fiscal) Servidor Winthor/Oracle da CEDEP
+2. Relatórios 
+brutos
+Duas extrações do ERP, geradas via sistema 
+web interno, em Excel Pasta de rede "PLANILHA DE COMPRAS"
+3. Tabelas 
+intermediárias
+Consolidação e tipagem dos relatórios 
+brutos, uma linha por SKU/mês Dentro do próprio Excel (Power Query)
+Página 3 de 12
+===== PAGE 4 =====
+   Modelo de Compras v10 · Documentação Técnica
+Camada O que é Onde vive hoje
+4. Modelo de 
+decisão
+A aba "pedido": cálculo de custo, margem, 
+preço sugerido, alertas Dentro do próprio Excel (fórmulas)
+Hoje, as camadas 3 e 4 vivem dentro do mesmo arquivo Excel. Para o dashboard, a recomendação é que a TI 
+trate a camada 2 (os dois relatórios) como a fonte de verdade a ser ingerida em um banco de dados ou data 
+warehouse, e reproduza a lógica das camadas 3 e 4 como transformação/cálculo — não como uma cópia da 
+planilha em si. As seções 4 a 7 detalham exatamente essa lógica.
+ 04   Fontes de dados — os dois relatórios
+Os dois relatórios são gerados manualmente (ou por automação) a partir do sistema web interno de relatórios 
+(que por sua vez lê do Winthor), e salvos como arquivos Excel na pasta de rede. Hoje isso acontece uma vez por 
+dia, em dias úteis.
+4.1 Relatório de compras/estoque/fiscal
+Nome do arquivo: relatorio_compras_AAAAMMDD_HHMMSS.xlsx
+41 colunas, uma linha por SKU. Consolida em uma única extração o que antes vinha de duas rotinas separadas 
+do Winthor (220 — estoque/preço, e 8105 — tributação). Contém: código e descrição do produto, status, 
+embalagem de compra e venda, fornecedor, UF de origem, código de tributação e NCM, dados de PIS/COFINS, 
+quantidades (pedida, bloqueada, avaria, reservada, disponível), data e valor da última entrada, preço de venda 
+atacado e varejo atuais, data da última saída, peso e quantidade por palete.
+4.2 Relatório de vendas mensal
+Nome do arquivo: relatorio_mensal_AAAAMMDD_HHMMSS.xlsx
+19 colunas, formato longo — uma linha por combinação de SKU e mês. Cobre sempre o ano anterior completo 
+mais o ano corrente até o mês em andamento (janela dinâmica, recalculada a cada geração). Contém, por mês e 
+produto: quantidade faturada, quantidade devolvida, quantidade líquida, valor líquido, dias sem estoque na filial 
+2, número de clientes atacado e varejo distintos, e indicador de "fora de linha".
+ Quantidade e valor usados em todo o modelo são sempre os campos "líquidos" (faturado menos devolvido), ⚠
+nunca os "faturados" brutos — a única exceção é a taxa de devolução, que por definição precisa do valor bruto no 
+denominador.
+ 05   Camada intermediária — consolidação por SKU
+Os dois relatórios brutos são transformados (hoje via Power Query, dentro do Excel) em duas tabelas, cada uma 
+com exatamente uma linha por SKU — é essa a granularidade que toda a lógica de cálculo espera.
+5.1 Cadastro/estoque consolidado (34 colunas)
+Praticamente uma cópia tipada do relatório de compras, com duas transformações importantes: (1) o campo 
+"fornecedor" usado no restante do modelo é o texto do departamento do produto, não o fornecedor legal da 
+nota fiscal (podem ser entidades diferentes); (2) o valor da última entrada nunca é dividido pela embalagem de 
+compra — já vem em unidade individual, pronto para uso.
+Página 4 de 12
+===== PAGE 5 =====
+   Modelo de Compras v10 · Documentação Técnica
+5.2 Venda mensal consolidada (35 colunas)
+Transforma o formato longo (uma linha por mês) em uma linha por produto, com colunas fixas: Q00 a Q11 
+(quantidade líquida dos últimos 12 meses fechados, do mais recente ao mais antigo), V00 a V05 (valor líquido 
+dos últimos 6 meses fechados), QATUAL/VATUAL (mês corrente, ainda em andamento), taxa de devolução dos 
+últimos 3 meses, número de clientes atacado/varejo do mês mais recente fechado, e médias móveis pré-
+calculadas (2, 3, 4, 6, 9 e 12 meses).
+ A base da consolidação precisa incluir todo SKU que apareceu em qualquer mês, inclusive o corrente — não só ⚠
+quem tem histórico em mês já fechado. Um produto com primeira venda neste mês, sem nenhum mês fechado, tem 
+que aparecer mesmo assim, só que com os campos de meses fechados zerados.
+ 06   Tabelas de apoio e parâmetros
+Além das duas tabelas de dados, o modelo usa um conjunto de tabelas de referência menores, que definem 
+constantes de negócio e mapeamentos. São elas que precisam de manutenção manual quando uma regra fiscal 
+ou comercial muda.
+Tabela Conteúdo
+Parametros Constantes globais: comissão, fator de prazo (atacado e varejo), corte da curva ABC, 
+alíquotas de referência, medida padrão de pedido
+dFornecedor Por fornecedor: quantos meses de histórico usar na média de venda (campo N_MESES), 
+comprador responsável
+dICMS / dICMS_Origem Alíquotas de ICMS por UF de origem e por tipo de tratamento fiscal
+dCredito Regras de crédito de PIS/COFINS e ICMS por código de tributação
+dPISCOFINS Alíquotas de PIS/COFINS por código de tributação
+dSucessao Mapeamento de produto descontinuado → produto sucessor, para não perder histórico 
+de venda na troca
+dEmbalagem Fatores de conversão entre unidade de compra e unidade de venda
+fEstFabrica Estoque em fábrica/centro de distribuição, quando aplicável
+Página 5 de 12
+===== PAGE 6 =====
+   Modelo de Compras v10 · Documentação Técnica
+ 07   A aba "pedido" — o motor de decisão
+É aqui que todo o cálculo acontece: 122 colunas, uma linha por SKU (~8.772 hoje). Cada fórmula busca dado por 
+CODIGO (equivalente a um JOIN por chave primária) nas tabelas das seções 5 e 6 — nenhuma fórmula depende 
+da posição da linha, o que é importante porque a lista é reordenada periodicamente (ver seção 8).
+As colunas se organizam em zonas, na mesma ordem em que aparecem na planilha:
+Zona Exemplos de coluna Para que serve
+Identificação
+CODIGO, DESCRICAO, 
+FORNECEDOR, 
+EMBALAGEM
+Chave e atributos descritivos do produto
+Estoque e alertas
+EST_DISP, 
+CHECK_RUPTURA, 
+DIAS_SEM_VENDA, 
+ALERTA
+Situação atual de estoque e sinalizações automáticas
+Venda e demanda MEDIA_JANELA, TEND, 
+CLASSE Histórico de venda, tendência e classificação ABC
+Sugestão de compra PEDIDO, SUG_PALETE, 
+VALOR_PEDIDO Quanto comprar, já ajustado à embalagem e ao palete
+Custo e fiscal
+VL_ENT_UNIT, 
+ICMS_ST_s/VALOR, 
+CUSTO_TOT_GERENCI
+AL
+Custo real do produto, já considerando tributação
+Margem (atacado)
+MARGEM_ST_s/
+VALOR, 
+MARGEM_OFICIAL, 
+MARGEM_SEM_RED
+Margem atual do preço vigente, sob 3 óticas fiscais
+Preço sugerido (atacado)
+MARGEM_ALVO, 
+PV_SUG_*_AV/AP, 
+ALT_PV_AT_AV/AP
+Preço para atingir a meta, e decisão final editável
+Margem e preço (varejo)
+mesma lógica do 
+atacado, com sufixo 
+_VAREJO/_VAR
+Mesma decisão, para o canal varejo
+Sucessão
+ANT_1/PESO_1, 
+ANT_2/PESO_2, 
+CHECK_SUCESSAO
+Herança de histórico de produto descontinuado
+Página 6 de 12
+===== PAGE 7 =====
+   Modelo de Compras v10 · Documentação Técnica
+ 08   Lógica de cálculo — fiscal e custo
+Esta é a parte com mais risco de erro se replicada sem cuidado: as regras abaixo são específicas do regime 
+tributário da CEDEP e mudam se a legislação ou o credenciamento mudar.
+8.1 Regime de substituição tributária
+A CEDEP é credenciada como substituta tributária (Art. 7º-B do Decreto 7.799/00), cobrindo a maior parte do 
+mix de produtos (peças/acessórios automotivos e lubrificantes). Isso significa: os fornecedores NÃO retêm ICMS-
+ST na compra (fica suspenso); a própria CEDEP calcula e recolhe o ICMS-ST no momento da venda ao cliente 
+final.
+8.2 Redução de base de ICMS — só para atacado/distribuidora
+O benefício de redução de base de ICMS vale só para as filiais 02 e 09 (a distribuidora/atacado). As demais filiais, 
+que vendem no varejo, não têm esse benefício — por isso o cálculo de margem e preço do varejo usa sempre a 
+alíquota "cheia" (sem redução), nunca a reduzida.
+8.3 Base de crédito de PIS/COFINS
+O crédito de PIS/COFINS é sempre calculado sobre o valor da nota fiscal sem IPI, descontado o crédito de ICMS 
+— nunca sobre o valor da nota fiscal com IPI.
+8.4 Custo oficial vs. custo gerencial (caso Ingrax)
+Para a maioria dos fornecedores, custo oficial e custo gerencial são o mesmo número. A exceção é a Ingrax: 80% 
+do valor do produto vem em nota fiscal normal (fluxo fiscal padrão), e os outros 20% vêm em uma nota 
+separada de "cessão de direito de imagem" (aluguel de marca), que não entra no sistema como custo do 
+produto mas é custo real do negócio. O modelo soma esse ajuste separadamente:
+• CUSTO_TOT_OFICIAL — só o que está formalmente registrado como custo do produto (usado na apuração 
+fiscal)
+• CUSTO_ADICIONAL_IMAGEM — o valor da segunda nota, calculado a partir do percentual configurado 
+(hoje 80/20)
+• CUSTO_TOT_GERENCIAL = CUSTO_TOT_OFICIAL + CUSTO_ADICIONAL_IMAGEM — é essa a base usada em 
+toda análise de margem e preço, atacado e varejo
+ A base fiscal (ICMS-ST, ICMS normal) nunca usa o custo gerencial, só o oficial puro — o ajuste é só para decisão ⚠
+de margem/preço, nunca entra na apuração de imposto.
+Página 7 de 12
+===== PAGE 8 =====
+   Modelo de Compras v10 · Documentação Técnica
+ 09   Lógica de cálculo — margem e preço sugerido
+9.1 Três cenários de margem (atacado)
+Para o preço de venda atual, o modelo calcula a margem sob três óticas fiscais diferentes — a diferença entre 
+elas está em qual alíquota de ICMS e qual base de custo cada uma usa:
+Cenário Alíquota ICMS Base de custo Quando é o "real"
+ST s/Valor Oficial (com redução) Custo s/valor + ajuste 
+Ingrax
+Regime ST calculado 
+sobre o valor
+Oficial Oficial (com redução) Custo gerencial Filiais com o benefício 
+(02/09)
+Sem Redução Sem redução Custo gerencial Filiais sem o benefício 
+(maioria)
+A fórmula geral de margem é: margem = (preço − preço × (alíquota ICMS + PIS/COFINS + comissão) − custo) ÷ 
+preço.
+9.2 Preço sugerido — resolvendo para a margem-alvo
+O Diretor de Compras define uma meta de margem por produto (MARGEM_ALVO, hoje com padrão de 20%). O 
+modelo inverte a fórmula de margem para calcular qual preço atinge exatamente essa meta, sob cada um dos 
+três cenários fiscais — à vista e a prazo (aplicando o fator de prazo sobre o preço à vista):
+• PV_SUG_ST_s/VALOR_AV / _AP
+• PV_SUG_OFICIAL_AV / _AP
+• PV_SUG_SEM_RED_AV / _AP
+Isso dá visibilidade simultânea aos três cenários — em vez de esconder informação atrás de um único número, o 
+modelo mostra a faixa de preço possível conforme o tratamento fiscal que vai de fato se aplicar àquela venda.
+9.3 Decisão final — o campo editável
+Depois de ver os seis preços sugeridos, o Diretor escolhe (ou digita manualmente, podendo arredondar ou 
+divergir das sugestões) o preço que de fato vai ser enviado para a equipe comercial lançar no sistema:
+• ALT_PV_AT_AV — preço final, à vista, atacado (campo de entrada manual, não fórmula)
+• ALT_PV_AT_AP — a variação a prazo é calculada automaticamente a partir do valor digitado em AV
+ Este é o único ponto do modelo onde uma pessoa decide um número em vez de uma fórmula calcular. Qualquer ⚠
+dashboard automático precisa preservar esse ponto de decisão humana — não substituí-lo por uma escolha 
+automática.
+9.4 Varejo — mesma lógica, dois cenários
+O varejo segue a mesma mecânica (margem atual sob cada cenário → meta de margem → preço sugerido à 
+vista/a prazo → campo de decisão manual), com duas diferenças: só existem dois cenários fiscais (ST s/Valor e 
+Sem Redução — não existe "Oficial" porque o benefício de redução não se aplica ao varejo, exceto nas filiais 
+02/09, que não vendem no varejo), e o fator que converte preço à vista em preço a prazo é diferente do atacado 
+(1,086435 fixo, contra 1,0317 no atacado).
+Página 8 de 12
+===== PAGE 9 =====
+   Modelo de Compras v10 · Documentação Técnica
+ 10   Classificação ABC e sistema de alertas
+10.1 Curva ABC
+Cada produto é classificado como "A" (alta relevância) ou "B/C" (demais), com base na participação do seu valor 
+médio de venda sobre o valor total vendido por todo o catálogo — os produtos sem nenhuma venda no período 
+recebem a marca "S/VEND". Essa é uma classificação relativa: depende do total do catálogo inteiro, então 
+precisa ser recalculada toda vez que o número de produtos ativos muda.
+10.2 Alertas
+Uma coluna única (ALERTA) concatena, em texto, todos os sinalizadores binários ("CHECK_*") que estiverem 
+ativos para aquela linha — entre eles: produto não mapeado fiscalmente, estoque em ruptura, estoque parado, 
+margem instável (divergência grande entre os cenários fiscais), devolução alta nos últimos 3 meses, produto fora 
+de linha, e produto fora da curva A mas com alerta de margem. A ideia é dar, em uma célula só, um resumo do 
+que precisa de atenção naquele SKU.
+ 11   Sucessão de produtos
+Quando um produto é descontinuado e substituído por outro (ex: mudança de embalagem, reformulação, troca 
+de fornecedor do mesmo item), o histórico de venda do produto antigo não deveria "desaparecer" — o produto 
+novo herda parte dele, ponderado, para que a média de venda do sucessor não comece do zero artificialmente. 
+Isso é mantido na tabela dSucessao e refletido nas colunas ANT_1/PESO_1 (produto antecessor e peso do seu 
+histórico) e ANT_2/PESO_2 (para casos de duas trocas em sequência).
+Página 9 de 12
+===== PAGE 10 =====
+   Modelo de Compras v10 · Documentação Técnica
+ 12   Como a planilha é mantida atualizada hoje
+A rotina diária de manutenção tem duas partes, que juntas substituem o que seria um pipeline de ETL 
+tradicional:
+12.1 Atualização da camada intermediária — Power Query
+Dentro do próprio Excel (licença 365), duas consultas Power Query leem os dois relatórios mais recentes da 
+pasta de rede e reconstroem as tabelas de cadastro e venda mensal (seção 5) do zero a cada execução. Isso roda 
+com um clique ("Atualizar Tudo"), hoje operado manualmente pelo Diretor de Compras.
+12.2 Manutenção da aba pedido — automação
+Um processo automatizado (hoje um agente de IA com acesso à pasta de rede e ao sistema web de relatórios) 
+roda diariamente e aplica três regras, nesta ordem, sobre a aba pedido:
+• SKU novo — quando um código aparece no cadastro consolidado mas ainda não existe em pedido, uma 
+linha nova é criada, com todas as fórmulas replicadas e os campos de decisão (meta de margem, preço 
+manual) inicializados em vazio/padrão
+• Sincronização de cadastro — quando descrição, embalagem ou código de fábrica de um produto já 
+existente mudou no cadastro-fonte, o valor em pedido é atualizado para bater
+• Reordenação alfabética — quando a regra 1 ou 2 alterou algo, todas as linhas são reordenadas por 
+descrição; como nenhuma fórmula depende da posição da linha, isso é seguro, mas caro (recalcula a aba 
+inteira) — por isso só roda quando necessário
+ Um ponto de atenção para replicar isso corretamente: sempre que o número total de linhas muda (regra 1), ⚠
+qualquer fórmula que dependa do tamanho total da base — não só a classificação ABC, mas qualquer cálculo 
+comparativo/agregado futuro — precisa recalcular esse limite junto. Isso já causou um erro real neste modelo (a 
+classificação ABC ficou presa no total antigo de linhas até ser corrigido), por isso vale registrar aqui como cuidado 
+explícito para quem for implementar algo parecido.
+Os dois processos são independentes: a automação nunca escreve nas tabelas de cadastro/venda (só lê), e a 
+atualização do Power Query nunca toca na aba pedido.
+Página 10 de 12
+===== PAGE 11 =====
+   Modelo de Compras v10 · Documentação Técnica
+ 13   Objetivos e premissas para o dashboard
+O objetivo é que a TI construa uma versão online deste modelo — acessível de qualquer lugar, inclusive celular 
+— que preserve os mesmos objetivos de negócio, sem exigir que o Diretor de Compras abra o Excel para 
+acompanhar o dia a dia. Pontos que o dashboard deveria cobrir, em ordem aproximada de prioridade:
+13.1 Visão de decisão de compra
+• Lista de produtos com alerta ativo (ruptura, estoque parado, margem instável), priorizável
+• Sugestão de quantidade de compra por produto/fornecedor, com possibilidade de filtrar por curva ABC
+13.2 Visão de precificação
+• Para cada produto (ou lista filtrada), os preços sugeridos nos três cenários fiscais, atacado e varejo, à vista 
+e a prazo
+• Um fluxo simples para registrar a decisão final de preço (equivalente ao campo ALT_PV hoje) — mantendo 
+o humano na decisão, não automatizando a escolha
+13.3 Indicadores agregados
+• Margem média por fornecedor, por curva ABC, por filial
+• Evolução de venda mês a mês, comparando com o mesmo período do ano anterior
+• Quantidade de SKUs com alerta ativo, por tipo de alerta, ao longo do tempo
+13.4 Acesso e atualização
+• Acesso via navegador mobile, sem depender de VPN se possível
+• Atualização automática diária, no mesmo ritmo da geração dos relatórios de origem (hoje, uma vez por dia 
+útil) — não precisa ser tempo real
+• Permissão de leitura ampla (equipe comercial, diretoria), permissão de decisão de preço restrita ao Diretor 
+de Compras
+ 14   Recomendações técnicas para a implementação
+• Tratar os dois relatórios brutos (seção 4) como a fonte de verdade a ingerir — não a planilha Excel em si. A 
+planilha é hoje a ferramenta de cálculo, não o dado original.
+• Replicar a granularidade das duas tabelas intermediárias (uma linha por SKU, e uma linha por SKU/mês) 
+antes de tentar replicar a aba pedido — a lógica de cálculo depende dessa consolidação estar correta 
+primeiro.
+• Validar cada regra fiscal da seção 8 diretamente com o Diretor de Compras antes de codificar — são regras 
+específicas do credenciamento da CEDEP e mudam se a legislação mudar. Um erro de tratamento fiscal 
+aqui afeta preço de venda real.
+• Preservar o campo de decisão manual de preço (seção 9.3) como um passo explícito de aprovação 
+humana, não como um valor calculado automaticamente.
+• Ao implementar qualquer cálculo agregado/comparativo (como a curva ABC), garantir que ele sempre 
+considere a base completa e atual de produtos — não um valor fixo do total de linhas, que muda toda vez 
+que um SKU novo é cadastrado.
+• Definir com o Diretor de Compras a frequência real de atualização necessária — hoje é diária porque os 
+relatórios de origem só são gerados uma vez por dia; não há necessidade de tempo real.
+Página 11 de 12
+===== PAGE 12 =====
+   Modelo de Compras v10 · Documentação Técnica
+Qualquer dúvida sobre uma regra específica, o mais seguro é confirmar com o Diretor de Compras antes de 
+assumir um comportamento — várias das regras acima (redução de ICMS por filial, ajuste Ingrax, fator de prazo 
+do varejo) são exceções específicas da CEDEP, não padrões genéricos do setor.
+Página 12 de 12
