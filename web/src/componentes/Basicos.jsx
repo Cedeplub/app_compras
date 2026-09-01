@@ -30,18 +30,22 @@ export function Segmented({ opcoes, valor, aoTrocar, rotulo }) {
   );
 }
 
-/* §6: A → navy, B/C → cinza, S/VEND → vermelho. */
+/* Curva ABC. Os hex são os do protótipo (`classeChip`, .jsx linha 226), não uma
+ * aproximação com a paleta do Tailwind: o fundo é a própria cor com opacidade
+ * `18` (~9%), que é a convenção de fundo claro usada em todo o protótipo (§6).
+ * O texto do B/C é #6B6656, mais escuro que o fundo oliva — trocar por um cinza
+ * do Tailwind derruba o contraste num rótulo já pequeno. */
 const CORES_CLASSE = {
-  A: "bg-navy/10 text-navy",
-  "B/C": "bg-gray-200 text-cinza-neutro",
-  "S/VEND": "bg-vermelho/10 text-vermelho",
+  A: { background: "#375DA818", color: "#375DA8" },
+  "B/C": { background: "#8A857818", color: "#6B6656" },
+  "S/VEND": { background: "#DE434B18", color: "#DE434B" },
 };
 
 export function ClasseChip({ classe }) {
   if (!classe) return null;
   return (
-    <span className={`rounded px-1.5 py-0.5 text-2xs font-bold tracking-wide ${
-      CORES_CLASSE[classe] ?? "bg-gray-200 text-cinza-neutro"}`}>
+    <span style={CORES_CLASSE[classe] ?? CORES_CLASSE["B/C"]}
+          className="num rounded px-1.5 py-0.5 text-2xs font-bold">
       {classe}
     </span>
   );

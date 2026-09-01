@@ -20,7 +20,7 @@ from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
 
 from app import config
-from app.api import contrato
+from app.api import alertas, contrato
 from app.core import auditoria, auth, database
 from app.servicos import produto
 
@@ -97,7 +97,13 @@ def parametros(usuario=Depends(auth.exigir_login)):
 
 @router.get("/opcoes")
 def opcoes(usuario=Depends(auth.exigir_login)):
-    return produto.opcoes()
+    """Listas dos filtros + os metadados de cada tipo de alerta.
+
+    Os metadados (rótulo, peso, severidade) saem daqui, e não de uma tabela no
+    JavaScript, porque o MESMO peso ordena a lista no SQL. Duas cópias e a tela
+    legenda uma ordem que o banco não usou.
+    """
+    return {**produto.opcoes(), "alertas": alertas.metadados()}
 
 
 @router.get("/produtos")
@@ -125,7 +131,14 @@ def listar_produtos(
         "so_com_alerta": soComAlerta,
     }
     linhas, total = produto.listar(filtros, pagina, porPagina, ordenacao)
-    return contrato.pagina(linhas, total, pagina, porPagina)
+    corpo = contrato.pagina(linhas, total, pagina, porPagina)
+    # Agregados do FILTRO inteiro, não da página. Vão junto da listagem em vez
+    # de numa rota separada porque a tela precisa dos dois ao mesmo tempo: duas
+    # chamadas independentes podem responder fora de ordem e mostrar KPI de um
+    # filtro sobre a lista de outro.
+    corpo["resumo"] = produto.resumo(filtros)
+    corpo["contagemAlertas"] = produto.contagem_por_tipo(filtros)
+    return corpo
 
 
 @router.get("/produtos/{codigo}")

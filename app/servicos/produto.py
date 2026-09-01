@@ -12,6 +12,7 @@ do dbt é o limite (CONTEXTO.md §2/§5).
 """
 from __future__ import annotations
 
+from app.api import alertas
 from app.core import database
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +71,9 @@ _DE = """
 """
 
 ORDENACOES = {
+    # A ordem padrão da tela de Alertas: soma dos pesos dos alertas ativos do
+    # produto + peso da curva ABC (PROTOTIPO.md §2.1). Ver app/api/alertas.py.
+    "prioridade": f"{alertas.sql_score_prioridade('p')} desc, p.codigo",
     # nulls last em todas: produto sem cobertura calculada não pode encabeçar
     # uma lista ordenada por cobertura só porque o Oracle põe null primeiro.
     "cobertura": "p.meses_est asc nulls last, p.codigo",
@@ -81,7 +85,16 @@ ORDENACOES = {
 }
 
 
-def _condicoes(filtros: dict) -> tuple[str, dict]:
+def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
+    """Monta o `where`.
+
+    `incluir_alerta=False` devolve a base SEM o filtro de tipo de alerta. É o
+    recorte que o protótipo chama de `baseFiltrada` (§2.1) e que alimenta os 3
+    KPIs e a contagem de cada botão de tipo. Tem de ser assim: o número no botão
+    "Ruptura 425" responde "quantos eu veria se ligasse este", então não pode já
+    estar filtrado pelo que está ligado — senão o botão desligado mostraria
+    zero e ninguém mais o ligaria.
+    """
     condicoes: list[str] = []
     binds: dict = {}
 
@@ -113,7 +126,10 @@ def _condicoes(filtros: dict) -> tuple[str, dict]:
 
     # Um tipo de alerta, ou vários. Nunca `like` na string ALERTA concatenada:
     # COMPRAS_ALERTA já vem despivotado, uma linha por tipo (CONTEXTO §6).
-    tipos = filtros.get("tipos_alerta") or []
+    tipos = (filtros.get("tipos_alerta") or []) if incluir_alerta else []
+    if not incluir_alerta:
+        onde_base = f"where {' and '.join(condicoes)}" if condicoes else ""
+        return onde_base, binds
     if tipos:
         marcas = ", ".join(f":ta{i}" for i in range(len(tipos)))
         condicoes.append(
@@ -154,6 +170,59 @@ def listar(filtros: dict, pagina: int, itens_por_pagina: int,
     )
     anexar_alertas(linhas)
     return linhas, total
+
+
+def resumo(filtros: dict) -> dict:
+    """Os 3 KPIs do topo da tela, somados sobre o FILTRO INTEIRO.
+
+    O protótipo soma em memória porque tem 8 produtos no array (§4.1). Aqui são
+    8.772 SKUs paginados de 50 em 50: somar o que veio na página daria um
+    "valor em risco" que muda quando a pessoa vira a página — um número que se
+    move sozinho é pior que nenhum número.
+    """
+    onde, binds = _condicoes(filtros, incluir_alerta=False)
+    linha = database.consultar_um(
+        f"""
+        select
+            count(case when exists (select 1 from compras_alerta a
+                                     where a.codigo = p.codigo)
+                       then 1 end)                                  as com_alerta,
+            nvl(sum(case when exists (select 1 from compras_alerta a
+                                       where a.codigo = p.codigo)
+                         then p.valor_estoque end), 0)              as valor_em_risco,
+            count(case when exists (select 1 from compras_alerta a
+                                     where a.codigo = p.codigo
+                                       and a.tipo_alerta = 'RUPTURA')
+                       then 1 end)                                  as rupturas
+          from compras_pedido p
+          {onde}
+        """,
+        binds,
+    )
+    return {
+        "comAlerta": int(linha["com_alerta"] or 0),
+        "valorEmRisco": float(linha["valor_em_risco"] or 0),
+        "rupturas": int(linha["rupturas"] or 0),
+    }
+
+
+def contagem_por_tipo(filtros: dict) -> dict[str, int]:
+    """Quantos produtos cada tipo de alerta pega, dentro do filtro atual.
+
+    Sem o filtro de tipo (ver `_condicoes`): é o número que vai no botão, e ele
+    tem de responder "quantos eu veria se ligasse este".
+    """
+    onde, binds = _condicoes(filtros, incluir_alerta=False)
+    linhas = database.consultar(
+        f"""
+        select a.tipo_alerta, count(distinct a.codigo) as n
+          from compras_alerta a
+         where a.codigo in (select p.codigo from compras_pedido p {onde})
+         group by a.tipo_alerta
+        """,
+        binds,
+    )
+    return {l["tipo_alerta"]: int(l["n"]) for l in linhas}
 
 
 def obter(codigo: int) -> dict | None:

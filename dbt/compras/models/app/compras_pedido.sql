@@ -1,3 +1,16 @@
+-- Índices desta tabela de contrato. Sem eles, toda consulta da tela é varredura
+-- completa das 8.772 linhas: medido em 2,6 s para trazer uma página de 50.
+-- CODIGO é o grão e responde tanto a busca por código quanto o casamento com
+-- COMPRAS_ALERTA; os outros três são os filtros das telas de Alertas e de
+-- Precificação. Vão em post_hook porque a materialização `table` derruba e
+-- recria a tabela a cada build — índice criado à mão sumiria no build seguinte.
+{{ config(post_hook=[
+    compras_indice('COMPRAS_PEDIDO', 'CODIGO',     'CODIGO'),
+    compras_indice('COMPRAS_PEDIDO', 'FORNECEDOR', 'FORNECEDOR'),
+    compras_indice('COMPRAS_PEDIDO', 'STATUS',     'STATUS'),
+    compras_indice('COMPRAS_PEDIDO', 'CLASSE',     'CLASSE')
+]) }}
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- compras_pedido — CONTRATO com o dashboard (Etapa 6). Tabela física
 -- COMPRAS_PEDIDO. Projeção PURA de fat_pedido: as mesmas 122 colunas, na

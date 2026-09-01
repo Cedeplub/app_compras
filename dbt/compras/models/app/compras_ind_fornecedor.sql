@@ -1,3 +1,8 @@
+-- Índice do join que traz COBERTURA_ALVO e PEDIDO_EM para cada produto.
+{{ config(post_hook=[
+    compras_indice('COMPRAS_IND_FORNECEDOR', 'FORNECEDOR', 'FORNECEDOR')
+]) }}
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- compras_ind_fornecedor — CONTRATO com o dashboard. Tabela física
 -- COMPRAS_IND_FORNECEDOR. O ÚNICO model da camada `app` com agregação -

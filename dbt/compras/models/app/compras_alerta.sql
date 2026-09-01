@@ -1,3 +1,13 @@
+-- Índices. CODIGO serve o `exists (... where a.codigo = p.codigo)` que decide
+-- quem tem alerta — executado uma vez por linha da listagem. TIPO_ALERTA serve
+-- o filtro por tipo e a contagem de cada botão. O composto CODIGO+ORDEM_EXIBICAO
+-- serve a busca de alertas de uma página inteira, que já sai ordenada.
+{{ config(post_hook=[
+    compras_indice('COMPRAS_ALERTA', 'CODIGO',                 'CODIGO'),
+    compras_indice('COMPRAS_ALERTA', 'TIPO_ALERTA',            'TIPO'),
+    compras_indice('COMPRAS_ALERTA', 'CODIGO, ORDEM_EXIBICAO', 'CODIGO_ORDEM')
+]) }}
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- compras_alerta — CONTRATO com o dashboard. Tabela física COMPRAS_ALERTA.
 -- Projeção PURA de fat_alerta: mesmas colunas, alias em MAIÚSCULA. Sem
