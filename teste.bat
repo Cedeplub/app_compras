@@ -92,7 +92,22 @@ rem     do projeto, nao bonus, e nao da para valida-lo escutando so em loopback.
 rem   PRODUCAO (servico NSSM): escuta em 127.0.0.1, porque quem passa a expor na
 rem     rede e o nginx. La o loopback e o certo.
 rem Trocar isto de volta para 127.0.0.1 faz a linha "Na rede" acima virar mentira.
-python -m uvicorn app.main:app --host 0.0.0.0 --port %PORTA% --reload
+rem ATENCAO (01/09/2026): nesta maquina existe um SOCKET ORFAO escutando em
+rem 0.0.0.0:8020 desde 25/08/2026. O processo dono (PID 2240) nao existe mais,
+rem o socket nao responde a nada, e ainda assim segura a porta - o bind em
+rem 0.0.0.0 falha com WinError 10048. Um bind no IP ESPECIFICO convive com ele,
+rem entao e esse o caminho enquanto o orfao existir. Some com um reinicio da
+rem maquina; ai da para voltar a 0.0.0.0 e apagar este bloco.
+rem
+rem O for/f abaixo descobre o IPv4 da maquina em vez de chumbar 192.168.0.50:
+rem chumbar quebraria em silencio no dia em que o IP mudasse.
+set IP_LAN=
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
+  for /f "tokens=* delims= " %%b in ("%%a") do if not defined IP_LAN set IP_LAN=%%b
+)
+if not defined IP_LAN set IP_LAN=0.0.0.0
+echo Escutando em %IP_LAN%:%PORTA%
+python -m uvicorn app.main:app --host %IP_LAN% --port %PORTA% --reload
 
 echo.
 echo  ------------------------------------------------------------

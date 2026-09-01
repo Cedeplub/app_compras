@@ -199,3 +199,34 @@ protótipo do Diretor é esse dimensionamento — deixaram de ser pergunta.
    quem pode gravar o quê — sobretudo preço e mudança de status de pedido.
 6. **Estados de carregando e de erro não existem no protótipo** (§8), porque não existe
    rede. No MVP existe rede em toda tela, e toda tela precisa dos dois.
+
+---
+
+## 6. Acesso pela rede interna (01/09/2026)
+
+| O quê | Endereço | Porta liberada |
+|---|---|---|
+| **Front v2 (React)** | `http://192.168.0.50:5173` | 5173 — regra nova, restrita à sub-rede local |
+| Dashboard v1 (HTML) | `http://192.168.0.50:8020` | 8020 — já liberada em 25/08 |
+
+A regra da 5173 é **restrita à sub-rede local** de propósito: é um servidor de
+desenvolvimento, serve código-fonte e *source maps*, e não tem por que sair da LAN. Em
+produção (Etapa 11) ele deixa de existir — o `npm run build` gera estáticos que o próprio
+FastAPI serve.
+
+### Um defeito da máquina que precisa ser conhecido
+
+Existe um **socket órfão** escutando em `0.0.0.0:8020` desde **25/08/2026 08:34**. O
+processo dono (PID 2240) não existe mais; o socket não responde a nada e mesmo assim
+segura a porta. Sintoma: `--host 0.0.0.0` falha com `WinError 10048`, e requisições a
+`127.0.0.1:8020` caem no órfão e ficam penduradas até o *timeout*.
+
+Contorno em vigor, em três lugares: o uvicorn sobe preso ao **IP específico**
+(`--host 192.168.0.50`), que convive com o órfão; o `teste.bat` descobre o IPv4 da máquina
+em vez de usar `0.0.0.0`; e o proxy do Vite aponta para o IP da rede, não para o loopback.
+
+**A correção de verdade é liberar o socket**, o que na prática pede um reinício da
+máquina. Isso não foi feito porque este servidor hospeda outros serviços em produção
+(`relatorio_compras` na 8010, e mais uvicorns nas portas 8000, 8077 e 8100) — derrubá-los
+é decisão do usuário, não minha. Depois do reinício, os três contornos podem voltar a
+`0.0.0.0` / `127.0.0.1`, e cada um está comentado dizendo isso.
