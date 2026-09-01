@@ -27,3 +27,4 @@ MARGEM_ALVO_PADRAO;0.2;S;usado quando nao ha decisao humana gravada em APP_DECIS
 COBERTURA_ALVO_PADRAO;2;S;fallback de AZ|SUG_COBERTURA quando o departamento nao tem linha no seed_fornecedor (hoje ADIBRAX, ROBUST e TODOS OS DEPARTAMENTOS)
 N_MESES_PADRAO;3;S;fallback de AB|N_MESES quando o departamento nao tem linha no seed_fornecedor
 CRED_IMPORTADO_LIMIAR;0.6;S;BS|CHECK_IMPORTADO dispara quando o credito real fica abaixo de 60% do esperado pela UF
+COBERTURA_CRITICA_FRACAO;0.6;S;fracao do COBERTURA_ALVO abaixo da qual a tela pinta a cobertura como critica - no prototipo .jsx era o literal 0,6 repetido em 3 lugares (PROTOTIPO.md secao 5 e 9)

@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import config
+from app.api import rotas as api_rotas
 from app.core import auditoria, auth, database
 from app.servicos import compra, exportacao, indicador, preco
 
@@ -35,6 +36,15 @@ app.mount(
     name="static",
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# API JSON do v2 (Etapa 7). Convive com as rotas HTML da Etapa 6 em vez de
+# substitui-las: enquanto as telas novas nao cobrem tudo que as antigas cobrem,
+# derrubar as antigas deixaria o comprador sem ferramenta no meio do caminho.
+# As duas leem o MESMO servico e a MESMA sessao - nao ha um segundo caminho de
+# calculo nem um segundo login para divergir.
+# ─────────────────────────────────────────────────────────────────────────────
+app.include_router(api_rotas.router)
+
 
 @app.on_event("startup")
 def _startup() -> None:
@@ -52,6 +62,14 @@ def _shutdown() -> None:
 
 @app.exception_handler(HTTPException)
 async def _tratar_http_exception(request: Request, exc: HTTPException):
+    # A API responde SEMPRE em JSON, com o status de verdade. Redirecionar um
+    # cliente JSON para a pagina de login manda 303 + HTML para quem esta
+    # esperando um objeto: o fetch nao percebe que a sessao caiu, tenta ler
+    # JSON de uma pagina de login e falha com um erro que nao diz nada sobre
+    # sessao. O 401 explicito e o que faz o front saber redirecionar sozinho.
+    if request.url.path.startswith("/api/"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     if exc.status_code == 401:
         if request.headers.get("HX-Request") == "true":
             resp = Response(status_code=200)

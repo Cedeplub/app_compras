@@ -23,3 +23,7 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+
+# front v2
+web/node_modules/
+app/static/v2/

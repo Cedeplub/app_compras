@@ -88,6 +88,11 @@ final as (
         -- decisao humana ausente em APP_DECISAO_PRECO (CN/DD)
         {{ compras_parametro_num('MARGEM_ALVO_PADRAO') }}        as margem_alvo_padrao,
 
+        -- limiar visual de cobertura: a tela pinta de vermelho quando a
+        -- cobertura cai abaixo de COBERTURA_ALVO x esta fracao. No prototipo
+        -- .jsx era o literal 0,6 repetido em 3 lugares (PROTOTIPO.md 5/9).
+        {{ compras_parametro_num('COBERTURA_CRITICA_FRACAO') }} as cobertura_critica_fracao,
+
         -- UNICO parametro de texto: 'LITROS' | 'PESO' | qualquer outro valor
         -- cai no ramo UNIDADE_MASTER da coluna BC (Parametros!$B$19)
         {{ compras_parametro_txt('MEDIDA_PEDIDO') }}             as medida_pedido
