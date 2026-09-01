@@ -88,6 +88,28 @@ e está na Etapa 9.
 
 ---
 
+## 2.5 Regra de fidelidade ao protótipo
+
+**O ponto de partida de cada tela é o JSX do Diretor, não uma tela minha.** Troca-se o
+array de mock pela chamada de API e ajusta-se só onde o dado real ou um defeito real
+obriga. A fidelidade é consequência do método, não uma fase no fim.
+
+O motivo é concreto: o `PROTOTIPO_CEDEP.pdf` é o `.md` impresso — 27 páginas, zero
+imagens. **O mockup não é um desenho, é código React que roda.** Portar sai mais barato
+que reinterpretar e depois refazer; e toda tela construída "provisoriamente" é uma tela
+construída duas vezes.
+
+Reaproveitável tal e qual: `fmtR$`, `calcMKP`, `classeChip`, `badgeComNumero`,
+`badgeStatus`, `CenarioCard`, `FaixaAviso`, `Segmented`, `SeletorPeriodo`,
+`SeletorOrdenacao`, e o logo embutido no `.jsx`.
+
+**Fidelidade não é copiar os defeitos.** Diverge-se, sempre com o motivo escrito no ponto:
+fórmulas vêm do banco e não de constantes no JavaScript; responsividade de CSS em vez do
+botão mobile/desktop; URL, carregando, erro e permissão, que lá não existem; e o que
+quebra na escala real — a tela dele tem 8 produtos, a nossa tem 8.772.
+
+---
+
 ## 3. A ordem, e o porquê dela
 
 ### Etapa 7 — Fundação: API JSON + esqueleto React
