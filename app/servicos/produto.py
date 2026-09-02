@@ -73,7 +73,7 @@ _DE = """
 ORDENACOES = {
     # A ordem padrão da tela de Alertas: soma dos pesos dos alertas ativos do
     # produto + peso da curva ABC (PROTOTIPO.md §2.1). Ver app/api/alertas.py.
-    "prioridade": f"{alertas.sql_score_prioridade('p')} desc, p.codigo",
+    "prioridade": alertas.sql_ordem_prioridade("p"),
     # nulls last em todas: produto sem cobertura calculada não pode encabeçar
     # uma lista ordenada por cobertura só porque o Oracle põe null primeiro.
     "cobertura": "p.meses_est asc nulls last, p.codigo",
@@ -126,6 +126,15 @@ def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
 
     # Um tipo de alerta, ou vários. Nunca `like` na string ALERTA concatenada:
     # COMPRAS_ALERTA já vem despivotado, uma linha por tipo (CONTEXTO §6).
+    # A categoria recorta QUAL universo de alerta conta. A tela de Alertas usa
+    # 'DECISAO'; a de Pendência de Cadastro usará 'CADASTRO'. Sem esse recorte,
+    # 1.871 SKUs cujo único alerta é de cadastro entrariam na lista de decisão
+    # de compra — foi o que o Diretor mandou separar no item 2.
+    categoria = filtros.get("categoria")
+    filtro_cat = " and a.categoria = :categoria" if categoria else ""
+    if categoria:
+        binds["categoria"] = categoria
+
     tipos = (filtros.get("tipos_alerta") or []) if incluir_alerta else []
     if not incluir_alerta:
         onde_base = f"where {' and '.join(condicoes)}" if condicoes else ""
@@ -141,7 +150,10 @@ def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
         # A tela de Alertas sem nenhum tipo ligado mostra "todo mundo que tem
         # pelo menos 1 alerta" (PROTOTIPO.md §2.1), que não é o mesmo que
         # "todo mundo".
-        condicoes.append("exists (select 1 from compras_alerta a where a.codigo = p.codigo)")
+        condicoes.append(
+            f"exists (select 1 from compras_alerta a"
+            f"         where a.codigo = p.codigo{filtro_cat})"
+        )
 
     onde = f"where {' and '.join(condicoes)}" if condicoes else ""
     return onde, binds
@@ -168,32 +180,56 @@ def listar(filtros: dict, pagina: int, itens_por_pagina: int,
         """,
         {**binds, "offset": (pagina - 1) * itens_por_pagina, "limite": itens_por_pagina},
     )
-    anexar_alertas(linhas)
+    anexar_alertas(linhas, filtros.get("categoria"))
     return linhas, total
 
 
 def resumo(filtros: dict) -> dict:
-    """Os 3 KPIs do topo da tela, somados sobre o FILTRO INTEIRO.
+    """Os KPIs do topo da tela, somados sobre o FILTRO INTEIRO.
 
     O protótipo soma em memória porque tem 8 produtos no array (§4.1). Aqui são
-    8.772 SKUs paginados de 50 em 50: somar o que veio na página daria um
-    "valor em risco" que muda quando a pessoa vira a página — um número que se
-    move sozinho é pior que nenhum número.
+    8.777 SKUs paginados de 50 em 50: somar o que veio na página daria números
+    que mudam ao virar a página — e número que se move sozinho é pior que
+    número nenhum.
+
+    ── Por que são DOIS indicadores de valor, e não um ────────────────────────
+    O protótipo tem só "Valor em risco" = soma do valor de ESTOQUE dos produtos
+    com alerta. Medimos o que isso esconde: dos 425 produtos em ruptura, 201
+    têm valor de estoque ZERO — porque ruptura é, por definição, não ter
+    estoque. O pior problema da operação contribuía com R$ 0 para o indicador
+    que deveria medi-lo.
+
+    O Diretor separou em dois (item 5):
+      * CAPITAL PARADO  — dinheiro imobilizado: valor de estoque de quem tem
+        alerta. É a fórmula antiga, sem mudança.
+      * VENDA EM RISCO  — dinheiro que deixa de entrar: para quem está em
+        ruptura, média mensal de venda x preço de atacado. É o indicador que a
+        ruptura sempre deveria ter alimentado.
+    Somar os dois seria erro de leitura: um é estoque, o outro é faturamento.
     """
     onde, binds = _condicoes(filtros, incluir_alerta=False)
+    categoria = filtros.get("categoria")
+    filtro_cat = " and a.categoria = :categoria" if categoria else ""
+    if categoria:
+        binds["categoria"] = categoria
+
     linha = database.consultar_um(
         f"""
         select
             count(case when exists (select 1 from compras_alerta a
-                                     where a.codigo = p.codigo)
+                                     where a.codigo = p.codigo{filtro_cat})
                        then 1 end)                                  as com_alerta,
             nvl(sum(case when exists (select 1 from compras_alerta a
-                                       where a.codigo = p.codigo)
-                         then p.valor_estoque end), 0)              as valor_em_risco,
+                                       where a.codigo = p.codigo{filtro_cat})
+                         then p.valor_estoque end), 0)              as capital_parado,
             count(case when exists (select 1 from compras_alerta a
                                      where a.codigo = p.codigo
                                        and a.tipo_alerta = 'RUPTURA')
-                       then 1 end)                                  as rupturas
+                       then 1 end)                                  as rupturas,
+            nvl(sum(case when exists (select 1 from compras_alerta a
+                                       where a.codigo = p.codigo
+                                         and a.tipo_alerta = 'RUPTURA')
+                         then p.media_janela * p.pv_atacado end), 0) as venda_em_risco
           from compras_pedido p
           {onde}
         """,
@@ -201,8 +237,9 @@ def resumo(filtros: dict) -> dict:
     )
     return {
         "comAlerta": int(linha["com_alerta"] or 0),
-        "valorEmRisco": float(linha["valor_em_risco"] or 0),
+        "capitalParado": float(linha["capital_parado"] or 0),
         "rupturas": int(linha["rupturas"] or 0),
+        "vendaEmRisco": float(linha["venda_em_risco"] or 0),
     }
 
 
@@ -210,14 +247,21 @@ def contagem_por_tipo(filtros: dict) -> dict[str, int]:
     """Quantos produtos cada tipo de alerta pega, dentro do filtro atual.
 
     Sem o filtro de tipo (ver `_condicoes`): é o número que vai no botão, e ele
-    tem de responder "quantos eu veria se ligasse este".
+    tem de responder "quantos eu veria se ligasse este". Já a categoria vale,
+    porque a tela de Alertas não desenha botão para alerta de cadastro.
     """
     onde, binds = _condicoes(filtros, incluir_alerta=False)
+    categoria = filtros.get("categoria")
+    filtro_cat = " and a.categoria = :categoria" if categoria else ""
+    if categoria:
+        binds["categoria"] = categoria
+
     linhas = database.consultar(
         f"""
         select a.tipo_alerta, count(distinct a.codigo) as n
           from compras_alerta a
          where a.codigo in (select p.codigo from compras_pedido p {onde})
+               {filtro_cat}
          group by a.tipo_alerta
         """,
         binds,
@@ -234,7 +278,7 @@ def obter(codigo: int) -> dict | None:
     return linha
 
 
-def anexar_alertas(linhas: list[dict]) -> None:
+def anexar_alertas(linhas: list[dict], categoria: str | None = None) -> None:
     """Uma consulta para a página inteira, não uma por linha.
 
     Mesmo desenho de `compra.py._anexar_alertas`, e pelo mesmo motivo: a coluna
@@ -246,19 +290,31 @@ def anexar_alertas(linhas: list[dict]) -> None:
         return
     codigos = [int(l["codigo"]) for l in linhas]
     marcas = ", ".join(f":c{i}" for i in range(len(codigos)))
+    binds = {f"c{i}": c for i, c in enumerate(codigos)}
+    # A categoria tem de valer AQUI também, não só no filtro da lista. Sem isto
+    # a linha entra na tela por ter um alerta de decisão e chega mostrando
+    # "IMPORTADO" ao lado — 63 das primeiras 200 linhas faziam isso. O Diretor
+    # foi explícito no item 2: os alertas de cadastro "saem inteiramente da tela
+    # de Alertas". Filtrar a lista e não as etiquetas seria tirá-los pela porta
+    # e deixá-los voltar pela janela.
+    filtro_cat = ""
+    if categoria:
+        filtro_cat = " and categoria = :categoria"
+        binds["categoria"] = categoria
     achados = database.consultar(
         f"""
-        select codigo, tipo_alerta, texto_alerta
+        select codigo, tipo_alerta, texto_alerta, categoria, pontua
           from compras_alerta
-         where codigo in ({marcas})
+         where codigo in ({marcas}){filtro_cat}
          order by codigo, ordem_exibicao
         """,
-        {f"c{i}": c for i, c in enumerate(codigos)},
+        binds,
     )
     por_codigo: dict[int, list[dict]] = {}
     for a in achados:
         por_codigo.setdefault(int(a["codigo"]), []).append(
-            {"tipo": a["tipo_alerta"], "texto": a["texto_alerta"]}
+            {"tipo": a["tipo_alerta"], "texto": a["texto_alerta"],
+             "categoria": a["categoria"], "pontua": a["pontua"] == "S"}
         )
     for l in linhas:
         l["alertas"] = por_codigo.get(int(l["codigo"]), [])

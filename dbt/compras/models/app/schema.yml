@@ -28,15 +28,39 @@ models:
         description: "NÃO é único aqui - o grão é (CODIGO, TIPO_ALERTA)."
         data_tests: [not_null]
       - name: TIPO_ALERTA
+        description: >
+          ⚠ INTERFACE PÚBLICA, e os valores MUDARAM em 02/09/2026
+          (v2/DECISOES_DIRETOR.md item 1). MARGEM_INSTAVEL -> MARGEM_BAIXA,
+          MARGEM_INSTAVEL_VAREJO -> MARGEM_BAIXA_VAREJO, PARADO -> SEM_GIRO +
+          BAIXO_GIRO, INATIVO removido, OPORTUNIDADE_DE_GIRO e MARGEM_ALTA
+          criados. Consulta do dashboard que cite um nome velho volta VAZIA, não
+          com erro.
         data_tests:
           - not_null
           - accepted_values:
-              values: ['FABRICA', 'INATIVO', 'RUPTURA', 'DEVOLUCAO', 'PARADO',
-                       'FORA_DE_LINHA', 'LITRAGEM', 'IMPORTADO', 'TRIB', 'MVA',
-                       'CUSTO', 'MARGEM_INSTAVEL', 'SUCESSAO',
-                       'MARGEM_INSTAVEL_VAREJO']
+              values: ['FABRICA', 'RUPTURA', 'DEVOLUCAO', 'SEM_GIRO',
+                       'BAIXO_GIRO', 'FORA_DE_LINHA', 'LITRAGEM', 'IMPORTADO',
+                       'TRIB', 'MVA', 'CUSTO', 'MARGEM_BAIXA', 'SUCESSAO',
+                       'MARGEM_BAIXA_VAREJO', 'OPORTUNIDADE_DE_GIRO',
+                       'MARGEM_ALTA']
       - name: TEXTO_ALERTA
         data_tests: [not_null]
+      - name: CATEGORIA
+        description: >
+          'DECISAO' | 'CADASTRO'. A tela de Alertas filtra por 'DECISAO'; a de
+          Pendência de Cadastro, por 'CADASTRO'. Indexada junto com TIPO_ALERTA.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['DECISAO', 'CADASTRO']
+      - name: PONTUA
+        description: >
+          'S' | 'N' - entra no score de priorização. 'N' em FORA_DE_LINHA (badge
+          visual) e em toda a categoria CADASTRO.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['S', 'N']
 
   - name: compras_venda_mensal
     description: >

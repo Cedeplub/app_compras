@@ -65,6 +65,11 @@ export default function Alertas() {
         // Sem nenhum tipo ligado a tela mostra quem tem PELO MENOS UM alerta —
         // que não é "todo mundo" (§2.1).
         soComAlerta: ativos.length === 0,
+        // A tela de Alertas é só de DECISÃO. Pendência de cadastro (IMPORTADO,
+        // LITRAGEM, TRIB, MVA, SUCESSAO, FABRICA) sai daqui inteira e vai para
+        // tela própria — item 2 do Diretor. Sem este recorte, 1.871 SKUs cujo
+        // único alerta é de cadastro entrariam na fila de decisão de compra.
+        categoria: "DECISAO",
         departamento: filtroDepartamento || null,
         status: filtroStatus === "Todos" ? null : filtroStatus,
         busca: busca || null,
@@ -104,14 +109,23 @@ export default function Alertas() {
   return (
     <div className="pb-6">
       {/* ---------------------------------------------------------- KPIs --- */}
-      <div className="grid grid-cols-3 gap-2 px-4 pt-3 md:max-w-[520px] md:gap-3 md:px-6 md:pt-4">
+      {/* Quatro KPIs, não três. O protótipo tem um só indicador de valor
+          ("Valor em risco" = estoque de quem tem alerta), e medimos o que ele
+          esconde: dos produtos em ruptura, quase metade tem estoque ZERO —
+          porque ruptura é justamente não ter estoque. O pior problema entrava
+          com R$ 0. O Diretor separou em dois (item 5): CAPITAL PARADO é
+          dinheiro imobilizado, VENDA EM RISCO é dinheiro que deixa de entrar.
+          Não se somam: um é estoque, o outro é faturamento. */}
+      <div className="grid grid-cols-2 gap-2 px-4 pt-3 md:max-w-[700px] md:grid-cols-4 md:gap-3 md:px-6 md:pt-4">
         <Kpi rotulo="Alertas (filtro)" cor={RED} valor={numero(resumo?.comAlerta)} />
         {/* O protótipo divide por mil e escreve "k" (§3.1). Com 8 produtos de
-            exemplo dá "R$ 62,2k"; com o filtro real são 48 milhões, e o mesmo
-            formato produz "R$ 48.120,8k" — que ninguém lê. `compacto` escolhe
+            exemplo dá "R$ 62,2k"; no real são dezenas de milhões, e o mesmo
+            formato produz "R$ 71.363,5k" — que ninguém lê. `compacto` escolhe
             k ou M conforme a ordem de grandeza. */}
-        <Kpi rotulo="Valor em risco" cor={AMBAR}
-             valor={resumo ? `R$ ${compacto(resumo.valorEmRisco)}` : "—"} />
+        <Kpi rotulo="Capital parado" cor={AMBAR}
+             valor={resumo ? `R$ ${compacto(resumo.capitalParado)}` : "—"} />
+        <Kpi rotulo="Venda em risco" cor={RED}
+             valor={resumo ? `R$ ${compacto(resumo.vendaEmRisco)}` : "—"} />
         <Kpi rotulo="Ruptura urgente" cor={RED} valor={numero(resumo?.rupturas)} />
       </div>
 

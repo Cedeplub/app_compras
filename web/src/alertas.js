@@ -1,6 +1,6 @@
 import {
-  AlertTriangle, Boxes, Factory, Layers, Package, PackageSearch, PackageX,
-  RefreshCw, Tag, TrendingDown,
+  AlertTriangle, Boxes, PackageSearch, PackageX, RefreshCw, Sparkles,
+  TrendingDown, TrendingUp,
 } from "lucide-react";
 
 /* Aparência das etiquetas de alerta.
@@ -9,33 +9,34 @@ import {
  * MESMO peso ordena a lista no SQL. Aqui fica só o que é assunto de tela: o
  * ícone e a cor de cada severidade.
  *
- * Quatro cores, não catorze. O protótipo dá uma cor por tipo, o que funciona
- * com 6 tipos e vira confete com 14 — e o comprador precisa distinguir
- * "isto trava minha decisão" de "isto é contexto", não decorar a paleta.
+ * Cinco cores por SEVERIDADE, não uma por tipo. O protótipo dá uma cor a cada
+ * tipo, o que funciona com os 6 dele e viraria confete com os 10 de decisão —
+ * e o comprador precisa distinguir "isto trava minha decisão" de "isto é
+ * contexto", não decorar a paleta.
  */
 
 export const COR_SEVERIDADE = {
-  critico: "#DE434B",  // vermelho da marca
-  atencao: "#B98A2E",  // âmbar
-  parado: "#8A8578",   // cinza-oliva
-  info: "#375DA8",     // navy
+  critico: "#DE434B",       // vermelho da marca
+  atencao: "#B98A2E",       // âmbar
+  parado: "#8A8578",        // cinza-oliva
+  oportunidade: "#15803D",  // verde: não é problema, é dinheiro a recolher
+  info: "#375DA8",          // navy
 };
 
+/* Só os tipos da categoria DECISAO: os de cadastro (IMPORTADO, LITRAGEM, TRIB,
+ * MVA, SUCESSAO, FABRICA) saíram da tela de Alertas por decisão do Diretor
+ * (item 2) e ganharão os seus próprios ícones na tela de Pendência de Cadastro. */
 const ICONE = {
   RUPTURA: PackageX,
-  MARGEM_INSTAVEL: TrendingDown,
-  MARGEM_INSTAVEL_VAREJO: TrendingDown,
+  SEM_GIRO: Boxes,
+  BAIXO_GIRO: PackageSearch,
+  MARGEM_BAIXA: TrendingDown,
+  MARGEM_BAIXA_VAREJO: TrendingDown,
+  MARGEM_ALTA: TrendingUp,
   CUSTO: AlertTriangle,
-  PARADO: Boxes,
-  FORA_DE_LINHA: PackageX,
-  INATIVO: Package,
+  OPORTUNIDADE_DE_GIRO: Sparkles,
   DEVOLUCAO: RefreshCw,
-  MVA: Tag,
-  TRIB: Tag,
-  SUCESSAO: Layers,
-  FABRICA: Factory,
-  IMPORTADO: Package,
-  LITRAGEM: PackageSearch,
+  FORA_DE_LINHA: PackageX,
 };
 
 export const iconeDoAlerta = (tipo) => ICONE[tipo] ?? AlertTriangle;

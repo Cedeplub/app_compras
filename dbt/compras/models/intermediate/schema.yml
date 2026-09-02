@@ -1456,3 +1456,45 @@ models:
           D | ALERTA. A concatenação, na ordem do Excel, com o primeiro "; "
           removido por substr(...,3) - o MID literal. NULA quando não há alerta
           nenhum. Ver tests/compras_alerta_componentes_completos.sql.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # int_produto_alerta_extra — os DOIS alertas que NÃO existem na planilha
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_alerta_extra
+    description: >
+      Os dois alertas criados pela taxonomia do Diretor de Compras em
+      02/09/2026 (v2/DECISOES_DIRETOR.md item 1): OPORTUNIDADE_DE_GIRO e
+      MARGEM_ALTA. Nenhum dos dois tem coluna na aba `pedido`, e é por isso que
+      NÃO nasceram em int_produto_alerta - lá dentro eles entrariam na string
+      ALERTA (coluna D), que é gabarito e coluna crítica do aceite
+      (CONTEXTO.md §6.1.1). Grão: 1 linha por SKU, mesma espinha de
+      int_produto_alerta (int_produto_base), para que o join em fat_alerta seja
+      1:1. Os dois limiares saem do int_parametro, nenhum chumbado.
+    columns:
+      - name: codigo
+        description: "Grão da tabela: 1 linha por SKU."
+        data_tests:
+          - unique
+          - not_null
+      - name: check_oportunidade_giro
+        description: >
+          NOVO, sem coluna Excel. Classe 'A' com MESES_EST (AW) acima de
+          OPORTUNIDADE_GIRO_MESES - produto que vende bem mas está com estoque
+          parado demais, para disparar promoção. A cobertura é medida em MESES
+          DA JANELA do departamento, não em dias de calendário, para ficar na
+          mesma unidade de SUG_COBERTURA e COBERTURA_ALVO. ⚠ SÓ classe 'A': a
+          curva deste modelo não tem um 'B' isolado (B e C são fundidos em
+          'B/C' desde a planilha), então "incluir B" significaria incluir 'B/C'
+          inteiro. Nulo quando MESES_EST é nulo (MEDIA_JANELA = 0) - sem venda
+          não há giro a oportunizar, isso é SEM_GIRO.
+      - name: check_margem_alta
+        description: >
+          NOVO, sem coluna Excel. MARGEM_SEM_RED (CJ) acima de MARGEM_ALTA_MIN
+          OU MARGEM_SEM_RED_VAREJO (CZ) acima de MARGEM_ALTA_MIN_VAREJO - preço
+          possivelmente desposicionado, represando venda. Os dois limiares são
+          diferentes DE PROPÓSITO (o varejo opera com margem naturalmente mais
+          alta). Lê o PIOR cenário (alíquota cheia, sem redução), as mesmas
+          colunas de CHECK_MARGEM_INSTAVEL e CHECK_MARGEM_INSTAVEL_VAREJO, para
+          que "margem baixa" e "margem alta" não possam se contradizer no mesmo
+          SKU. Nulo onde a margem é nula (os 5 SKUs de codst = 0).

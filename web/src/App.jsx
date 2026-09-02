@@ -77,7 +77,10 @@ export default function App() {
   // para o agregado — o `resumo` vale para o filtro inteiro, não para a página.
   useEffect(() => {
     if (!usuario) return;
-    api.produtos({ soComAlerta: true, status: "Ativo", porPagina: 1 })
+    // Os MESMOS filtros da tela de Alertas, `categoria` inclusive. Sem ela o
+    // badge contava 3,5k enquanto o KPI da tela dizia 2.982 — dois números para
+    // a mesma pergunta, e o comprador sem saber qual acreditar.
+    api.produtos({ soComAlerta: true, status: "Ativo", categoria: "DECISAO", porPagina: 1 })
       .then((d) => setContadorAlertas(d.resumo?.comAlerta ?? null))
       .catch(() => setContadorAlertas(null));   // badge é enfeite: falhar aqui não é erro de tela
   }, [usuario]);

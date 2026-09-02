@@ -6,73 +6,85 @@ em DOIS lugares que precisam concordar — o SQL que ordena a lista por priorida
 ao comprador por que um produto está no topo. Se os dois divergirem, a lista fica
 ordenada por um critério e legendada por outro, e ninguém percebe.
 
-⚠ PENDENTE DE DECISÃO DO DIRETOR DE COMPRAS.
-Os PESOS e os RÓTULOS abaixo são uma proposta minha, não um dado do modelo. O
-protótipo tem 6 tipos inventados (`ruptura`, `sem_giro`, `baixo_giro`,
-`estoque_alto`, `margem_baixa`, `margem_alta`) com pesos 5/4/3/2/2/1; o modelo
-real tem 14 tipos, e só RUPTURA existe nos dois. Traduzi por proximidade de
-sentido e marquei cada escolha. Enquanto ele não confirmar, a ordenação da tela
-de Alertas é um palpite defensável — não uma regra acordada.
+Os pesos e rótulos abaixo são os que o **Diretor de Compras decidiu** em
+02/09/2026 (`v2/DECISOES_DIRETOR.md`, respostas aos itens 1 e 4) — não são mais
+proposta minha.
+
+⚠ `TIPOS` cobre só a categoria DECISAO. Os alertas de CADASTRO (IMPORTADO,
+LITRAGEM, TRIB, MVA, SUCESSAO, FABRICA) saíram da tela de Alertas por decisão do
+item 2 e vão para a tela de Pendência de Cadastro. Quem separa os dois é a
+coluna `CATEGORIA` de COMPRAS_ALERTA, não esta tabela.
 """
 from __future__ import annotations
 
 # ─────────────────────────────────────────────────────────────────────────────
-# severidade → é o que a tela usa para escolher a cor. Quatro níveis, não uma
-# cor por tipo: 14 cores distintas viram enfeite, e o comprador precisa saber
-# "isto exige ação hoje" x "isto é contexto", não decorar catorze tons.
+# severidade → é o que a tela usa para escolher a cor. Cinco níveis, não uma cor
+# por tipo: catorze cores viram confete, e o comprador precisa distinguir "isto
+# trava minha decisão" de "isto é contexto", não decorar a paleta.
 #
-#   critico  vermelho  — decisão de compra ou de preço parada por causa disto
-#   atencao  âmbar     — pendência que trava o cálculo, resolve-se no cadastro
-#   parado   oliva     — produto sem giro; é limpeza, não compra
-#   info     navy      — muda a leitura do número, não exige ação
+#   critico      vermelho  — decisão de compra ou de preço parada por isto
+#   parado       oliva     — produto sem giro; é limpeza, não compra
+#   atencao      âmbar     — pendência que atrapalha, resolve-se no cadastro
+#   oportunidade verde     — não é problema: é dinheiro na mesa a recolher
+#   info         navy      — muda a leitura do número, não exige ação
 # ─────────────────────────────────────────────────────────────────────────────
 
 TIPOS: dict[str, dict] = {
-    # tipo                     rótulo na tela         peso  severidade
-    "RUPTURA":                {"rotulo": "Ruptura",            "peso": 5, "severidade": "critico"},
-    "MARGEM_INSTAVEL":        {"rotulo": "Margem",             "peso": 4, "severidade": "critico"},
-    "MARGEM_INSTAVEL_VAREJO": {"rotulo": "Margem varejo",      "peso": 4, "severidade": "critico"},
-    # CUSTO = "custo acima da nota". É erro de dado, mas distorce preço de venda
-    # — por isso entra como crítico, e não como pendência de cadastro.
-    "CUSTO":                  {"rotulo": "Custo",              "peso": 4, "severidade": "critico"},
-    "PARADO":                 {"rotulo": "Parado",             "peso": 3, "severidade": "parado"},
-    "FORA_DE_LINHA":          {"rotulo": "Fora de linha",      "peso": 3, "severidade": "parado"},
-    "INATIVO":                {"rotulo": "Inativo",            "peso": 3, "severidade": "parado"},
-    "DEVOLUCAO":              {"rotulo": "Devolução",          "peso": 2, "severidade": "atencao"},
-    # MVA e TRIB impedem calcular preço sugerido: sem eles a coluna sai vazia.
-    "MVA":                    {"rotulo": "MVA",                "peso": 2, "severidade": "atencao"},
-    "TRIB":                   {"rotulo": "Tributação",         "peso": 2, "severidade": "atencao"},
-    "SUCESSAO":               {"rotulo": "Sucessão",           "peso": 2, "severidade": "atencao"},
-    "FABRICA":                {"rotulo": "Estoque fábrica",    "peso": 1, "severidade": "info"},
-    "IMPORTADO":              {"rotulo": "Importado",          "peso": 1, "severidade": "info"},
-    "LITRAGEM":               {"rotulo": "Litragem",           "peso": 1, "severidade": "info"},
+    # tipo                     rótulo na tela      peso  severidade
+    "RUPTURA":               {"rotulo": "Ruptura",        "peso": 5, "severidade": "critico"},
+    "SEM_GIRO":              {"rotulo": "Sem giro",       "peso": 4, "severidade": "parado"},
+    "MARGEM_BAIXA":          {"rotulo": "Margem baixa",   "peso": 4, "severidade": "critico"},
+    "MARGEM_BAIXA_VAREJO":   {"rotulo": "Margem varejo",  "peso": 4, "severidade": "critico"},
+    # "custo acima da nota": é erro de dado, mas contamina toda a precificação
+    # do produto — por isso entra como crítico, e não como pendência.
+    "CUSTO":                 {"rotulo": "Custo",          "peso": 4, "severidade": "critico"},
+    "BAIXO_GIRO":            {"rotulo": "Baixo giro",     "peso": 3, "severidade": "parado"},
+    "OPORTUNIDADE_DE_GIRO":  {"rotulo": "Oportunidade",   "peso": 3, "severidade": "oportunidade"},
+    "DEVOLUCAO":             {"rotulo": "Devolução",      "peso": 2, "severidade": "atencao"},
+    "MARGEM_ALTA":           {"rotulo": "Margem alta",    "peso": 1, "severidade": "info"},
+    # Badge visual, não alerta pontuado (decisão do item 1): o comprador precisa
+    # ver que o produto está fora de linha, mas isso não deve competir na
+    # priorização. `PONTUA='N'` em COMPRAS_ALERTA é quem manda; o peso 0 aqui
+    # só evita que alguém precise ler duas fontes para descobrir o mesmo.
+    "FORA_DE_LINHA":         {"rotulo": "Fora de linha",  "peso": 0, "severidade": "parado"},
 }
 
-# Curva ABC entra no mesmo score: entre dois produtos com os mesmos alertas,
-# o classe A decide primeiro. Pesos idênticos aos do protótipo (§5).
+# Curva ABC entra no desempate. Pesos idênticos aos do protótipo (§5).
 PESO_CLASSE = {"A": 3, "B/C": 2, "S/VEND": 1}
 
 
-def sql_score_prioridade(alias_produto: str = "p") -> str:
-    """Expressão SQL do score de prioridade, para o `order by`.
+def _ramos_peso(alias: str = "a") -> str:
+    return " ".join(f"when '{t}' then {c['peso']}" for t, c in TIPOS.items())
 
-    Gerada a partir do MESMO dicionário que a tela usa — é isso que garante que
-    a ordem e a legenda não possam divergir. Fica no banco, e não em Python
-    depois de buscar, porque o score decide QUAL página cada produto ocupa:
-    ordenar os 50 já trazidos deixaria o produto mais urgente na página 4.
+
+def sql_ordem_prioridade(alias_produto: str = "p") -> str:
+    """`order by` da tela de Alertas.
+
+    ⚠ NÃO é a soma pura do protótipo. O Diretor mudou a regra no item 3, e o
+    motivo foi medido: com a soma, dos 6 produtos classe A em ruptura, 5 caíam
+    da página 2 à 7 — porque acumular cinco alertas fracos batia um RUPTURA
+    sozinho. Quem olhasse a primeira página perdia quase todos.
+
+    Agora: **severidade máxima primeiro**, soma como desempate, curva como
+    terceiro critério. Um RUPTURA (5) vence qualquer acúmulo de peso ≤ 4,
+    independentemente de quantos sejam.
+
+    Só entram os alertas que PONTUAM e são de DECISAO: FORA_DE_LINHA é etiqueta,
+    e as pendências de cadastro não são decisão de compra.
     """
-    ramos = " ".join(
-        f"when '{tipo}' then {cfg['peso']}" for tipo, cfg in TIPOS.items()
+    ramos = _ramos_peso()
+    ramos_classe = " ".join(f"when '{c}' then {p}" for c, p in PESO_CLASSE.items())
+    pontuaveis = (
+        f"from compras_alerta a"
+        f" where a.codigo = {alias_produto}.codigo"
+        f"   and a.categoria = 'DECISAO' and a.pontua = 'S'"
     )
-    ramos_classe = " ".join(
-        f"when '{classe}' then {peso}" for classe, peso in PESO_CLASSE.items()
+    return (
+        f"nvl((select max(case a.tipo_alerta {ramos} else 0 end) {pontuaveis}), 0) desc,"
+        f" nvl((select sum(case a.tipo_alerta {ramos} else 0 end) {pontuaveis}), 0) desc,"
+        f" case {alias_produto}.classe {ramos_classe} else 0 end desc,"
+        f" {alias_produto}.codigo"
     )
-    return f"""(
-        nvl((select sum(case a.tipo_alerta {ramos} else 0 end)
-               from compras_alerta a
-              where a.codigo = {alias_produto}.codigo), 0)
-        + (case {alias_produto}.classe {ramos_classe} else 0 end)
-    )"""
 
 
 def metadados() -> list[dict]:

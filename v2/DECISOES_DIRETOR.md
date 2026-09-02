@@ -153,3 +153,66 @@ Para não misturar: estas duas eu resolvo sozinho assim que houver espaço.
   layout mobile é o padrão e o de mesa é aditivo (risco menor que na v1, que tinha duas
   marcações), mas continua **não verificado**. Basta abrir `http://192.168.0.50:5173` no
   telefone.
+
+---
+
+# Resultado — implementado em 02/09/2026
+
+As oito decisões foram aplicadas. O que ficou diferente do esperado, e o que
+**voltou a precisar de decisão**:
+
+## Já resolvido, sem pendência
+
+| # | Decisão | Como ficou |
+|---|---|---|
+| 1 | Taxonomia | 10 tipos de decisão. `PARADO` virou `SEM_GIRO` (315) + `BAIXO_GIRO` (123); margens renomeadas; `OPORTUNIDADE_DE_GIRO` (39) e `MARGEM_ALTA` (1.600) criados |
+| 2 | Separar cadastro | `CATEGORIA` = DECISAO/CADASTRO em `COMPRAS_ALERTA`. **1.871 SKUs** saíram da tela de Alertas |
+| 4 | Pesos | Tabela aplicada em `app/api/alertas.py`, que gera o SQL da ordenação e a legenda da tela — uma fonte só |
+| 5 | Dois indicadores | **Capital parado R$ 71,4 mi** e **Venda em risco R$ 2,3 mi**. A ruptura finalmente entra em algum lugar |
+| 6 | Texto × código | Nada a fazer: o texto já havia sido corrigido |
+| 8 | Washington | 5.932 SKUs |
+
+## Item 3 — a ordenação melhorou, mas talvez não o suficiente
+
+A regra agora é severidade máxima → soma → curva, como decidido. Os 6 produtos
+classe A em ruptura saíram das posições 18/52/57/158/307/331 para **89, 111 e
+112** (os outros três ficaram fora das 200 primeiras).
+
+Ainda não estão na primeira página, e a razão é legítima: eles perdem para
+outros produtos que **também** estão em ruptura e ainda somam problema de
+margem. Isso respeita a sua regra à risca — a soma é o desempate.
+
+**Se a intenção era vê-los na primeira página**, o ajuste é inverter dois
+critérios: severidade máxima → **curva** → soma. Aí todo classe A em ruptura
+vem antes de qualquer B/C em ruptura. É uma linha de código. Diga qual prefere.
+
+## Item 7 — a premissa não se aplica ao nosso modelo
+
+Você orientou tratar `OBS2='FL'` como Inativo, supondo dois sinais que poderiam
+divergir. **Medimos: eles nunca divergem.** `stg_produto` já deriva `status` e
+`fora_de_linha` da mesma expressão `upper(trim(OBS2))='FL'`. Existem 72 produtos
+fora de linha, e os 72 já são Inativos. **Zero produtos mudam.**
+
+Nada foi alterado — inventar dois sinais para depois unificá-los seria pior.
+`FORA_DE_LINHA` ficou como etiqueta que não pontua, como você pediu.
+
+Efeito colateral a saber: com o filtro padrão em "Ativo", o botão "Fora de
+linha" mostra sempre **0**, porque todo produto fora de linha é inativo. Só
+aparece em "Inativo" ou "Todos".
+
+## Três coisas novas que precisam de você
+
+**a) Classe B em OPORTUNIDADE_DE_GIRO — a recomendação é não.** A curva do
+modelo não tem 'B' isolado: é `A`, `B/C`, `S/VEND`, com B e C fundidos desde a
+planilha. Abrir para `B/C` leva o alerta de **39 para ~1.929 SKUs** (22% do
+catálogo). Se quiser B, o caminho é separar B de C na curva antes.
+
+**b) MARGEM_ALTA pega 1.600 SKUs ativos** com os cortes de 20%/45% — o segundo
+maior tipo, mais que MARGEM_BAIXA (946). Com peso 1 fica no fim da fila, mas
+vale confirmar se 20% no atacado é mesmo o corte pretendido.
+
+**c) ROBUST e ADIBRAX continuam sem comprador** (36 e 2 SKUs). Não é o caso do
+"A DEFINIR" que você resolveu: esses dois departamentos **não têm linha nenhuma**
+em `seed_fornecedor.csv`, então caem no valor de reserva. Para incluí-los faltam
+três parâmetros que são decisão sua: `MESES_MEDIA`, `COBERTURA_ALVO` e
+`PEDIDO_EM` (unidade ou caixa fechada).

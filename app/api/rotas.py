@@ -116,6 +116,9 @@ def listar_produtos(
     busca: str | None = None,
     tipoAlerta: list[str] | None = Query(default=None),
     soComAlerta: bool = False,
+    # 'DECISAO' na tela de Alertas, 'CADASTRO' na de Pendências. Sem valor, os
+    # dois universos entram — que é o que a busca por produto quer.
+    categoria: str | None = None,
     ordenacao: str = "codigo",
     pagina: int = 1,
     porPagina: int = 50,
@@ -129,6 +132,7 @@ def listar_produtos(
         "busca": busca,
         "tipos_alerta": tipoAlerta,
         "so_com_alerta": soComAlerta,
+        "categoria": categoria,
     }
     linhas, total = produto.listar(filtros, pagina, porPagina, ordenacao)
     corpo = contrato.pagina(linhas, total, pagina, porPagina)

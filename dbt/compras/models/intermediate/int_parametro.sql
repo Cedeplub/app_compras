@@ -81,6 +81,14 @@ final as (
         {{ compras_parametro_num('CRED_IMPORTADO_LIMIAR') }}     as cred_importado_limiar,
         {{ compras_parametro_num('PALETE_LIMIAR') }}             as palete_limiar,
 
+        -- limiares dos DOIS alertas NOVOS de fat_alerta (02/09/2026). Nao tem
+        -- coluna na planilha - nascem da taxonomia decidida pelo Diretor de
+        -- Compras (v2/DECISOES_DIRETOR.md item 1). Moram aqui pela mesma regra
+        -- de sempre: constante em formula e defeito.
+        {{ compras_parametro_num('OPORTUNIDADE_GIRO_MESES') }}   as oportunidade_giro_meses,
+        {{ compras_parametro_num('MARGEM_ALTA_MIN') }}           as margem_alta_min,
+        {{ compras_parametro_num('MARGEM_ALTA_MIN_VAREJO') }}    as margem_alta_min_varejo,
+
         -- fallbacks de departamento sem linha no seed_fornecedor (AB e AZ)
         {{ compras_parametro_num('N_MESES_PADRAO') }}            as n_meses_padrao,
         {{ compras_parametro_num('COBERTURA_ALVO_PADRAO') }}     as cobertura_alvo_padrao,

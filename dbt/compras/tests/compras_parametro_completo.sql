@@ -39,6 +39,13 @@ faltando as (
     union all select 'COBERTURA_ALVO_PADRAO'        from parametro where cobertura_alvo_padrao     is null
     union all select 'MARGEM_ALVO_PADRAO'           from parametro where margem_alvo_padrao        is null
     union all select 'MEDIDA_PEDIDO'                from parametro where medida_pedido             is null
+    -- COBERTURA_CRITICA_FRACAO entrou em 01/09/2026 e nao foi listada aqui na
+    -- epoca; incluida em 02/09/2026 junto com os tres limiares da taxonomia
+    -- nova de alertas (OPORTUNIDADE_DE_GIRO e MARGEM_ALTA).
+    union all select 'COBERTURA_CRITICA_FRACAO'      from parametro where cobertura_critica_fracao  is null
+    union all select 'OPORTUNIDADE_GIRO_MESES'       from parametro where oportunidade_giro_meses   is null
+    union all select 'MARGEM_ALTA_MIN'               from parametro where margem_alta_min           is null
+    union all select 'MARGEM_ALTA_MIN_VAREJO'        from parametro where margem_alta_min_varejo    is null
     union all select 'GRAO: int_parametro tem que ter exatamente 1 linha'
                 from contagem where n_linhas <> 1
 )

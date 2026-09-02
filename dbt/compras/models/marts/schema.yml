@@ -119,8 +119,10 @@ models:
 
   - name: fat_alerta
     description: >
-      As 14 colunas CHECK_* da aba `pedido` despivotadas. Grão: 1 linha por SKU
-      x TIPO DE ALERTA ATIVO - SKU sem alerta não aparece, SKU com quatro
+      Os CHECK_* da aba `pedido` despivotados, na TAXONOMIA de 02/09/2026, mais
+      dois alertas NOVOS sem coluna na planilha (OPORTUNIDADE_DE_GIRO e
+      MARGEM_ALTA, calculados em int_produto_alerta_extra). Grão: 1 linha por
+      SKU x TIPO DE ALERTA ATIVO - SKU sem alerta não aparece, SKU com quatro
       alertas aparece quatro vezes. Existe para que o dashboard (Etapa 6) filtre
       e conte por tipo sem dar parsing na string concatenada da coluna D.
       ⚠ Contagem sobre esta tabela conta ALERTAS, não PRODUTOS: para produtos é
@@ -133,25 +135,61 @@ models:
         data_tests: [not_null]
       - name: tipo_alerta
         description: >
-          A chave limpa do alerta. Os 14 valores correspondem, um a um, às
-          colunas CHECK_* do gabarito.
+          A chave limpa do alerta, na TAXONOMIA decidida pelo Diretor de Compras
+          em 02/09/2026 (v2/DECISOES_DIRETOR.md item 1). NÃO é o nome da coluna
+          CHECK_* de origem: MARGEM_INSTAVEL virou MARGEM_BAIXA,
+          MARGEM_INSTAVEL_VAREJO virou MARGEM_BAIXA_VAREJO, PARADO (AO) foi
+          PARTIDO em SEM_GIRO e BAIXO_GIRO, INATIVO (Y) deixou de ser alerta, e
+          OPORTUNIDADE_DE_GIRO e MARGEM_ALTA são NOVOS, sem coluna na planilha.
+          ⚠ Os CHECK_* de int_produto_alerta e a string ALERTA NÃO mudaram - são
+          o gabarito.
         data_tests:
           - not_null
           - accepted_values:
-              values: ['FABRICA', 'INATIVO', 'RUPTURA', 'DEVOLUCAO', 'PARADO',
-                       'FORA_DE_LINHA', 'LITRAGEM', 'IMPORTADO', 'TRIB', 'MVA',
-                       'CUSTO', 'MARGEM_INSTAVEL', 'SUCESSAO',
-                       'MARGEM_INSTAVEL_VAREJO']
+              values: ['FABRICA', 'RUPTURA', 'DEVOLUCAO', 'SEM_GIRO',
+                       'BAIXO_GIRO', 'FORA_DE_LINHA', 'LITRAGEM', 'IMPORTADO',
+                       'TRIB', 'MVA', 'CUSTO', 'MARGEM_BAIXA', 'SUCESSAO',
+                       'MARGEM_BAIXA_VAREJO', 'OPORTUNIDADE_DE_GIRO',
+                       'MARGEM_ALTA']
       - name: texto_alerta
         description: >
-          A frase exata da coluna CHECK_* correspondente - o mesmo texto que
-          aparece dentro de ALERTA. Nunca nulo: alerta inativo não vira linha.
+          A frase do alerta. Para os tipos vindos da planilha é o texto EXATO da
+          coluna CHECK_* correspondente - o mesmo que aparece dentro de ALERTA.
+          SEM_GIRO e BAIXO_GIRO compartilham o texto de CHECK_ESTOQUE_PARADO
+          (AO), porque partem a mesma coluna. Os dois tipos NOVOS têm texto
+          próprio, que não existe em lugar nenhum da planilha e por isso não
+          está em ALERTA. Nunca nulo: alerta inativo não vira linha.
         data_tests: [not_null]
       - name: ordem_exibicao
         description: >
-          1..14 na ORDEM DA COLUNA D (Excel), não alfabética. Carrega a ordem
-          para que a tela reproduza a sequência que o comprador conhece.
+          1..14 na ORDEM DA COLUNA D (Excel), não alfabética; 15 e 16 para os
+          dois alertas NOVOS, que vêm depois de todos os da planilha. A posição
+          2 está VAGA (era INATIVO) - o buraco é o registro de que um tipo foi
+          retirado. `ordem_exibicao <= 14` é o discriminador usado pelo teste de
+          completude de ALERTA para saber quem tem de estar dentro da string.
         data_tests: [not_null]
+      - name: categoria
+        description: >
+          'DECISAO' | 'CADASTRO'. CADASTRO é IMPORTADO, TRIB, MVA, SUCESSAO,
+          LITRAGEM e FABRICA - alertas que dizem "confira este cadastro", não
+          "decida esta compra". Saem da tela de Alertas e vão para a tela de
+          Pendência de Cadastro (v2/DECISOES_DIRETOR.md item 2, onde eram 34% da
+          lista que o comprador percorria).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['DECISAO', 'CADASTRO']
+      - name: pontua
+        description: >
+          'S' | 'N' - entra no score de priorização? 'N' para FORA_DE_LINHA
+          (decisão do Diretor: vira badge visual, a linha aparece mas não empurra
+          o SKU para o topo) e para toda a categoria CADASTRO, que não recebeu
+          peso nenhum na tabela do Diretor. Os nove tipos com 'S' são exatamente
+          os nove com peso definido.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['S', 'N']
       - name: fornecedor
         description: "Recorte. Texto do DEPARTAMENTO (CONTEXTO.md regra 7)."
       - name: comprador
