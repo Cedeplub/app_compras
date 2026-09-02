@@ -57,6 +57,22 @@ vars:
   # descartaria produto sem linha de tributacao para a UF).
   compras_uf_destino: 'BA'
 
+  # v2 Etapa 10 (tela Entradas). Dias corridos para tras a partir de
+  # TRUNC(SYSDATE), semiaberto. Deliberadamente MENOR que compras_meses_historico
+  # (24 meses): a tela agrupa so em Hoje/Ontem/Essa semana/Esse mes, com
+  # navegacao Dia/Semana/Mes (SEM "Ano" - ver int_entrada_compra.sql). 180 dias
+  # da margem para navegar alguns meses para tras sem carregar uma janela
+  # dimensionada para comparacao anual, que esta tela nao faz.
+  compras_entrada_dias_historico: 180
+
+  # v2 Etapa 10 (tela Monitoramento). Dias corridos para tras a partir de
+  # TRUNC(SYSDATE), para o grao DIARIO (int_venda_diaria/COMPRAS_MONITORAMENTO).
+  # 400 dias (~13 meses) cobre um ano-anterior completo em grao Dia/Semana, com
+  # folga de alinhamento de semana (400 > 371 = 53 semanas). Comparacao de
+  # Mes/Ano usa COMPRAS_VENDA_MENSAL (24 meses, ja existente) - grao diario nao
+  # precisa alcancar a mesma janela. Ver int_periodo_diario.sql.
+  compras_monitoramento_dias_historico: 400
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Seeds - as tabelas de apoio, extraidas das abas da planilha v10.
 #

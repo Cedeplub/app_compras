@@ -28,6 +28,25 @@ referencia as (
     select max(mes) as mes_referencia from {{ ref('int_venda_mensal') }}
 ),
 
+-- DATA_REFERENCIA (v2 Etapa 10): o "até quando" do dado DIÁRIO
+-- (COMPRAS_MONITORAMENTO), para comparação de período PARCIAL contra
+-- PARCIAL - ver o cabeçalho de compras_monitoramento.sql, ponto 2. Sai do
+-- DADO (max(dia) já materializado em int_venda_diaria), não de SYSDATE, pelo
+-- mesmo motivo de MES_REFERENCIA não sair de SYSDATE: se a API calculasse
+-- "hoje" pelo próprio relógio, um build atrasado faria a comparação parcial
+-- contar um dia que esta tabela ainda não tem, subestimando o período atual
+-- do jeito errado.
+--
+-- ⚠ NÃO é a mesma coisa que a tela Entradas precisa para os buckets Hoje/
+-- Ontem/Essa semana/Esse mês (ver o cabeçalho de compras_entrada.sql): ali a
+-- recomendação é o OPOSTO - usar a data REAL do dispositivo/servidor no
+-- momento da consulta, porque o rótulo "Ontem" muda à meia-noite
+-- independente de quando o dbt rodou. DATA_REFERENCIA serve para saber até
+-- onde o DADO chega, não para rotular "hoje" na tela.
+referencia_diaria as (
+    select max(dia) as data_referencia from {{ ref('int_venda_diaria') }}
+),
+
 final as (
     select
         -- usados na fórmula de margem que a tela refaz a cada tecla digitada
@@ -57,9 +76,11 @@ final as (
         -- muda no CSV e roda `dbt seed`; nada de código.
         p.cobertura_critica_fracao  as COBERTURA_CRITICA_FRACAO,
 
-        r.mes_referencia            as MES_REFERENCIA
+        r.mes_referencia            as MES_REFERENCIA,
+        rd.data_referencia          as DATA_REFERENCIA
       from parametro p
      cross join referencia r
+     cross join referencia_diaria rd
 )
 
 select * from final

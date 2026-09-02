@@ -126,3 +126,32 @@ models:
         data_tests:
           - unique
           - not_null
+
+  - name: compras_entrada
+    description: >
+      Tabela física COMPRAS_ENTRADA (v2 Etapa 10, tela Entradas). Projeção
+      PURA de int_entrada_produto, alias em MAIÚSCULA. Grão: 1 linha por item
+      de movimento de entrada (ID_TRANSACAO_ITEM). DATA_ENTRADA sai crua - o
+      agrupamento Hoje/Ontem/Essa semana/Esse mês é responsabilidade da API,
+      usando a data REAL da consulta (ver cabeçalho do model).
+    columns:
+      - name: ID_TRANSACAO_ITEM
+        data_tests: [unique, not_null]
+      - name: TIPO_ENTRADA
+        data_tests:
+          - accepted_values:
+              values: ['COMPRA', 'BONIFICACAO']
+
+  - name: compras_monitoramento
+    description: >
+      Tabela física COMPRAS_MONITORAMENTO (v2 Etapa 10, tela Monitoramento).
+      Projeção PURA de int_venda_diaria, alias em MAIÚSCULA. Grão: DIA x
+      CODIGO_PRODUTO, cobrindo compras_monitoramento_dias_historico dias.
+      Não tem período pré-agregado - ver o cabeçalho do model para as três
+      decisões que a API precisa conhecer (semana ISO/segunda, comparação
+      parcial-contra-parcial via DATA_REFERENCIA, peso/litros aproximados).
+    columns:
+      - name: DIA
+        data_tests: [not_null]
+      - name: CODIGO_PRODUTO
+        data_tests: [not_null]

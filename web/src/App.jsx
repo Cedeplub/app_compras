@@ -7,11 +7,12 @@ import BarraAbas from "./componentes/BarraAbas.jsx";
 import Login from "./telas/Login.jsx";
 import Alertas from "./telas/Alertas.jsx";
 import Precificacao from "./telas/Precificacao.jsx";
+import Monitoramento from "./telas/Monitoramento.jsx";
+import Entradas from "./telas/Entradas.jsx";
 import DecisaoSKU from "./telas/DecisaoSKU.jsx";
 import Pedidos from "./telas/Pedidos.jsx";
 import PedidosSalvos from "./telas/PedidosSalvos.jsx";
 import PedidoDetalhe from "./telas/PedidoDetalhe.jsx";
-import EmConstrucao from "./telas/EmConstrucao.jsx";
 
 /* Esqueleto do app.
  *
@@ -122,8 +123,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/painel/alertas" replace />} />
           <Route path="/painel" element={<Navigate to="/painel/alertas" replace />} />
           <Route path="/painel/alertas" element={<Alertas />} />
-          <Route path="/painel/monitoramento" element={<EmConstrucao tela="Monitoramento" etapa={10} />} />
-          <Route path="/painel/entradas" element={<EmConstrucao tela="Entradas" etapa={10} />} />
+          <Route path="/painel/monitoramento" element={<Monitoramento />} />
+          <Route path="/painel/entradas" element={<Entradas />} />
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/pedidos-salvos" element={<PedidosSalvos />} />
           <Route path="/pedidos-salvos/:id" element={<PedidoDetalhe />} />

@@ -1498,3 +1498,64 @@ models:
           colunas de CHECK_MARGEM_INSTAVEL e CHECK_MARGEM_INSTAVEL_VAREJO, para
           que "margem baixa" e "margem alta" não possam se contradizer no mesmo
           SKU. Nulo onde a margem é nula (os 5 SKUs de codst = 0).
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # v2 Etapa 10 - cadeia de ENTRADAS (compra/bonificação, PROTOTIPO.md §2.3).
+  # Não porta gabarito nenhum - ver o cabeçalho de int_entrada_compra.sql.
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_entrada_compra
+    description: >
+      Entrada de compra/bonificação (CODOPER 'E'/'EB'), filial 2, últimos
+      compras_entrada_dias_historico dias. Exclui devolução de cliente ('ED'),
+      transferência entre filiais ('ET') e regularização de estoque ('ER') -
+      ver cabeçalho do model para os números medidos. Grão: 1 linha por item
+      de movimento (id_transacao_item).
+    columns:
+      - name: id_transacao_item
+        data_tests: [unique, not_null]
+
+  - name: int_entrada_produto
+    description: >
+      int_entrada_compra enriquecido com produto/departamento/seção/status.
+      NÃO filtra data_exclusao (decisão documentada no cabeçalho). Mesmo
+      grão de int_entrada_compra.
+    columns:
+      - name: id_transacao_item
+        data_tests: [unique, not_null]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # v2 Etapa 10 - cadeia DIÁRIA para Monitoramento (PROTOTIPO.md §2.2).
+  # Irmãos em grão DIA das cadeias mensais já validadas - ver cabeçalho de
+  # cada model para o porquê de não reaproveitar int_periodo_mensal.
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_periodo_diario
+    description: >
+      Janela compartilhada (1 linha) de int_faturamento_diario,
+      int_devolucao_diaria e int_venda_diaria - compras_monitoramento_dias_historico
+      dias corridos, terminando em TRUNC(SYSDATE)+1 (semiaberto).
+
+  - name: int_faturamento_diario
+    description: >
+      Irmão em grão DIA de int_faturamento_mensal - mesma regra de negócio
+      (rotina 1464), TRUNC por dia em vez de mês. Grão: (dia, id_produto).
+
+  - name: int_devolucao_diaria
+    description: >
+      Irmão em grão DIA de int_devolucao_mensal - mesma regra de negócio,
+      TRUNC por dia em vez de mês. Grão: (dia, id_produto).
+
+  - name: int_venda_diaria
+    description: >
+      Espinha diária de Monitoramento, sempre LÍQUIDA. Grão: (dia,
+      codigo_produto). Diferente de int_venda_mensal, NÃO inclui todo SKU sem
+      venda (é painel de movimento, não cadastro) - ver cabeçalho do model.
+      PESO_LIQUIDO_KG/LITROS_LIQUIDO são aproximação com fator ATUAL do
+      cadastro. Reconciliado com int_venda_mensal em
+      tests/compras_venda_diaria_bate_mensal.sql.
+    columns:
+      - name: dia
+        data_tests: [not_null]
+      - name: codigo_produto
+        data_tests: [not_null]

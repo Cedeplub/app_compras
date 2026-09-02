@@ -94,6 +94,21 @@ export const api = {
   gravarPreco: (codigo, corpo) =>
     requisitar(`/produtos/${codigo}/preco`, { method: "POST", body: JSON.stringify(corpo) }),
 
+  // ------------------------------------------- monitoramento e entradas ---
+  opcoesMonitoramento: () => requisitar("/monitoramento/opcoes"),
+
+  /** O período vai como INTERVALO de datas, calculado em `periodo.js`. O
+   *  servidor soma o que recebe e não reinterpreta calendário — quem sabe o que
+   *  "essa semana" significa, e onde ela é parcial, é o seletor da tela. */
+  monitoramento: (filtros) => {
+    const busca = parametrosDeBusca(filtros);
+    return requisitar(`/monitoramento${busca ? `?${busca}` : ""}`);
+  },
+  entradas: (filtros) => {
+    const busca = parametrosDeBusca(filtros);
+    return requisitar(`/entradas${busca ? `?${busca}` : ""}`);
+  },
+
   // ------------------------------------------------------------- pedidos ---
   /** Salva o carrinho. O servidor cria UM pedido por fornecedor — é exigência
    *  do formato de importação do Winthor (rotina 220). */

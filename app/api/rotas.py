@@ -23,7 +23,7 @@ from pydantic import BaseModel, model_validator
 from app import config
 from app.api import alertas, contrato
 from app.core import auditoria, auth, database
-from app.servicos import pedido, preco, produto
+from app.servicos import monitoramento, pedido, preco, produto
 
 log = logging.getLogger("app_compras.api")
 
@@ -408,4 +408,66 @@ def exportar_pedido_winthor(id_pedido: int, request: Request, usuario=Depends(au
         content=conteudo,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )
+
+
+# ─────────────────────────────────────────────── monitoramento e entradas ---
+
+@router.get("/monitoramento/opcoes")
+def opcoes_monitoramento(usuario=Depends(auth.exigir_login)):
+    return monitoramento.opcoes_monitoramento()
+
+
+@router.get("/monitoramento")
+def ver_monitoramento(
+    usuario=Depends(auth.exigir_login),
+    de: str = Query(...), ate: str = Query(...),
+    deAnterior: str = Query(...), ateAnterior: str = Query(...),
+    metrica: str = "faturamento",
+    departamento: str | None = None,
+    secao: str | None = None,
+    status: str | None = None,
+    busca: str | None = None,
+    porProduto: bool = False,
+):
+    """Total do período, comparativo com o ano anterior, e a quebra.
+
+    Os quatro intervalos vêm da TELA, e não são calculados aqui, porque quem
+    sabe o que "essa semana" significa é o seletor de período — inclusive o
+    recorte parcial que faz a comparação ser honesta (ver `web/src/periodo.js`).
+    O servidor recebe datas e soma; não reinterpreta calendário.
+    """
+    if metrica not in monitoramento.METRICAS:
+        raise HTTPException(status_code=422,
+                            detail=f"Métrica inválida. Use uma de: {', '.join(monitoramento.METRICAS)}.")
+    filtros = {"departamento": departamento, "secao": secao,
+               "status": status, "busca": busca}
+    corpo = {
+        "resumo": monitoramento.resumo(filtros, de, ate, deAnterior, ateAnterior, metrica),
+        "metrica": metrica,
+    }
+    if porProduto:
+        corpo["produtos"] = monitoramento.por_produto(filtros, de, ate, deAnterior, ateAnterior, metrica)
+        corpo["dimensao"] = None
+    else:
+        dim = monitoramento.proxima_dimensao(filtros)
+        corpo["dimensao"] = dim
+        corpo["grupos"] = (monitoramento.por_dimensao(filtros, de, ate, deAnterior,
+                                                      ateAnterior, metrica, dim)
+                           if dim else [])
+    return corpo
+
+
+@router.get("/entradas")
+def ver_entradas(
+    usuario=Depends(auth.exigir_login),
+    de: str = Query(...), ate: str = Query(...),
+    departamento: str | None = None,
+    secao: str | None = None,
+    status: str | None = None,
+    busca: str | None = None,
+):
+    return monitoramento.entradas(
+        {"departamento": departamento, "secao": secao, "status": status, "busca": busca},
+        de, ate,
     )
