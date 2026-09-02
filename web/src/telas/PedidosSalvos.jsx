@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ChevronDown, Download, FileSpreadsheet, Filter, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Download, Filter, Loader2, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { Carregando, Erro, Vazio } from "../componentes/Basicos.jsx";
 import { COR_STATUS, ROTULO_AVANCAR, ROTULO_VOLTAR, STATUS,
@@ -114,7 +114,6 @@ export default function PedidosSalvos() {
                             else await api.avancarPedido(p.id);
                           })}
                           aoVoltar={() => agir(p.id, () => api.voltarPedido(p.id))}
-                          aoExcel={() => agir(p.id, () => baixar(p.id, "excel"))}
                           aoWinthor={() => agir(p.id, () => baixar(p.id, "winthor"))}
                           aoExcluir={() => setAExcluir(p)} />
           ))}
@@ -147,7 +146,7 @@ async function baixar(id, formato) {
   URL.revokeObjectURL(url);
 }
 
-function CartaoPedido({ p, ocupado, aoAbrir, aoAvancar, aoVoltar, aoExcel, aoWinthor, aoExcluir }) {
+function CartaoPedido({ p, ocupado, aoAbrir, aoAvancar, aoVoltar, aoWinthor, aoExcluir }) {
   const cor = COR_STATUS[p.status] ?? "#6B7280";
   const soLeitura = p.status === "Fechado" || p.status === "Exportado";
   return (
@@ -172,8 +171,13 @@ function CartaoPedido({ p, ocupado, aoAbrir, aoAvancar, aoVoltar, aoExcel, aoWin
         <div className="flex flex-wrap items-center gap-1.5">
           {ocupado && <Loader2 size={14} className="animate-spin text-gray-400" aria-hidden="true" />}
 
+          {/* Exportar documento (PDF e Excel) mora no DETALHE, não aqui: é ação
+              de quem abriu o pedido e está vendo o que vai no arquivo. Na lista
+              ficam só as ações de fluxo — avançar, desfazer, excluir — e o
+              "baixar de novo" do arquivo do Winthor, que é o único download que
+              faz sentido sem abrir, porque o pedido já foi conferido antes de
+              ser exportado. */}
           <Acao onClick={aoAbrir}>{soLeitura ? "Ver" : "Ver/editar"}</Acao>
-          <Acao onClick={aoExcel} icone={FileSpreadsheet}>Excel</Acao>
 
           {p.status === "Exportado" && (
             <Acao onClick={aoWinthor} icone={Download}>Baixar de novo</Acao>

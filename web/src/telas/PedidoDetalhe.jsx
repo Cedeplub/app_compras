@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Loader2, Plus, Printer, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, FileSpreadsheet, Loader2, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import { COR_STATUS, ROTULO_AVANCAR, ROTULO_VOLTAR,
@@ -94,11 +94,19 @@ export default function PedidoDetalhe() {
 
         <div className="flex flex-wrap items-center gap-1.5">
           {ocupado && <Loader2 size={14} className="animate-spin text-gray-400" aria-hidden="true" />}
+          {/* PDF e Excel valem em QUALQUER status, Rascunho inclusive: é comum
+              querer conferir o pedido em papel ou mandar a planilha para alguém
+              olhar ANTES de marcar como enviado. Amarrá-los a Fechado obrigaria
+              a fechar para poder revisar, que é a ordem inversa. */}
           <Botao onClick={() => setImprimindo(true)} icone={Printer}>Orçamento em PDF</Botao>
+          <Botao icone={FileSpreadsheet} desabilitado={ocupado}
+                 onClick={() => agir(() => baixar(pedido.id, "excel"))}>
+            Excel
+          </Botao>
           {podeAvancar(pedido.status) && (
             <Botao destaque cor={cor} desabilitado={ocupado}
                    onClick={() => agir(async () => {
-                     if (avancarEhExportar(pedido.status)) await baixarWinthor(pedido.id);
+                     if (avancarEhExportar(pedido.status)) await baixar(pedido.id, "winthor");
                      else await api.avancarPedido(pedido.id);
                    })}>
               {ROTULO_AVANCAR[pedido.status]}
@@ -174,8 +182,8 @@ export default function PedidoDetalhe() {
   );
 }
 
-async function baixarWinthor(id) {
-  const { blob, nome } = await api.baixarExportacao(id, "winthor");
+async function baixar(id, formato) {
+  const { blob, nome } = await api.baixarExportacao(id, formato);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = nome;
