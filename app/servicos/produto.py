@@ -12,7 +12,7 @@ do dbt é o limite (CONTEXTO.md §2/§5).
 """
 from __future__ import annotations
 
-from app.api import alertas
+from app.api import alertas, contrato
 from app.core import database
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -64,7 +64,9 @@ _COLUNAS = """
     p.dt_ult_ent, p.qt_ult_ent, p.dt_ult_saida,
     p.ant_1, p.peso_1, p.ant_2, p.peso_2, p.check_sucessao,
 
-    f.cobertura_alvo, f.pedido_em, f.meses_media
+    f.cobertura_alvo, f.pedido_em, f.meses_media,
+
+    ctx.regime_fiscal, ctx.qt_ult_saida, ctx.venda_ano_passado
 """
 
 # ⚠ APP_DECISAO_PRECO entra AO VIVO, por join, e não pelas colunas ALT_PV_* da
@@ -89,21 +91,53 @@ _DE = """
         on f.fornecedor = p.fornecedor
       left join app_decisao_preco d
         on d.id_produto = p.codigo
+      left join compras_produto_contexto ctx
+        on ctx.codigo = p.codigo
 """
 
+# nulls last em todas: produto sem o número calculado não pode encabeçar uma
+# lista ordenada por ele só porque o Oracle põe null primeiro.
 ORDENACOES = {
-    # A ordem padrão da tela de Alertas: soma dos pesos dos alertas ativos do
-    # produto + peso da curva ABC (PROTOTIPO.md §2.1). Ver app/api/alertas.py.
+    # A ordem padrão da tela de Alertas: severidade máxima → curva → soma
+    # (PROTOTIPO.md §2.1 + decisão do Diretor). Ver app/api/alertas.py.
     "prioridade": alertas.sql_ordem_prioridade("p"),
-    # nulls last em todas: produto sem cobertura calculada não pode encabeçar
-    # uma lista ordenada por cobertura só porque o Oracle põe null primeiro.
     "cobertura": "p.meses_est asc nulls last, p.codigo",
-    "margem": "p.margem_oficial asc nulls last, p.codigo",
     "giro": "p.dias_sem_venda desc nulls last, p.codigo",
     "valor": "p.valor_estoque desc nulls last, p.codigo",
     "codigo": "p.codigo",
     "descricao": "p.descricao",
+    # Ordenações da tela de Precificação (PROTOTIPO.md §2.9).
+    "preco": "p.pv_atacado desc nulls last, p.codigo",
 }
+
+
+def _ordem(ordenacao: str, cenario_margem: str | None) -> str:
+    """Resolve o `order by`, inclusive as duas ordens que dependem do cenário.
+
+    "Margem — pior primeiro" e "Menor MKP" mudam de coluna conforme o cenário
+    fiscal escolhido na tela: são três margens reais diferentes por produto, não
+    uma. Ordenar sempre por `margem_oficial` enquanto a tela exibe a margem do
+    cenário "ST s/Valor" produziria uma lista que se diz ordenada por margem e
+    não está — o pior defeito possível numa tela cujo trabalho é justamente
+    mostrar o pior caso primeiro.
+
+    A coluna de cada cenário vem de `contrato.COLUNA_MARGEM`, a MESMA tabela que
+    a tela usa para exibir. Uma fonte só.
+    """
+    if ordenacao == "margem":
+        coluna = contrato.COLUNA_MARGEM.get(
+            (cenario_margem or "st_valor", "atacado"), "margem_oficial")
+        return f"p.{coluna} asc nulls last, p.codigo"
+    if ordenacao == "mkp":
+        # MKP = preço ÷ custo do cenário, e o custo muda com o cenário. Refazer a
+        # divisão aqui, com o mesmo custo que `contrato._custo_do_cenario`
+        # entrega, evita ordenar por um MKP e exibir outro.
+        custo = ("(p.custo_tot_s_valor + nvl(p.custo_adicional_imagem, 0))"
+                 if (cenario_margem or "st_valor") == "st_valor"
+                 else "p.custo_tot_gerencial")
+        return (f"case when {custo} > 0 then p.pv_atacado / {custo} end"
+                f" asc nulls last, p.codigo")
+    return ORDENACOES.get(ordenacao, ORDENACOES["codigo"])
 
 
 def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
@@ -204,7 +238,7 @@ def listar(filtros: dict, pagina: int, itens_por_pagina: int,
     total = int(total_linha["n"]) if total_linha else 0
 
     pagina = max(1, pagina)
-    ordem = ORDENACOES.get(ordenacao, ORDENACOES["codigo"])
+    ordem = _ordem(ordenacao, filtros.get("cenario_margem"))
     linhas = database.consultar(
         f"""
         select {_COLUNAS}

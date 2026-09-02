@@ -2,8 +2,10 @@ version: 2
 
 models:
   # ───────────────────────────────────────────────────────────────────────────
-  # Camada `app` — o contrato com o dashboard (Etapa 6). Projeção pura das
-  # três primeiras; a quarta é o único model com agregação.
+  # Camada `app` — o contrato com o dashboard. Projeção pura das três
+  # primeiras (Etapa 6); compras_produto_contexto (Etapa 8 do ciclo v2) e
+  # compras_ind_fornecedor (Etapa 5) são os dois com join/agregação, e é neles
+  # que a regra de CONTEXTO.md §5 exige a CTE final chamada `final`.
   # ───────────────────────────────────────────────────────────────────────────
 
   - name: compras_pedido
@@ -73,6 +75,42 @@ models:
         data_tests: [not_null]
       - name: CODIGO_PRODUTO
         data_tests: [not_null]
+
+  - name: compras_produto_contexto
+    description: >
+      Tabela física COMPRAS_PRODUTO_CONTEXTO. Grão: 1 linha por SKU (CODIGO),
+      o mesmo de COMPRAS_PEDIDO. Existe porque as telas de Precificação e
+      Decisão do SKU (v2/PLANO.md §2.2) precisam de três campos que NÃO estão
+      na aba `pedido` da planilha - e fat_pedido/compras_pedido reproduzem
+      aquelas 122 colunas e só elas. É juntada por LEFT JOIN em CODIGO no
+      serviço da API, no mesmo molde de COMPRAS_IND_FORNECEDOR. Ver o
+      cabeçalho do model para a decisão de zero x nulo em VENDA_ANO_PASSADO.
+    columns:
+      - name: CODIGO
+        description: "Grão da tabela: 1 linha por SKU, o mesmo conjunto de COMPRAS_PEDIDO."
+        data_tests:
+          - unique
+          - not_null
+      - name: REGIME_FISCAL
+        description: >
+          Texto descritivo do regime (dim_tributacao.descricao, aba dICMS),
+          buscado pelo COD_ICMS do produto. NULO onde o código não existe na
+          tabela de ICMS - os 5 SKUs de codst = 0 que recebem o alerta TRIB.
+          Sem valor inventado: ver tests/compras_produto_contexto_regime_segue_modalidade.
+      - name: QT_ULT_SAIDA
+        description: >
+          Quantidade do movimento de saída mais recente do SKU
+          (int_cadastro_estoque.qt_ult_saida), par de DT_ULT_SAIDA (AM). NULA
+          para SKU sem nenhuma saída registrada - ausência de movimento, não
+          quantidade zero. Não é dividida por FATOR_EXIBICAO.
+      - name: VENDA_ANO_PASSADO
+        description: >
+          Quantidade LÍQUIDA vendida no mesmo mês do ano anterior, a barra
+          amarela do mini-gráfico (PROTOTIPO.md §2.10). Pode ser NEGATIVA
+          (devolução maior que o faturado no mês). ⚠ 0 e NULO significam
+          coisas diferentes: 0 é "vendeu zero, com evidência de que o SKU
+          estava vivo naquele mês"; NULO é "não há dado". Justificativa e
+          números medidos no cabeçalho do model.
 
   - name: compras_ind_fornecedor
     description: >

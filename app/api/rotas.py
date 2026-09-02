@@ -120,6 +120,9 @@ def listar_produtos(
     # dois universos entram — que é o que a busca por produto quer.
     categoria: str | None = None,
     ordenacao: str = "codigo",
+    # Qual das três margens ordenar quando ordenacao=margem|mkp. A tela de
+    # Precificação troca isso junto com o seletor de cenário.
+    cenarioMargem: str | None = None,
     pagina: int = 1,
     porPagina: int = 50,
 ):
@@ -133,6 +136,7 @@ def listar_produtos(
         "tipos_alerta": tipoAlerta,
         "so_com_alerta": soComAlerta,
         "categoria": categoria,
+        "cenario_margem": cenarioMargem,
     }
     linhas, total = produto.listar(filtros, pagina, porPagina, ordenacao)
     corpo = contrato.pagina(linhas, total, pagina, porPagina)

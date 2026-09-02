@@ -6,6 +6,8 @@ import Cabecalho from "./componentes/Cabecalho.jsx";
 import BarraAbas from "./componentes/BarraAbas.jsx";
 import Login from "./telas/Login.jsx";
 import Alertas from "./telas/Alertas.jsx";
+import Precificacao from "./telas/Precificacao.jsx";
+import DecisaoSKU from "./telas/DecisaoSKU.jsx";
 import EmConstrucao from "./telas/EmConstrucao.jsx";
 
 /* Esqueleto do app.
@@ -114,8 +116,8 @@ export default function App() {
           <Route path="/painel/entradas" element={<EmConstrucao tela="Entradas" etapa={10} />} />
           <Route path="/pedidos" element={<EmConstrucao tela="Pedidos" etapa={9} />} />
           <Route path="/pedidos-salvos" element={<EmConstrucao tela="Pedidos salvos" etapa={9} />} />
-          <Route path="/precificacao" element={<EmConstrucao tela="Precificação" etapa={8} />} />
-          <Route path="/produto/:codigo" element={<EmConstrucao tela="Decisão do SKU" etapa={8} />} />
+          <Route path="/precificacao" element={<Precificacao />} />
+          <Route path="/produto/:codigo" element={<DecisaoSKU />} />
           <Route path="*" element={<Navigate to="/painel/alertas" replace />} />
         </Routes>
       </main>

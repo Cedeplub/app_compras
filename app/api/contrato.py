@@ -143,7 +143,7 @@ def _cenarios(p: dict, praca: str) -> list[dict]:
             "real": cid == real,
             "custo": _custo_do_cenario(p, cid),
             "icmsEf": _f(p.get(_ICMS_DO_CENARIO[cid])),
-            "margemAtual": _f(p.get(_COLUNA_MARGEM[(cid, praca)])),
+            "margemAtual": _f(p.get(COLUNA_MARGEM[(cid, praca)])),
             "pvSugeridoAV": _f(p.get(f"pv_sug_{_chave_sug(cid)}{sug}_av")),
             "pvSugeridoAP": _f(p.get(f"pv_sug_{_chave_sug(cid)}{sug}_ap")),
         }
@@ -158,7 +158,9 @@ def _chave_sug(cenario: str) -> str:
 # O nome da coluna de margem não segue o id do cenário (`st_valor` mora em
 # `MARGEM_ST_S_VALOR`), então o de-para fica explícito aqui em vez de ser
 # montado com f-string condicional — que é fácil de escrever e difícil de ler.
-_COLUNA_MARGEM = {
+# Público de propósito: `app/servicos/produto.py` ordena por estas mesmas
+# colunas, e duas cópias fariam a lista ordenar por uma margem e exibir outra.
+COLUNA_MARGEM = {
     ("st_valor", "atacado"): "margem_st_s_valor",
     ("oficial",  "atacado"): "margem_oficial",
     ("sem_red",  "atacado"): "margem_sem_red",
@@ -222,9 +224,14 @@ def produto(p: dict) -> dict:
             _f(p.get("vd_mes_atual")), _f(p.get("vd_m_1")),
             _f(p.get("vd_m_2")), _f(p.get("vd_m_3")),
         ],
-        # Mesmo mês do ano anterior. Derivável de COMPRAS_VENDA_MENSAL, mas
-        # ainda não projetado em COMPRAS_PEDIDO — entra na Etapa 8 (PLANO §2.3).
-        "vendaAnoPassado": None,
+        # Mesmo mês do ano anterior — a barra amarela do mini-gráfico. Vem de
+        # COMPRAS_PRODUTO_CONTEXTO, medida no mesmo `mes_ref` do pivot (e não em
+        # `sysdate`), para ficar exatamente 12 meses atrás de VD_MES_ATUAL.
+        #
+        # Distingue ZERO de NULO de propósito: zero é "estava vivo e não vendeu",
+        # nulo é "não há evidência de que existisse". No gráfico são coisas
+        # diferentes — uma barra rente ao chão e nenhuma barra.
+        "vendaAnoPassado": _f(p.get("venda_ano_passado")),
 
         "clientesAtacado": _f(p.get("qt_cli_atacado")),
         "clientesVarejo": _f(p.get("qt_cli_varejo")),
@@ -234,7 +241,7 @@ def produto(p: dict) -> dict:
         "ultimaEntrada": _data(p.get("dt_ult_ent")),
         "qtdUltimaEntrada": _f(p.get("qt_ult_ent")),
         "ultimaSaida": _data(p.get("dt_ult_saida")),
-        "qtdUltimaSaida": None,   # existe em int_cadastro_estoque, falta projetar (PLANO §2.2)
+        "qtdUltimaSaida": _f(p.get("qt_ult_saida")),
 
         # ------------------------------------------------------------- fiscal
         "modalidade": p.get("modalidade"),
@@ -244,9 +251,11 @@ def produto(p: dict) -> dict:
         "creditoICMS": _f(p.get("cred_icms")),
         "creditoPisCofins": _f(p.get("cred_piscof")),
         "pisCofinsEfetivo": _f(p.get("piscof_ef")),
-        # Texto descritivo do regime ("RE ST BA MVA 62,35% LUBRI"). Está em
-        # dim_tributacao.descricao; sobe para a camada de contrato na Etapa 8.
-        "regimeFiscal": None,
+        # Texto descritivo do regime ("RE ST BA MVA 62,35% LUBRI"), de
+        # COMPRAS_PRODUTO_CONTEXTO. Nulo nos 5 SKUs sem tributação encontrada —
+        # os mesmos que disparam o alerta TRIB. Nulo é a resposta honesta ali:
+        # inventar um regime seria pior que admitir que não se sabe.
+        "regimeFiscal": p.get("regime_fiscal"),
 
         # -------------------------------------------------------------- custo
         "valorNfUnitario": _f(p.get("vl_ent_unit")),

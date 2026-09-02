@@ -65,13 +65,21 @@ const parametrosDeBusca = (filtros) => {
   return p.toString();
 };
 
+let _parametros = null;
+
 export const api = {
   sessao: () => requisitar("/sessao"),
   entrar: (login, senha) =>
     requisitar("/login", { method: "POST", body: JSON.stringify({ login, senha }) }),
   sair: () => requisitar("/logout", { method: "POST" }),
 
-  parametros: () => requisitar("/parametros"),
+  // Memorizado: os parâmetros do modelo só mudam com `dbt seed`, e cada tela
+  // que recalcula margem precisa deles. Sem cache, abrir Precificação e depois
+  // Decisão do SKU faria duas consultas idênticas.
+  parametros: () => (_parametros ??= requisitar("/parametros").catch((e) => {
+    _parametros = null;    // falhou: a próxima tentativa refaz, não fica presa no erro
+    throw e;
+  })),
   opcoes: () => requisitar("/opcoes"),
 
   produtos: (filtros = {}) => {
@@ -79,4 +87,10 @@ export const api = {
     return requisitar(`/produtos${busca ? `?${busca}` : ""}`);
   },
   produto: (codigo) => requisitar(`/produtos/${codigo}`),
+
+  /** Grava a decisão humana de preço. Só à vista — o a prazo é derivado do
+   *  fator, e a API recusa com 422 quem tentar mandá-lo, para não criar duas
+   *  verdades sobre o mesmo preço. Devolve o produto já atualizado. */
+  gravarPreco: (codigo, corpo) =>
+    requisitar(`/produtos/${codigo}/preco`, { method: "POST", body: JSON.stringify(corpo) }),
 };
