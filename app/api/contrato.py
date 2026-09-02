@@ -323,6 +323,72 @@ def pagina(linhas: list[dict], total: int, pagina_atual: int, por_pagina: int) -
     }
 
 
+def _dt(valor: Any) -> str | None:
+    """Timestamp completo (data+hora), ISO 8601 — diferente de `_data`, que
+    trunca pro dia. Cabeçalho/histórico de pedido precisa da hora."""
+    if valor is None:
+        return None
+    if isinstance(valor, (dt.datetime, dt.date)):
+        return valor.isoformat()
+    return str(valor)
+
+
+def item_pedido(i: dict) -> dict:
+    quantidade = _f(i.get("quantidade")) or 0.0
+    fator = _f(i.get("fator_exibicao")) or 0.0
+    preco = _f(i.get("preco_unitario")) or 0.0
+    return {
+        "codigo": int(i["codigo"]),
+        "descricao": i.get("descricao"),
+        "codFab": i.get("cod_fab"),
+        "embalagem": i.get("embalagem"),
+        "embalCompra": _f(i.get("embal_compra")),
+        "quantidade": _f(i.get("quantidade")),
+        # Congelado na linha (MELHORIA A5) — não é o fator corrente do cadastro.
+        "fatorExibicao": _f(i.get("fator_exibicao")),
+        "precoUnitario": _f(i.get("preco_unitario")),
+        "quantidadeUnidades": quantidade * fator,
+        "valorTotal": quantidade * fator * preco,
+        "criadoEm": _dt(i.get("criado_em")),
+    }
+
+
+def pedido(p: dict) -> dict:
+    """Cabeçalho de APP_PEDIDO (+ agregados qtd_itens/valor_total quando a
+    consulta os trouxe — ausentes só em caminhos que não passam por
+    `pedido.obter_pedido`/`listar_pedidos`, o que hoje não acontece)."""
+    corpo = {
+        "id": int(p["id_pedido"]),
+        "fornecedor": p.get("fornecedor"),
+        "status": p.get("status"),
+        "criadoEm": _dt(p.get("criado_em")),
+        "criadoPor": p.get("criado_por"),
+        "atualizadoEm": _dt(p.get("atualizado_em")),
+        "atualizadoPor": p.get("atualizado_por"),
+    }
+    if "qtd_itens" in p:
+        corpo["qtdItens"] = int(p.get("qtd_itens") or 0)
+    if "valor_total" in p:
+        corpo["valorTotal"] = _f(p.get("valor_total")) or 0.0
+    return corpo
+
+
+def pedido_detalhe(p: dict) -> dict:
+    corpo = pedido(p)
+    corpo["itens"] = [item_pedido(i) for i in p.get("itens", [])]
+    return corpo
+
+
+def pagina_pedidos(linhas: list[dict], total: int, pagina_atual: int, por_pagina: int) -> dict:
+    return {
+        "itens": [pedido(l) for l in linhas],
+        "total": total,
+        "pagina": pagina_atual,
+        "porPagina": por_pagina,
+        "totalPaginas": (total + por_pagina - 1) // por_pagina if por_pagina else 0,
+    }
+
+
 def usuario(u) -> dict:
     return {
         "id": u.id,

@@ -23,7 +23,7 @@ from pydantic import BaseModel, model_validator
 from app import config
 from app.api import alertas, contrato
 from app.core import auditoria, auth, database
-from app.servicos import preco, produto
+from app.servicos import pedido, preco, produto
 
 log = logging.getLogger("app_compras.api")
 
@@ -258,3 +258,154 @@ def gravar_preco(
     # logo após gravar (COMPRAS_PEDIDO só atualiza no próximo `dbt run`).
     linha = produto.obter(codigo)
     return contrato.produto(linha)
+
+
+# ------------------------------------------------------------------ pedido ---
+# Etapa 9: carrinho -> APP_PEDIDO(_ITEM), lista, edição, máquina de estados,
+# exportações (app/servicos/pedido.py). Só exige login — diferente de gravar
+# preço, nenhuma operação de pedido é restrita a diretoria.
+
+class ItemCarrinho(BaseModel):
+    codigo: int
+    quantidade: float
+    precoUnitario: float | None = None
+
+
+class CarrinhoPayload(BaseModel):
+    itens: list[ItemCarrinho]
+
+    @model_validator(mode="after")
+    def _validar(self) -> "CarrinhoPayload":
+        if not self.itens:
+            raise ValueError("Envie ao menos um item no carrinho.")
+        return self
+
+
+class ItemPedidoPayload(BaseModel):
+    quantidade: float
+    precoUnitario: float | None = None
+
+
+def _erro_pedido(exc: Exception):
+    if isinstance(exc, pedido.PedidoNaoEncontrado):
+        return HTTPException(status_code=404, detail="Pedido não encontrado.")
+    if isinstance(exc, pedido.TransicaoInvalida):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, pedido.EdicaoNaoPermitida):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, pedido.ProdutoInvalido):
+        return HTTPException(status_code=422, detail=str(exc))
+    raise exc
+
+
+@router.post("/pedidos", status_code=201)
+def salvar_carrinho(dados: CarrinhoPayload, request: Request, usuario=Depends(auth.exigir_login)):
+    itens = [
+        {"codigo": it.codigo, "quantidade": it.quantidade, "preco_unitario": it.precoUnitario}
+        for it in dados.itens
+    ]
+    try:
+        pedidos = pedido.salvar_carrinho(itens, usuario.login, usuario.id, _ip(request))
+    except pedido.ProdutoInvalido as exc:
+        raise _erro_pedido(exc)
+    return {"pedidos": [contrato.pedido(p) for p in pedidos]}
+
+
+@router.get("/pedidos")
+def listar_pedidos(
+    usuario=Depends(auth.exigir_login),
+    status: list[str] | None = Query(default=None),
+    fornecedor: str | None = None,
+    busca: str | None = None,
+    pagina: int = 1,
+    porPagina: int = 50,
+):
+    porPagina = max(1, min(porPagina, MAX_POR_PAGINA))
+    filtros = {"status": status, "fornecedor": fornecedor, "busca": busca}
+    linhas, total = pedido.listar_pedidos(filtros, pagina, porPagina)
+    return contrato.pagina_pedidos(linhas, total, pagina, porPagina)
+
+
+@router.get("/pedidos/{id_pedido}")
+def obter_pedido(id_pedido: int, usuario=Depends(auth.exigir_login)):
+    detalhe = pedido.obter_detalhe(id_pedido)
+    if detalhe is None:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado.")
+    return contrato.pedido_detalhe(detalhe)
+
+
+@router.put("/pedidos/{id_pedido}/itens/{codigo}")
+def gravar_item_pedido(
+    id_pedido: int, codigo: int, dados: ItemPedidoPayload, request: Request,
+    usuario=Depends(auth.exigir_login),
+):
+    try:
+        detalhe = pedido.upsert_item(
+            id_pedido, codigo, dados.quantidade, dados.precoUnitario,
+            usuario.login, usuario.id, _ip(request),
+        )
+    except (pedido.PedidoNaoEncontrado, pedido.EdicaoNaoPermitida, pedido.ProdutoInvalido) as exc:
+        raise _erro_pedido(exc)
+    return contrato.pedido_detalhe(detalhe)
+
+
+@router.delete("/pedidos/{id_pedido}/itens/{codigo}")
+def remover_item_pedido(id_pedido: int, codigo: int, request: Request, usuario=Depends(auth.exigir_login)):
+    try:
+        detalhe = pedido.remover_item(id_pedido, codigo, usuario.login, usuario.id, _ip(request))
+    except (pedido.PedidoNaoEncontrado, pedido.EdicaoNaoPermitida) as exc:
+        raise _erro_pedido(exc)
+    return contrato.pedido_detalhe(detalhe)
+
+
+@router.post("/pedidos/{id_pedido}/avancar")
+def avancar_pedido(id_pedido: int, request: Request, usuario=Depends(auth.exigir_login)):
+    try:
+        detalhe = pedido.avancar_status(id_pedido, usuario.login, usuario.id, _ip(request))
+    except (pedido.PedidoNaoEncontrado, pedido.TransicaoInvalida) as exc:
+        raise _erro_pedido(exc)
+    return contrato.pedido_detalhe(detalhe)
+
+
+@router.post("/pedidos/{id_pedido}/voltar")
+def voltar_pedido(id_pedido: int, request: Request, usuario=Depends(auth.exigir_login)):
+    try:
+        detalhe = pedido.voltar_status(id_pedido, usuario.login, usuario.id, _ip(request))
+    except (pedido.PedidoNaoEncontrado, pedido.TransicaoInvalida) as exc:
+        raise _erro_pedido(exc)
+    return contrato.pedido_detalhe(detalhe)
+
+
+@router.delete("/pedidos/{id_pedido}")
+def excluir_pedido(id_pedido: int, request: Request, usuario=Depends(auth.exigir_login)):
+    try:
+        pedido.excluir_pedido(id_pedido, usuario.login, usuario.id, _ip(request))
+    except pedido.PedidoNaoEncontrado as exc:
+        raise _erro_pedido(exc)
+    return {"ok": True}
+
+
+@router.get("/pedidos/{id_pedido}/exportar/excel")
+def exportar_pedido_excel(id_pedido: int, usuario=Depends(auth.exigir_login)):
+    resultado = pedido.gerar_excel_pedido(id_pedido)
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado.")
+    conteudo, nome = resultado
+    return Response(
+        content=conteudo,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )
+
+
+@router.get("/pedidos/{id_pedido}/exportar/winthor")
+def exportar_pedido_winthor(id_pedido: int, request: Request, usuario=Depends(auth.exigir_login)):
+    try:
+        conteudo, nome = pedido.exportar_winthor(id_pedido, usuario.login, usuario.id, _ip(request))
+    except (pedido.PedidoNaoEncontrado, pedido.TransicaoInvalida) as exc:
+        raise _erro_pedido(exc)
+    return Response(
+        content=conteudo,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )

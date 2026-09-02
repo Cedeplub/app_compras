@@ -8,6 +8,9 @@ import Login from "./telas/Login.jsx";
 import Alertas from "./telas/Alertas.jsx";
 import Precificacao from "./telas/Precificacao.jsx";
 import DecisaoSKU from "./telas/DecisaoSKU.jsx";
+import Pedidos from "./telas/Pedidos.jsx";
+import PedidosSalvos from "./telas/PedidosSalvos.jsx";
+import PedidoDetalhe from "./telas/PedidoDetalhe.jsx";
 import EmConstrucao from "./telas/EmConstrucao.jsx";
 
 /* Esqueleto do app.
@@ -33,6 +36,8 @@ const TITULOS = {
   "/painel/entradas": { titulo: "Entradas recentes", subtitulo: () => "Últimas movimentações de estoque" },
   "/pedidos": { titulo: "Pedidos", subtitulo: () => "Decisão de compra — visão ampla" },
   "/pedidos-salvos": { titulo: "Pedidos Salvos", subtitulo: () => "Status, orçamento e envio pro Winthor" },
+  // O detalhe tem id na URL, então não casa por chave exata — `areaDaRota`
+  // já resolve a área, e o título cai no padrão do cabeçalho.
   "/precificacao": { titulo: "Precificação", subtitulo: () => "Decisão de preço — visão ampla" },
 };
 
@@ -92,7 +97,12 @@ export default function App() {
   if (!usuario) return <Login aoEntrar={setUsuario} />;
 
   const area = areaDaRota(pathname);
-  const t = TITULOS[pathname];
+  // Casa por prefixo, e não por chave exata: `/pedidos-salvos/7` é a mesma área
+  // de `/pedidos-salvos` e merece o mesmo título. Com igualdade estrita, a tela
+  // de detalhe caía no rótulo genérico "Compras CEDEP".
+  const t = TITULOS[pathname]
+    ?? TITULOS[Object.keys(TITULOS).filter((k) => pathname.startsWith(`${k}/`))
+                    .sort((a, b) => b.length - a.length)[0]];
 
   return (
     <div className="mx-auto flex min-h-screen max-w-app flex-col border-x border-gray-200 bg-white">
@@ -114,8 +124,9 @@ export default function App() {
           <Route path="/painel/alertas" element={<Alertas />} />
           <Route path="/painel/monitoramento" element={<EmConstrucao tela="Monitoramento" etapa={10} />} />
           <Route path="/painel/entradas" element={<EmConstrucao tela="Entradas" etapa={10} />} />
-          <Route path="/pedidos" element={<EmConstrucao tela="Pedidos" etapa={9} />} />
-          <Route path="/pedidos-salvos" element={<EmConstrucao tela="Pedidos salvos" etapa={9} />} />
+          <Route path="/pedidos" element={<Pedidos />} />
+          <Route path="/pedidos-salvos" element={<PedidosSalvos />} />
+          <Route path="/pedidos-salvos/:id" element={<PedidoDetalhe />} />
           <Route path="/precificacao" element={<Precificacao />} />
           <Route path="/produto/:codigo" element={<DecisaoSKU />} />
           <Route path="*" element={<Navigate to="/painel/alertas" replace />} />

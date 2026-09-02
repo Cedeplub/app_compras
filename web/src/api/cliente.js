@@ -93,4 +93,40 @@ export const api = {
    *  verdades sobre o mesmo preço. Devolve o produto já atualizado. */
   gravarPreco: (codigo, corpo) =>
     requisitar(`/produtos/${codigo}/preco`, { method: "POST", body: JSON.stringify(corpo) }),
+
+  // ------------------------------------------------------------- pedidos ---
+  /** Salva o carrinho. O servidor cria UM pedido por fornecedor — é exigência
+   *  do formato de importação do Winthor (rotina 220). */
+  salvarCarrinho: (itens) =>
+    requisitar("/pedidos", { method: "POST", body: JSON.stringify({ itens }) }),
+
+  pedidos: (filtros = {}) => {
+    const busca = parametrosDeBusca(filtros);
+    return requisitar(`/pedidos${busca ? `?${busca}` : ""}`);
+  },
+  pedido: (id) => requisitar(`/pedidos/${id}`),
+
+  gravarItemPedido: (id, codigo, corpo) =>
+    requisitar(`/pedidos/${id}/itens/${codigo}`, { method: "PUT", body: JSON.stringify(corpo) }),
+  removerItemPedido: (id, codigo) =>
+    requisitar(`/pedidos/${id}/itens/${codigo}`, { method: "DELETE" }),
+
+  avancarPedido: (id) => requisitar(`/pedidos/${id}/avancar`, { method: "POST" }),
+  voltarPedido: (id) => requisitar(`/pedidos/${id}/voltar`, { method: "POST" }),
+  excluirPedido: (id) => requisitar(`/pedidos/${id}`, { method: "DELETE" }),
+
+  /** Exportações são DOWNLOAD, não JSON: `requisitar` desmontaria o arquivo
+   *  tentando fazer `.json()` dele. Por isso o caminho separado, devolvendo o
+   *  blob e o nome que o servidor mandou no Content-Disposition. */
+  baixarExportacao: async (id, formato) => {
+    const resp = await fetch(`/api/pedidos/${id}/exportar/${formato}`, { credentials: "same-origin" });
+    if (!resp.ok) {
+      let detalhe = `Erro ${resp.status}.`;
+      try { detalhe = (await resp.json())?.detail ?? detalhe; } catch { /* sem corpo JSON */ }
+      throw new ErroApi(resp.status, detalhe);
+    }
+    const disp = resp.headers.get("Content-Disposition") ?? "";
+    const nome = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(disp)?.[1] ?? `pedido_${id}.xlsx`;
+    return { blob: await resp.blob(), nome: decodeURIComponent(nome) };
+  },
 };
