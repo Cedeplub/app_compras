@@ -32,7 +32,19 @@ const VERMELHO = "#DE434B";
 
 export default function Cabecalho({ titulo, subtitulo, areaAtual, usuario, aoSair }) {
   return (
-    <div>
+    // ⚠ `relative z-30` é o que faz o menu ☰ abrir POR CIMA da barra de abas.
+    //
+    // A barra de abas é `sticky z-20`. O painel do menu tinha `z-20` também, mas
+    // o empate não era o problema: o bloco da barra de ferramentas usa
+    // `relative z-[1]` (necessário para o logo ficar sobre o corte diagonal), e
+    // isso cria um CONTEXTO DE EMPILHAMENTO — dentro dele, o `z-20` do menu vale
+    // só contra os irmãos ali dentro, nunca contra algo de fora. O menu poderia
+    // pedir z-9999 e continuaria por baixo.
+    //
+    // Elevar a RAIZ do cabeçalho resolve de vez: o subárvore inteira, menu
+    // incluído, passa a pintar acima da barra. Mexer no z-index do menu não
+    // resolveria — foi a primeira coisa que pareceu certa e não era.
+    <div className="relative z-30">
       <div className="relative flex items-center justify-between py-3 pl-6 pr-4"
            style={{ background: NAVY }}>
         {/* O corte diagonal branco que entra na faixa navy é a assinatura visual
