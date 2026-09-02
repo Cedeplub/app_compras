@@ -65,9 +65,13 @@ def sql_ordem_prioridade(alias_produto: str = "p") -> str:
     da página 2 à 7 — porque acumular cinco alertas fracos batia um RUPTURA
     sozinho. Quem olhasse a primeira página perdia quase todos.
 
-    Agora: **severidade máxima primeiro**, soma como desempate, curva como
-    terceiro critério. Um RUPTURA (5) vence qualquer acúmulo de peso ≤ 4,
-    independentemente de quantos sejam.
+    Agora: **severidade máxima → curva ABC → soma**. Um RUPTURA (5) vence
+    qualquer acúmulo de peso ≤ 4, independentemente de quantos sejam; e entre
+    dois produtos em ruptura, o classe A vem primeiro mesmo que o B/C some mais
+    alertas. A curva veio para o SEGUNDO lugar na 2ª rodada de decisões
+    (02/09/2026): com a soma em segundo, os classe A em ruptura ainda caíam nas
+    posições 89, 111 e 112 — melhor que as 18/52/57/158/307/331 de antes, mas
+    ainda fora da primeira página, que era o problema a resolver.
 
     Só entram os alertas que PONTUAM e são de DECISAO: FORA_DE_LINHA é etiqueta,
     e as pendências de cadastro não são decisão de compra.
@@ -81,8 +85,8 @@ def sql_ordem_prioridade(alias_produto: str = "p") -> str:
     )
     return (
         f"nvl((select max(case a.tipo_alerta {ramos} else 0 end) {pontuaveis}), 0) desc,"
-        f" nvl((select sum(case a.tipo_alerta {ramos} else 0 end) {pontuaveis}), 0) desc,"
         f" case {alias_produto}.classe {ramos_classe} else 0 end desc,"
+        f" nvl((select sum(case a.tipo_alerta {ramos} else 0 end) {pontuaveis}), 0) desc,"
         f" {alias_produto}.codigo"
     )
 

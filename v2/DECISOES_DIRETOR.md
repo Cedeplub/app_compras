@@ -216,3 +216,58 @@ vale confirmar se 20% no atacado é mesmo o corte pretendido.
 em `seed_fornecedor.csv`, então caem no valor de reserva. Para incluí-los faltam
 três parâmetros que são decisão sua: `MESES_MEDIA`, `COBERTURA_ALVO` e
 `PEDIDO_EM` (unidade ou caixa fechada).
+
+---
+
+# Segunda rodada — implementada em 02/09/2026
+
+## Item 3 — ordenação invertida, e agora resolve
+
+`severidade máxima → curva ABC → soma`, como decidido. **Os 7 produtos classe A
+em ruptura passaram a ocupar as posições 1 a 7.** Percurso do indicador:
+
+| Regra | Onde caíam os classe A em ruptura |
+|---|---|
+| soma pura (protótipo) | 18, 52, 57, 158, 307, 331 |
+| severidade → soma → curva | 89, 111, 112 |
+| **severidade → curva → soma** | **1, 2, 3, 4, 5, 6, 7** |
+
+## Item (b) — MARGEM_ALTA com 25% / 50%
+
+O volume que você pediu para conferir:
+
+| | 20% / 45% | **25% / 50%** |
+|---|---|---|
+| SKUs ativos | 1.634 | **874** |
+| Total | 2.179 | 1.336 |
+
+Queda de 47%. Deixou de ser o segundo maior tipo da tela e agora fica atrás de
+MARGEM_BAIXA (947 ativos). Ordem completa dos alertas de decisão, só ativos:
+MARGEM_BAIXA 947 · **MARGEM_ALTA 874** · RUPTURA 467 · SEM_GIRO 313 ·
+MARGEM_BAIXA_VAREJO 164 · BAIXO_GIRO 125 · DEVOLUCAO 113 ·
+OPORTUNIDADE_DE_GIRO 39 · CUSTO 2.
+
+Se ainda achar grande, o próximo corte natural seria 30%/55% — é uma linha em
+`seed_parametros.csv`.
+
+## Item (c) — ROBUST e ADIBRAX entraram
+
+| | MESES_MEDIA | COBERTURA_ALVO | PEDIDO_EM | COMPRADOR |
+|---|---|---|---|---|
+| ROBUST (36 SKUs) | 3 | 2,0 | UNIDADE | WASHINGTON |
+| ADIBRAX (2 SKUs) | 3 | 1,5 | UNIDADE | WASHINGTON |
+
+O comprador não estava na sua tabela, mas seguiu a decisão da 1ª rodada
+("Washington assume os departamentos sem comprador definido"). **Agora são 0 os
+SKUs com "A DEFINIR"** — antes eram 38.
+
+## Item (a) — nada a fazer
+
+OPORTUNIDADE_DE_GIRO segue só na classe A: 39 SKUs.
+
+---
+
+**Estado:** `dbt test` 276 passando, 0 erros. As 1.728 combinações de filtro da
+API respondem 200 (`validar/validar_api.py`). Restam as duas pendências que não
+dependem de decisão: Seção/Linha/Categoria aguardando o Winthor, e a validação
+visual em celular.

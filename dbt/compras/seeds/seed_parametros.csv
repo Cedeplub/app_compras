@@ -29,5 +29,5 @@ N_MESES_PADRAO;3;S;fallback de AB|N_MESES quando o departamento nao tem linha no
 CRED_IMPORTADO_LIMIAR;0.6;S;BS|CHECK_IMPORTADO dispara quando o credito real fica abaixo de 60% do esperado pela UF
 COBERTURA_CRITICA_FRACAO;0.6;S;fracao do COBERTURA_ALVO abaixo da qual a tela pinta a cobertura como critica - no prototipo .jsx era o literal 0,6 repetido em 3 lugares (PROTOTIPO.md secao 5 e 9)
 OPORTUNIDADE_GIRO_MESES;3;S;OPORTUNIDADE_DE_GIRO dispara com cobertura acima de 3 meses (90 dias) de venda - decisao do Diretor de Compras em 02/09/2026 (v2/DECISOES_DIRETOR.md item 1) - alerta NOVO, sem coluna na planilha
-MARGEM_ALTA_MIN;0.2;S;MARGEM_ALTA dispara com margem de atacado no pior cenario acima disso - decisao do Diretor de Compras em 02/09/2026 - alerta NOVO, sem coluna na planilha
-MARGEM_ALTA_MIN_VAREJO;0.45;S;MARGEM_ALTA dispara com margem de varejo no pior cenario acima disso - limiar PROPOSITALMENTE maior que o do atacado (o varejo opera com margem naturalmente mais alta), decisao do Diretor de Compras em 02/09/2026
+MARGEM_ALTA_MIN;0.25;S;MARGEM_ALTA dispara com margem de atacado no pior cenario acima disso - decisao do Diretor de Compras em 02/09/2026, corte subido de 0,20 para 0,25 na 2a rodada - alerta NOVO, sem coluna na planilha
+MARGEM_ALTA_MIN_VAREJO;0.5;S;MARGEM_ALTA dispara com margem de varejo no pior cenario acima disso - limiar PROPOSITALMENTE maior que o do atacado (o varejo opera com margem naturalmente mais alta), decisao do Diretor de Compras em 02/09/2026, corte subido de 0,45 para 0,50 na 2a rodada
