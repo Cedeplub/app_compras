@@ -17,12 +17,12 @@ import logging
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.exceptions import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app import config
 from app.api import alertas, contrato
 from app.core import auditoria, auth, database
-from app.servicos import produto
+from app.servicos import preco, produto
 
 log = logging.getLogger("app_compras.api")
 
@@ -150,4 +150,97 @@ def obter_produto(codigo: int, usuario=Depends(auth.exigir_login)):
     linha = produto.obter(codigo)
     if linha is None:
         raise HTTPException(status_code=404, detail="Produto não encontrado.")
+    return contrato.produto(linha)
+
+
+# --------------------------------------------------------- decisão de preço ---
+
+class DecisaoPreco(BaseModel):
+    """Corpo de POST /produtos/{codigo}/preco.
+
+    Nomes em camelCase (convenção da API, ver `contrato.py`); a tradução para
+    as colunas de APP_DECISAO_PRECO (margem_alvo, margem_alvo_varejo,
+    alt_pv_at_av, alt_pv_var_av) acontece só aqui — `app/servicos/preco.py`
+    continua falando o vocabulário do banco.
+
+    `precoAtacadoAP`/`precoVarejoAP` existem só para produzir um erro 422
+    explícito: o preço a prazo é DERIVADO do preço à vista pelo fator de
+    prazo, nunca gravado — guardar os dois criaria duas verdades.
+    """
+
+    margemAlvo: float | None = None
+    margemAlvoVarejo: float | None = None
+    precoAtacadoAV: float | None = None
+    precoVarejoAV: float | None = None
+    precoAtacadoAP: float | None = None
+    precoVarejoAP: float | None = None
+
+    @model_validator(mode="after")
+    def _validar(self) -> "DecisaoPreco":
+        if self.precoAtacadoAP is not None or self.precoVarejoAP is not None:
+            raise ValueError(
+                "Preço a prazo não é gravado diretamente: ele é derivado do "
+                "preço à vista pelo fator de prazo. Envie precoAtacadoAV "
+                "e/ou precoVarejoAV."
+            )
+        campos = (self.margemAlvo, self.margemAlvoVarejo,
+                  self.precoAtacadoAV, self.precoVarejoAV)
+        if all(c is None for c in campos):
+            raise ValueError(
+                "Informe ao menos um campo: margemAlvo, margemAlvoVarejo, "
+                "precoAtacadoAV ou precoVarejoAV."
+            )
+        # Mesmos limites das constraints de APP_DECISAO_PRECO
+        # (sql/02_tabelas_app.sql: ck_app_decisao_preco_ma/_mav/_pv/_pvv),
+        # verificados aqui para devolver 422 com mensagem em português em vez
+        # de deixar o banco estourar um erro genérico.
+        for nome, valor in (("margemAlvo", self.margemAlvo),
+                             ("margemAlvoVarejo", self.margemAlvoVarejo)):
+            if valor is not None and not (-1 <= valor <= 1):
+                raise ValueError(
+                    f"{nome} deve estar entre -1 e 1 (fração; ex. 0.20 = 20%)."
+                )
+        for nome, valor in (("precoAtacadoAV", self.precoAtacadoAV),
+                             ("precoVarejoAV", self.precoVarejoAV)):
+            if valor is not None and valor <= 0:
+                raise ValueError(f"{nome} deve ser maior que zero.")
+        return self
+
+
+@router.post("/produtos/{codigo}/preco")
+def gravar_preco(
+    codigo: int,
+    dados: DecisaoPreco,
+    request: Request,
+    # Gravar preço é a decisão humana do modelo (CONTEXTO.md §6 regra 10); a
+    # tela pode esconder o botão, quem recusa é a API. 404, nunca 403 — quem
+    # não é diretoria não deve nem saber que a rota existe.
+    usuario=Depends(auth.exigir_diretoria),
+):
+    if produto.obter(codigo) is None:
+        raise HTTPException(status_code=404, detail="Produto não encontrado.")
+    try:
+        preco.gravar_decisao_preco(
+            codigo,
+            dados.margemAlvo,
+            dados.margemAlvoVarejo,
+            dados.precoAtacadoAV,
+            dados.precoVarejoAV,
+            usuario.login,
+            usuario.id,
+            _ip(request),
+        )
+    except database.oracledb.IntegrityError as exc:  # type: ignore[attr-defined]
+        # Rede de segurança: qualquer constraint que a validação acima não
+        # cobriu (ex. corrida entre duas gravações concorrentes na mesma
+        # linha) vira 422 explicado, não um 500.
+        raise HTTPException(
+            status_code=422, detail=f"Valor recusado pelo banco: {exc}"
+        )
+
+    # Produto ATUALIZADO, no mesmo formato de GET /produtos/{codigo} — inclui
+    # a sobreposição ao vivo de ALT_PV_AT_AV/ALT_PV_VAR_AV feita em
+    # produto._sobrepor_preco_decidido, senão a tela mostraria o preço velho
+    # logo após gravar (COMPRAS_PEDIDO só atualiza no próximo `dbt run`).
+    linha = produto.obter(codigo)
     return contrato.produto(linha)

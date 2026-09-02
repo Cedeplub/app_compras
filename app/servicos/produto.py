@@ -44,7 +44,7 @@ _COLUNAS = """
     p.cred_icms, p.cred_piscof, p.piscof_ef,
 
     p.vl_ent_unit, p.custo_ult_ent, p.custo_tot_s_valor,
-    p.custo_tot_oficial, p.custo_tot_gerencial,
+    p.custo_tot_oficial, p.custo_tot_gerencial, p.custo_adicional_imagem,
 
     p.pv_atacado, p.pv_varejo, p.mkp_atacado, p.mkp_varejo,
     p.margem_st_s_valor, p.margem_oficial, p.margem_sem_red,
@@ -56,7 +56,10 @@ _COLUNAS = """
     p.pv_sug_sem_red_av,    p.pv_sug_sem_red_ap,
     p.pv_sug_st_s_valor_var_av, p.pv_sug_st_s_valor_var_ap,
     p.pv_sug_sem_red_var_av,    p.pv_sug_sem_red_var_ap,
-    p.alt_pv_at_av, p.alt_pv_at_ap, p.alt_pv_var_av, p.alt_pv_var_ap,
+    d.alt_pv_at_av                                     as alt_pv_at_av,
+    d.alt_pv_at_av  * par.fator_prazo_atacado          as alt_pv_at_ap,
+    d.alt_pv_var_av                                    as alt_pv_var_av,
+    d.alt_pv_var_av * par.fator_prazo_varejo           as alt_pv_var_ap,
 
     p.dt_ult_ent, p.qt_ult_ent, p.dt_ult_saida,
     p.ant_1, p.peso_1, p.ant_2, p.peso_2, p.check_sucessao,
@@ -64,10 +67,28 @@ _COLUNAS = """
     f.cobertura_alvo, f.pedido_em, f.meses_media
 """
 
+# ⚠ APP_DECISAO_PRECO entra AO VIVO, por join, e não pelas colunas ALT_PV_* da
+# tabela materializada.
+#
+# COMPRAS_PEDIDO só é recalculado no próximo `dbt run` — o dbt LÊ as APP_* e
+# nunca escreve nelas. Ler o preço decidido de lá faria a tela mostrar o valor
+# VELHO logo depois de gravar, e o comprador concluiria que a gravação falhou.
+# É exatamente o defeito que apareceu na tela de compra em 25/08/2026 e cuja
+# correção está documentada em `app/servicos/compra.py`.
+#
+# O "a prazo" é RECALCULADO aqui a partir do à vista ao vivo, com o fator vindo
+# de COMPRAS_PARAMETRO. Trazer ALT_PV_AT_AP da tabela materializada enquanto o
+# AV vem ao vivo faria os dois discordarem entre si na mesma linha — dois
+# números que deveriam ser um só, e nenhum aviso de que divergiram.
+#
+# COMPRAS_PARAMETRO tem 1 linha; o cross join não multiplica nada.
 _DE = """
       from compras_pedido p
+      cross join compras_parametro par
       left join compras_ind_fornecedor f
         on f.fornecedor = p.fornecedor
+      left join app_decisao_preco d
+        on d.id_produto = p.codigo
 """
 
 ORDENACOES = {

@@ -18,22 +18,29 @@ from typing import Any
 # ─────────────────────────────────────────────────────────────────────────────
 # Cenários de margem.
 #
-# O protótipo descobre o custo de cada cenário com um if/else inferido por
-# comparação empírica de números (PROTOTIPO.md §5/§9). Aqui não é preciso
-# inferir: o dbt já materializou a margem de cada cenário coluna a coluna.
+# O protótipo descobre custo e margem de cada cenário com um if/else inferido
+# por comparação empírica de números (PROTOTIPO.md §5/§9). Aqui não se infere
+# nada: a margem de cada cenário já está materializada coluna a coluna pelo dbt,
+# e o custo e a alíquota são lidos de `int_produto_preco_sugerido.sql` — o mesmo
+# lugar de onde saem os PV_SUG_*. É a regra de ouro do projeto aplicada à letra:
+# a tela não recalcula o que o modelo já calculou, e quando precisa de um
+# ingrediente, pega o ingrediente que o modelo usou.
 #
-# O custo, sim, precisa de uma regra — e ela é fiscal, não empírica: redução de
-# base de ICMS mexe no imposto de SAÍDA, não no custo de entrada. Por isso
-# "Sem Redução" não tem custo próprio; ele reusa o custo do regime que de fato
-# se aplica ao produto: quem é ST_SUBSTITUTO carrega o ST no custo (Oficial),
-# quem é NORMAL não carrega (ST s/Valor). É a mesma conclusão a que o protótipo
-# chegou por tentativa, agora pelo caminho da razão.
+# Resumo do que o modelo faz (verificado no SQL, não deduzido):
 #
-# ⚠ CUSTO_TOT_OFICIAL e CUSTO_TOT_GERENCIAL são DOIS campos no nosso banco, e
-# diferem onde há ajuste de imagem (o 80/20 do Ingrax). O protótipo tinha um só
-# no mock e concluiu que "custoGerencial é sinônimo do custo Oficial" (§9). Para
-# cenário fiscal usa-se o OFICIAL; o gerencial é para leitura de margem interna
-# e não entra em base de ST.
+#   cenário    | custo                                    | ICMS de saída
+#   -----------|------------------------------------------|----------------
+#   ST s/Valor | custo_tot_s_valor + ajuste_imagem         | icms_sem_red
+#   Oficial    | custo_tot_gerencial                       | icms_saida_ef
+#   Sem Redução| custo_tot_gerencial                       | icms_sem_red
+#
+# Duas leituras que decorrem daí e valem dizer em voz alta:
+#   * Oficial e Sem Redução usam O MESMO custo. O que os separa é a alíquota —
+#     redução de base mexe no imposto de SAÍDA, não no custo de entrada.
+#   * `custo_tot_gerencial` NÃO é sinônimo de `custo_tot_oficial`, ao contrário
+#     do que o protótipo concluiu do mock dele (§9): medido, gerencial =
+#     oficial + ajuste_imagem em 100% dos SKUs. Onde o ajuste existe (226 SKUs,
+#     todos INGRAX), a diferença chega a R$ 567.
 # ─────────────────────────────────────────────────────────────────────────────
 
 CENARIOS_ATACADO = ("st_valor", "oficial", "sem_red")
@@ -61,14 +68,51 @@ def _data(valor: Any) -> str | None:
     return str(valor)
 
 
+# ⚠ CORRIGIDO EM 02/09/2026. A versão anterior inferia o custo de cada cenário
+# a partir da lógica do protótipo (um `if` por modalidade) e estava ERRADA nos
+# três cenários. O certo foi lido de `int_produto_preco_sugerido.sql`, que é
+# quem de fato calcula os PV_SUG_* — a tela precisa mostrar o MESMO custo que
+# gerou a sugestão, senão o MKP e a margem exibidos não fecham com o preço
+# sugerido ao lado, e ninguém descobre por quê.
+#
+# Medido: `custo_tot_gerencial = custo_tot_oficial + custo_adicional_imagem` em
+# 100% dos 8.635 SKUs com custo. O ajuste de imagem (o 80/20 do Ingrax) é
+# diferente de zero em 226 SKUs, todos INGRAX, chegando a R$ 567 — que era
+# exatamente o tanto que o custo exibido estava abaixo do usado no cálculo.
+_CUSTO_DO_CENARIO = {
+    # ST s/Valor: custo sem ST, MAIS o ajuste de imagem.
+    "st_valor": lambda p: _soma(p, "custo_tot_s_valor", "custo_adicional_imagem"),
+    # Oficial e Sem Redução usam o mesmo custo — o gerencial, que já inclui o
+    # ajuste. O que os separa é a ALÍQUOTA, não o custo (ver _ICMS_DO_CENARIO).
+    "oficial": lambda p: _f(p.get("custo_tot_gerencial")),
+    "sem_red": lambda p: _f(p.get("custo_tot_gerencial")),
+}
+
+# Qual alíquota de ICMS de saída cada cenário aplica. A tela usa isto para
+# recalcular a margem do preço DIGITADO a cada tecla — sem ela, a margem do
+# preço novo sairia com uma alíquota e a do sugerido com outra, lado a lado.
+_ICMS_DO_CENARIO = {
+    "st_valor": "icms_sem_red",
+    "oficial": "icms_saida_ef",
+    "sem_red": "icms_sem_red",
+}
+
+
+def _soma(p: dict, *colunas: str) -> float | None:
+    """Soma tratando ausência como zero, mas devolvendo None se TUDO for nulo.
+
+    `custo_adicional_imagem` é nulo/zero em 8.403 dos 8.629 SKUs; somar como
+    zero é o comportamento certo. Já um custo base nulo não pode virar 0,00 na
+    tela — 0,00 diz "de graça", e nulo diz "não sei".
+    """
+    valores = [p.get(c) for c in colunas]
+    if all(v is None for v in valores):
+        return None
+    return float(sum(v for v in valores if v is not None))
+
+
 def _custo_do_cenario(p: dict, cenario: str) -> float | None:
-    if cenario == "st_valor":
-        return _f(p.get("custo_tot_s_valor"))
-    if cenario == "oficial":
-        return _f(p.get("custo_tot_oficial"))
-    # sem_red: ver o bloco de comentário acima.
-    eh_st = (p.get("modalidade") or "").upper() == "ST_SUBSTITUTO"
-    return _f(p.get("custo_tot_oficial" if eh_st else "custo_tot_s_valor"))
+    return _CUSTO_DO_CENARIO[cenario](p)
 
 
 def _cenario_real(modalidade: str | None) -> str | None:
@@ -98,6 +142,7 @@ def _cenarios(p: dict, praca: str) -> list[dict]:
             "rotulo": ROTULO_CENARIO[cid],
             "real": cid == real,
             "custo": _custo_do_cenario(p, cid),
+            "icmsEf": _f(p.get(_ICMS_DO_CENARIO[cid])),
             "margemAtual": _f(p.get(_COLUNA_MARGEM[(cid, praca)])),
             "pvSugeridoAV": _f(p.get(f"pv_sug_{_chave_sug(cid)}{sug}_av")),
             "pvSugeridoAP": _f(p.get(f"pv_sug_{_chave_sug(cid)}{sug}_ap")),
