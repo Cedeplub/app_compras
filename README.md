@@ -4,6 +4,16 @@ Versão online do modelo de compras e precificação da diretoria de Compras —
 planilha Excel de 8.772 SKUs e ~980 mil fórmulas. Dois entregáveis: um fluxo **dbt** que
 reproduz a lógica em SQL, e um **dashboard** que lê o resultado.
 
+> **Repositório público, por decisão deliberada.** Verificado em 02/09/2026: nenhum
+> commit contém credencial — a senha do Oracle vive só em `.env` e `~/.dbt/profiles.yml`,
+> ambos fora do versionamento. Em compensação, o que ESTÁ aqui é material comercial e de
+> infraestrutura: IPs internos, os GRANTs nomeando as tabelas do CEDEP, o modelo fiscal
+> completo, as calibrações de crédito por fornecedor e os parâmetros de compra por
+> departamento. A diretoria foi informada disso e optou por manter o repositório público.
+> Se algum dia a decisão mudar, lembre-se: tornar privado depois não desfaz o que já foi
+> indexado — o caminho seria rotacionar o que for rotacionável e tratar o resto como
+> exposto.
+
 **Comece por `STATUS.md`** — onde o projeto está, o que está no ar e quais decisões
 seguem abertas. Depois **`CONTEXTO.md`**, que é o documento canônico: convenções,
 fronteira de acesso ao banco e o índice das regras de negócio. O detalhe dessas regras,
