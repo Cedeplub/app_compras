@@ -105,7 +105,16 @@ export default function Entradas() {
                   aoTrocar={setDepartamento} />
         </Campo>
         <Campo rotulo="Seção" largura="w-44">
-          <Select valor={secao} vazio="Todas" opcoes={opcoes?.secoes ?? []} aoTrocar={setSecao} />
+          {/* O campo só fica ativo se houver seção de verdade. Medido em
+              02/09/2026: dos 47 departamentos, só 2 têm mais de uma seção — nos
+              outros a "seção" é o próprio nome do departamento repetido, porque
+              o cadastro segue em andamento no Winthor. Um filtro populado com os
+              mesmos nomes do filtro ao lado parece uma segunda dimensão e não é:
+              cruzar os dois não muda nada, e a pessoa perde tempo tentando. */}
+          <Select valor={secao} vazio="Todas" opcoes={opcoes?.secoes ?? []}
+                  aoTrocar={setSecao}
+                  desabilitado={!opcoes?.secoes?.length}
+                  aviso="Aguardando o cadastro de seções no Winthor" />
         </Campo>
         <Campo rotulo="Buscar produto" largura="w-52">
           <div className="relative">
@@ -214,16 +223,19 @@ function Campo({ rotulo, largura = "", children }) {
   );
 }
 
-function Select({ valor, aoTrocar, opcoes, vazio }) {
+function Select({ valor, aoTrocar, opcoes, vazio, desabilitado, aviso }) {
   return (
     <div className="relative">
       <select value={valor} onChange={(e) => aoTrocar(e.target.value)}
-              className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 pr-6 text-sm font-medium text-gray-800">
+              disabled={desabilitado} title={desabilitado ? aviso : undefined}
+              className={`w-full appearance-none rounded-lg border border-gray-200 px-2.5 py-1.5 pr-6 text-sm font-medium ${
+                desabilitado ? "bg-gray-50 text-gray-400" : "bg-white text-gray-800"}`}>
         <option value="">{vazio}</option>
         {opcoes.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
       <ChevronDown size={12} aria-hidden="true"
-                   className="pointer-events-none absolute right-2 top-2.5 text-gray-400" />
+                   className={`pointer-events-none absolute right-2 top-2.5 ${
+                     desabilitado ? "text-gray-300" : "text-gray-400"}`} />
     </div>
   );
 }

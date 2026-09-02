@@ -80,16 +80,40 @@ def _filtros(f: dict, alias: str = "m") -> tuple[str, dict]:
 
 
 def proxima_dimensao(filtros: dict) -> str | None:
-    """A primeira dimensão ainda NÃO fixada por filtro.
+    """A primeira dimensão ainda NÃO fixada por filtro, E que tenha o que abrir.
 
     É a regra de quebra automática do protótipo: a tela não tem botão de
     "agrupar por" — ela abre pela primeira dimensão que ainda está em "Todos".
     Fixou departamento, quebra por seção; fixou os dois, mostra só o total.
+
+    ⚠ A segunda condição é nossa, e nasce de um defeito real. Seção só existe de
+    verdade em 2 dos 47 departamentos; nos outros 39 ela repete o nome do
+    próprio departamento. Sem a checagem, fixar "PETROBRAS" abriria uma quebra
+    por seção com uma linha só, chamada "PETROBRAS", repetindo o total que já
+    está no cartão acima — uma tabela que não informa nada e parece defeito.
+
+    A checagem é feita no DADO, não numa lista de exceções: quando o cadastro do
+    Winthor fechar, a quebra passa a funcionar sozinha para os departamentos que
+    ganharem seção, sem mudança de código.
     """
     for d in DIMENSOES:
-        if not filtros.get(d):
-            return d
+        if filtros.get(d):
+            continue
+        if d == "secao" and not _secao_util(filtros):
+            continue
+        return d
     return None
+
+
+def _secao_util(filtros: dict) -> bool:
+    """Há mais de uma seção no recorte atual? Se não, quebrar por ela é ruído."""
+    onde, binds = _filtros(filtros)
+    linha = database.consultar_um(
+        f"select count(distinct m.secao) as n from compras_monitoramento m"
+        f" where m.secao is not null {onde}",
+        binds,
+    )
+    return int(linha["n"] or 0) > 1
 
 
 def resumo(filtros: dict, de: str, ate: str, de_ant: str, ate_ant: str,
@@ -217,13 +241,36 @@ def opcoes_monitoramento() -> dict:
     Oferecer no filtro um departamento sem uma venda sequer no período leva a
     pessoa a um resultado vazio que parece defeito.
     """
+    # ⚠ SEÇÃO só é oferecida onde ela EXISTE de verdade.
+    #
+    # Medido em 02/09/2026: dos 47 departamentos, apenas 2 (TECFIL e OUTROS)
+    # têm mais de uma seção. Nos outros 39 a "seção" é o próprio nome do
+    # departamento repetido — 53% das 338 mil linhas têm
+    # `departamento = secao`. É o cadastro que ainda está em andamento no
+    # Winthor, e não uma dimensão pronta.
+    #
+    # Oferecer um filtro de Seção populado com os mesmos nomes do filtro de
+    # Departamento é pior que não oferecer: parecem duas dimensões e são uma
+    # só, e quem cruzar os dois não vê nada mudar. A consulta abaixo devolve
+    # seções só dos departamentos que têm mais de uma — e devolve lista vazia
+    # quando não há nenhuma, que é o sinal para a tela desabilitar o campo.
+    #
+    # Quando o cadastro do Winthor fechar, esta mesma consulta passa a devolver
+    # as seções reais sozinha, sem mudança de código.
     return {
         "departamentos": [r["departamento"] for r in database.consultar(
             "select distinct departamento from compras_monitoramento"
             " where departamento is not null order by 1")],
         "secoes": [r["secao"] for r in database.consultar(
-            "select distinct secao from compras_monitoramento"
-            " where secao is not null order by 1")],
+            """
+            select distinct m.secao
+              from compras_monitoramento m
+             where m.secao is not null
+               and m.departamento in (
+                     select departamento from compras_monitoramento
+                      group by departamento having count(distinct secao) > 1)
+             order by 1
+            """)],
     }
 
 
