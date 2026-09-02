@@ -124,35 +124,49 @@ def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
         )
         binds["busca"] = f"%{filtros['busca'].strip()}%"
 
-    # Um tipo de alerta, ou vários. Nunca `like` na string ALERTA concatenada:
-    # COMPRAS_ALERTA já vem despivotado, uma linha por tipo (CONTEXTO §6).
+    if not incluir_alerta:
+        return (f"where {' and '.join(condicoes)}" if condicoes else ""), binds
+
+    # ── Um tipo de alerta, ou vários ──────────────────────────────────────────
+    # Nunca `like` na string ALERTA concatenada: COMPRAS_ALERTA já vem
+    # despivotado, uma linha por tipo (CONTEXTO §6).
+    #
     # A categoria recorta QUAL universo de alerta conta. A tela de Alertas usa
     # 'DECISAO'; a de Pendência de Cadastro usará 'CADASTRO'. Sem esse recorte,
     # 1.871 SKUs cujo único alerta é de cadastro entrariam na lista de decisão
     # de compra — foi o que o Diretor mandou separar no item 2.
+    #
+    # ⚠ O bind de categoria é registrado DENTRO de cada ramo que o usa, e não
+    # aqui em cima. Registrá-lo antes causou um 500 em produção (ORA-01036,
+    # 02/09/2026): ao ligar um botão de tipo, o `exists` passava a usar só
+    # `:ta0..:taN`, o `:categoria` sobrava na lista de binds, e o Oracle recusa
+    # bind declarado e não usado. Um `where` montado por pedaços não pode ter
+    # bind pendurado num pedaço que não entrou.
     categoria = filtros.get("categoria")
-    filtro_cat = " and a.categoria = :categoria" if categoria else ""
-    if categoria:
-        binds["categoria"] = categoria
 
-    tipos = (filtros.get("tipos_alerta") or []) if incluir_alerta else []
-    if not incluir_alerta:
-        onde_base = f"where {' and '.join(condicoes)}" if condicoes else ""
-        return onde_base, binds
+    def _com_categoria(sql_alerta: str) -> str:
+        if not categoria:
+            return sql_alerta
+        binds["categoria"] = categoria
+        return f"{sql_alerta} and a.categoria = :categoria"
+
+    tipos = filtros.get("tipos_alerta") or []
     if tipos:
         marcas = ", ".join(f":ta{i}" for i in range(len(tipos)))
-        condicoes.append(
-            f"exists (select 1 from compras_alerta a"
-            f"         where a.codigo = p.codigo and a.tipo_alerta in ({marcas}))"
-        )
         binds.update({f"ta{i}": t for i, t in enumerate(tipos)})
+        condicoes.append(
+            "exists (select 1 from compras_alerta a"
+            + _com_categoria(f" where a.codigo = p.codigo and a.tipo_alerta in ({marcas})")
+            + ")"
+        )
     elif filtros.get("so_com_alerta"):
         # A tela de Alertas sem nenhum tipo ligado mostra "todo mundo que tem
         # pelo menos 1 alerta" (PROTOTIPO.md §2.1), que não é o mesmo que
         # "todo mundo".
         condicoes.append(
-            f"exists (select 1 from compras_alerta a"
-            f"         where a.codigo = p.codigo{filtro_cat})"
+            "exists (select 1 from compras_alerta a"
+            + _com_categoria(" where a.codigo = p.codigo")
+            + ")"
         )
 
     onde = f"where {' and '.join(condicoes)}" if condicoes else ""
