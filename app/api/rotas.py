@@ -13,6 +13,7 @@ Convenções desta camada:
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -91,8 +92,17 @@ def parametros(usuario=Depends(auth.exigir_login)):
     linha = database.consultar_um("select * from compras_parametro")
     if linha is None:
         raise HTTPException(status_code=503, detail="Parâmetros ainda não materializados.")
-    return {k: (float(v) if v is not None and not isinstance(v, str) else v)
-            for k, v in linha.items()}
+    # Data vira texto ISO; o resto vira float. Sem o ramo de data, o `float()`
+    # estouraria num datetime e a rota inteira cairia em 500 — e ela é chamada
+    # por TODA tela que recalcula margem.
+    def _valor(v):
+        if v is None or isinstance(v, str):
+            return v
+        if isinstance(v, (dt.datetime, dt.date)):
+            return v.strftime("%Y-%m-%d")
+        return float(v)
+
+    return {k: _valor(v) for k, v in linha.items()}
 
 
 @router.get("/opcoes")

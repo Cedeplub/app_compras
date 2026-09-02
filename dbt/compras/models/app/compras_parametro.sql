@@ -18,6 +18,16 @@ with parametro as (
     select * from {{ ref('int_parametro') }}
 ),
 
+-- ⚠ O mês de referência sai do DADO (max(mes) da série mensal), não de
+-- `sysdate`. A tela usa isto para rotular as barras do mini-gráfico de venda
+-- com o nome do mês — "ago/26" em vez de "M-1", que obriga o comprador a contar
+-- de cabeça. Se o rótulo viesse do relógio do dispositivo, um build atrasado
+-- faria a tela nomear como "setembro" uma barra que é de agosto: o pior tipo de
+-- erro, porque o número está certo e só o nome mente.
+referencia as (
+    select max(mes) as mes_referencia from {{ ref('int_venda_mensal') }}
+),
+
 final as (
     select
         -- usados na fórmula de margem que a tela refaz a cada tecla digitada
@@ -45,8 +55,11 @@ final as (
         -- verdade — limiar de alerta visual —, então virou linha de
         -- seed_parametros com o mesmo valor. Quando a diretoria quiser 0,5,
         -- muda no CSV e roda `dbt seed`; nada de código.
-        p.cobertura_critica_fracao  as COBERTURA_CRITICA_FRACAO
+        p.cobertura_critica_fracao  as COBERTURA_CRITICA_FRACAO,
+
+        r.mes_referencia            as MES_REFERENCIA
       from parametro p
+     cross join referencia r
 )
 
 select * from final

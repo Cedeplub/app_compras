@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronLeft, Layers, Loader2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import { simular, valorAntesDoCredito } from "../precificacao.js";
-import { data as fmtData, moeda, numero } from "../formato.js";
+import { data as fmtData, mesCurto, mesesAntes, moeda, numero } from "../formato.js";
 
 /* Nível 2 — Decisão do SKU (PROTOTIPO.md §2.10, .jsx linha 2395).
  *
@@ -93,7 +93,7 @@ export default function DecisaoSKU() {
       <div className="px-4 pt-4 md:px-6">
         <Contexto p={p} coberturaAtual={coberturaAtual} critica={critica} />
         <Avisos p={p} />
-        <Grafico p={p} />
+        <Grafico p={p} mesReferencia={parametros?.mes_referencia} />
         <Fiscal p={p} cenarioSel={cenarioSel} />
 
         <div className="mt-3 md:max-w-xs">
@@ -192,12 +192,33 @@ function Avisos({ p }) {
 }
 
 /* Mini-gráfico de venda: os 4 meses recentes em navy, o mesmo mês do ano
- * anterior em amarelo (#FBBF24, §6). */
-function Grafico({ p }) {
-  const meses = ["Atual", "M-1", "M-2", "M-3"];
-  const barras = p.vendaHistorico.map((v, i) => ({ rotulo: meses[i], valor: v ?? 0, cor: NAVY }));
+ * anterior em amarelo (#FBBF24, §6).
+ *
+ * Os rótulos são o NOME do mês ("ago/26"), não "M-1"/"M-2"/"M-3" como no
+ * protótipo: contar para trás de cabeça é trabalho que a tela pode poupar.
+ *
+ * ⚠ Os nomes derivam de `MES_REFERENCIA`, que vem do DADO (o `max(mes)` da
+ * série mensal), e não da data do dispositivo. Se o build do dia atrasar, a
+ * tela continua nomeando corretamente o mês que os números representam — em vez
+ * de chamar de "setembro" uma barra que é de agosto. */
+function Grafico({ p, mesReferencia }) {
+  const barras = p.vendaHistorico.map((v, i) => ({
+    // vendaHistorico é [Atual, M-1, M-2, M-3]: o índice é quantos meses antes
+    // da referência aquela barra está.
+    rotulo: mesReferencia ? mesCurto(mesesAntes(mesReferencia, i)) : ["Atual", "M-1", "M-2", "M-3"][i],
+    // O primeiro é o mês corrente, ainda em curso — dizer isso evita ler uma
+    // barra baixa como queda de venda quando é só mês pela metade.
+    nota: i === 0 ? "em curso" : null,
+    valor: v ?? 0,
+    cor: NAVY,
+  }));
   if (p.vendaAnoPassado != null) {
-    barras.push({ rotulo: "Ano ant.", valor: p.vendaAnoPassado, cor: AMARELO });
+    barras.push({
+      rotulo: mesReferencia ? mesCurto(mesesAntes(mesReferencia, 12)) : "Ano ant.",
+      nota: "ano anterior",
+      valor: p.vendaAnoPassado,
+      cor: AMARELO,
+    });
   }
   const maior = Math.max(...barras.map((b) => b.valor), 1);
 
@@ -210,7 +231,8 @@ function Grafico({ p }) {
             <span className="num text-[9px] text-gray-500">{numero(b.valor, 0)}</span>
             <div className="w-full rounded-t"
                  style={{ background: b.cor, height: `${Math.max(2, (b.valor / maior) * 56)}px` }} />
-            <span className="text-[9px] text-gray-400">{b.rotulo}</span>
+            <span className="text-[9px] text-gray-500">{b.rotulo}</span>
+            {b.nota && <span className="text-[8px] leading-none text-gray-400">{b.nota}</span>}
           </div>
         ))}
       </div>

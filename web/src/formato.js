@@ -51,3 +51,29 @@ export const data = (iso) => {
   const [ano, mes, dia] = iso.split("-");
   return `${dia}/${mes}/${ano.slice(2)}`;
 };
+
+/** "set/26" a partir de uma data ISO. Usado para rotular as barras do gráfico
+ *  de venda com o nome do mês em vez de "M-1", "M-2", "M-3".
+ *
+ *  Recebe a data em partes e monta com `Date.UTC`, em vez de `new Date(iso)`:
+ *  uma string "2026-09-01" é interpretada como meia-noite UTC, e num fuso a
+ *  oeste de Greenwich isso volta um dia — o que faria setembro virar agosto no
+ *  rótulo. Erro clássico, e aqui ele apareceria como o gráfico inteiro
+ *  deslocado um mês, com os números certos.
+ */
+export function mesCurto(iso) {
+  if (!iso) return "—";
+  const [ano, mes] = iso.split("-").map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1, 1));
+  const nome = d.toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" })
+                .replace(".", "");
+  return `${nome}/${String(ano).slice(2)}`;
+}
+
+/** A data ISO de N meses antes da referência. */
+export function mesesAntes(iso, n) {
+  if (!iso) return null;
+  const [ano, mes] = iso.split("-").map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1 - n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
