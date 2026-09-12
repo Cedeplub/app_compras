@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* O protótipo declara a fonte uma vez, no elemento raiz (PROTOTIPO.md §6).
+   Mantido: nenhuma fonte é importada de fora. O dispositivo alvo está atrás do
+   Fortigate, e uma fonte de CDN é uma tela sem tipografia no dia em que a saída
+   for bloqueada — o mesmo motivo pelo qual o htmx foi vendorizado na v1. */
+@layer base {
+  html {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 text-base antialiased;
+    margin: 0;
+  }
+  /* Número em coluna só alinha se os dígitos tiverem a mesma largura. É o
+     defeito mais visível de uma tabela de preço, e custa uma linha. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    @apply font-mono;
+  }
+  /* Foco visível. O protótipo não trata foco em lugar nenhum (§6): quem navega
+     por teclado fica sem saber onde está. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-navy ring-offset-1;
+  }
+}

@@ -1,0 +1,169 @@
+import { useCallback, useEffect, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { api, SESSAO_EXPIROU } from "./api/cliente.js";
+import { AtualizacaoProvider } from "./contexto/atualizacao.jsx";
+import { CarrinhoProvider } from "./contexto/carrinho.jsx";
+import { Carregando, Erro } from "./componentes/Basicos.jsx";
+import Cabecalho from "./componentes/Cabecalho.jsx";
+import BarraAbas from "./componentes/BarraAbas.jsx";
+import Login from "./telas/Login.jsx";
+import Alertas from "./telas/Alertas.jsx";
+import Precificacao from "./telas/Precificacao.jsx";
+import Monitoramento from "./telas/Monitoramento.jsx";
+import Entradas from "./telas/Entradas.jsx";
+import DecisaoSKU from "./telas/DecisaoSKU.jsx";
+import Pedidos from "./telas/Pedidos.jsx";
+import PedidosSalvos from "./telas/PedidosSalvos.jsx";
+import PedidoDetalhe from "./telas/PedidoDetalhe.jsx";
+import PrecosDefinidos from "./telas/PrecosDefinidos.jsx";
+import LotePrecoDetalhe from "./telas/LotePrecoDetalhe.jsx";
+
+/* Esqueleto do app.
+ *
+ * Navegação em dois níveis, como no protótipo (§2): a ÁREA troca pelo menu ☰ do
+ * cabeçalho, e a ABA só existe dentro da área "painel", na BarraAbas.
+ *
+ * Diferença deliberada: aqui cada tela tem URL. No protótipo nenhuma URL muda,
+ * então o botão voltar do navegador sai do app e F5 devolve tudo ao estado
+ * inicial (§7). Com rota de verdade, o comprador manda o link de um produto
+ * para o Diretor e recarregar não perde o lugar.
+ */
+
+const TITULOS = {
+  "/painel/alertas": {
+    titulo: "Painel do dia",
+    // No protótipo o subtítulo é a string fixa "sexta-feira, 28 de agosto"
+    // (§8: `HOJE` é chumbado). Aqui é a data real.
+    subtitulo: () => new Date().toLocaleDateString("pt-BR",
+      { weekday: "long", day: "numeric", month: "long" }),
+  },
+  "/painel/monitoramento": { titulo: "Monitoramento", subtitulo: () => "Faturamento, peso e quantidade" },
+  "/painel/entradas": { titulo: "Entradas recentes", subtitulo: () => "Últimas movimentações de estoque" },
+  "/pedidos": { titulo: "Pedidos", subtitulo: () => "Decisão de compra — visão ampla" },
+  "/pedidos-salvos": { titulo: "Pedidos Salvos", subtitulo: () => "Status, orçamento e envio pro Winthor" },
+  // O detalhe tem id na URL, então não casa por chave exata — `areaDaRota`
+  // já resolve a área, e o título cai no padrão do cabeçalho.
+  "/precificacao": { titulo: "Precificação", subtitulo: () => "Decisão de preço — visão ampla" },
+  // Etapa 12 — o lote de preços como documento (PROMPT_ETAPA_12_PRECOS_DEFINIDOS.md).
+  "/precos-definidos": { titulo: "Preços Definidos",
+    subtitulo: () => "Lotes de preço para importação no Winthor" },
+};
+
+const areaDaRota = (caminho) =>
+  caminho.startsWith("/painel") ? "painel"
+    : caminho.startsWith("/pedidos-salvos") ? "pedidos_salvos"
+    : caminho.startsWith("/pedidos") ? "pedidos"
+    : caminho.startsWith("/precos-definidos") ? "precos_definidos"
+    : caminho.startsWith("/precificacao") ? "precificacao"
+    : null;
+
+export default function App() {
+  const [usuario, setUsuario] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [contadorAlertas, setContadorAlertas] = useState(null);
+  const navegar = useNavigate();
+  const { pathname } = useLocation();
+
+  const verificarSessao = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const { usuario } = await api.sessao();
+      setUsuario(usuario);
+    } catch (e) {
+      // 401 aqui é o caso normal de quem ainda não entrou, não uma falha:
+      // vira tela de login, não mensagem de erro.
+      if (e.status !== 401) setErro(e.detalhe);
+      setUsuario(null);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => { verificarSessao(); }, [verificarSessao]);
+
+  useEffect(() => {
+    const aoExpirar = () => { setUsuario(null); navegar("/", { replace: true }); };
+    window.addEventListener(SESSAO_EXPIROU, aoExpirar);
+    return () => window.removeEventListener(SESSAO_EXPIROU, aoExpirar);
+  }, [navegar]);
+
+  // Contador do badge vermelho da aba Alertas. Uma consulta leve (uma linha) só
+  // para o agregado — o `resumo` vale para o filtro inteiro, não para a página.
+  useEffect(() => {
+    if (!usuario) return;
+    // Os MESMOS filtros da tela de Alertas, `categoria` inclusive. Sem ela o
+    // badge contava 3,5k enquanto o KPI da tela dizia 2.982 — dois números para
+    // a mesma pergunta, e o comprador sem saber qual acreditar.
+    api.produtos({ soComAlerta: true, status: "Ativo", categoria: "DECISAO", porPagina: 1 })
+      .then((d) => setContadorAlertas(d.resumo?.comAlerta ?? null))
+      .catch(() => setContadorAlertas(null));   // badge é enfeite: falhar aqui não é erro de tela
+  }, [usuario]);
+
+  if (carregando) return <Carregando>Verificando sessão…</Carregando>;
+  if (erro) return <Erro mensagem={erro} aoTentarDeNovo={verificarSessao} />;
+  if (!usuario) return <Login aoEntrar={setUsuario} />;
+
+  const area = areaDaRota(pathname);
+  // Casa por prefixo, e não por chave exata: `/pedidos-salvos/7` é a mesma área
+  // de `/pedidos-salvos` e merece o mesmo título. Com igualdade estrita, a tela
+  // de detalhe caía no rótulo genérico "Compras CEDEP".
+  const t = TITULOS[pathname]
+    ?? TITULOS[Object.keys(TITULOS).filter((k) => pathname.startsWith(`${k}/`))
+                    .sort((a, b) => b.length - a.length)[0]];
+
+  return (
+    // O provider só monta aqui, depois de `usuario` garantido pelas checagens
+    // acima — é por isso que ele não precisa de prop "habilitado": a tela de
+    // Login nem chega a montar esta árvore, então não há consulta a
+    // `/api/atualizacao` sem sessão.
+    <AtualizacaoProvider>
+      {/* `CarrinhoProvider` aninhado aqui, não dentro de `Pedidos.jsx`: montar
+          o contexto na tela zeraria o carrinho a cada saída/retorno da rota
+          `/pedidos` — exatamente o defeito que a Etapa 13 corrige (§6.2). O
+          `sessionStorage` por trás dele garante o F5; o contexto vivo aqui
+          garante a navegação dentro da mesma aba. */}
+      <CarrinhoProvider>
+        <div className="mx-auto flex min-h-screen max-w-app flex-col border-x border-gray-200 bg-white">
+          <Cabecalho
+            titulo={t?.titulo ?? "Compras CEDEP"}
+            subtitulo={t?.subtitulo?.()}
+            areaAtual={area}
+            usuario={usuario}
+            aoSair={() => { api.sair().finally(() => setUsuario(null)); }}
+          />
+
+          {/* A ordem no DOM é cabeçalho → conteúdo → abas, que é a ordem do
+              celular (barra no rodapé). Na mesa, `md:order-*` sobe a barra para
+              logo abaixo do cabeçalho sem duplicar marcação. */}
+          <main className="flex-1 md:order-3">
+            <Routes>
+              <Route path="/" element={<Navigate to="/painel/alertas" replace />} />
+              <Route path="/painel" element={<Navigate to="/painel/alertas" replace />} />
+              <Route path="/painel/alertas" element={<Alertas />} />
+              <Route path="/painel/monitoramento" element={<Monitoramento />} />
+              <Route path="/painel/entradas" element={<Entradas />} />
+              <Route path="/pedidos" element={<Pedidos />} />
+              <Route path="/pedidos-salvos" element={<PedidosSalvos />} />
+              <Route path="/pedidos-salvos/:id" element={<PedidoDetalhe />} />
+              <Route path="/precificacao" element={<Precificacao />} />
+              <Route path="/precos-definidos" element={<PrecosDefinidos />} />
+              <Route path="/precos-definidos/:id" element={<LotePrecoDetalhe />} />
+              <Route path="/produto/:codigo" element={<DecisaoSKU />} />
+              <Route path="*" element={<Navigate to="/painel/alertas" replace />} />
+            </Routes>
+          </main>
+
+          {/* As três abas só existem dentro do Painel — é o que o segundo nível de
+              navegação significa. Fora dele, a barra não aparece. */}
+          {/* A própria BarraAbas carrega `order-last md:order-none`: no celular vai
+              para o fim (rodapé), na mesa volta para junto do cabeçalho, porque o
+              <main> tem `md:order-3`. Envolvê-la num `display:contents` anularia o
+              `order`, já que o elemento deixa de gerar caixa. */}
+          {area === "painel" && <BarraAbas contadorAlertas={contadorAlertas} />}
+        </div>
+      </CarrinhoProvider>
+    </AtualizacaoProvider>
+  );
+}

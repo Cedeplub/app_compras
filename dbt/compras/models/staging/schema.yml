@@ -1,0 +1,664 @@
+version: 2
+
+models:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Cadastro — pequenas tabelas com testes de chave
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: stg_produto
+    description: >
+      Cadastro de produtos. Coluna-chave: CODPROD. Status ativo/inativo é derivado
+      de OBS2='FL' (fora de linha). A regra de inferência é pela transformação do
+      campo, não por filtro WHERE: OBS2 vem como dois espaços para ativo (não NULL,
+      o que enganaria um isnull simples).
+    columns:
+      - name: id_produto
+        description: "Código do produto (chave primária). Duplicação aqui causa multiplicação silenciosa em joins."
+        data_tests:
+          - unique
+          - not_null
+      - name: cod_fabrica
+        description: "Código do fabricante do produto"
+      - name: descricao_produto
+        description: "Descrição comercial do produto"
+        data_tests:
+          - not_null
+      - name: unidade
+        description: "Unidade de medida padrão do produto"
+      - name: embalagem
+        description: "Formato/descrição da embalagem"
+      - name: embal_compra
+        description: "Quantidade de unidades por caixa de compra (QTUNITCX). Divide praticamente toda quantidade exibida via FATOR_EXIBICAO."
+      - name: embal_venda
+        description: "Quantidade de unidades por embalagem de venda (QTUNIT)"
+      - name: id_fornecedor
+        description: "Referência do fornecedor legal da nota fiscal (ver aviso em stg_fornecedor)"
+      - name: id_departamento
+        description: "Departamento do produto. FORNECEDOR do modelo é o texto do departamento, não CODFORNEC."
+      - name: id_secao
+        description: "Seção do produto"
+      - name: id_filial_produto
+        description: >
+          PCPRODUT.CODFILIAL. Usado só na condição de join de query.py
+          (p.codfilial = e.codfilial OR p.codfilial = '99' OR p.codfilial IS NULL).
+          Hoje é NULL nas 8.783 linhas do cadastro (no-op), exposta por fidelidade literal.
+      - name: ncm
+        description: "NCM padrão do produto"
+      - name: ncm_excecao
+        description: "NCM de exceção (usado em cenários especiais)"
+      - name: peso_liquido
+        description: "Peso líquido em kg"
+      - name: peso_bruto
+        description: "Peso bruto em kg"
+      - name: data_exclusao
+        description: "Data de exclusão do cadastro. Projetada sem filtro WHERE; filtragem é responsabilidade da camada intermediate."
+      - name: status
+        description: "Ativo ou Inativo (derivado de OBS2)"
+      - name: fora_de_linha
+        description: "Marcador S/N; S quando OBS2='FL'. Usado em cálculos de árvore de decisão."
+
+  - name: stg_departamento
+    description: "Departamento. A descrição aqui é o que o modelo chama de FORNECEDOR."
+    columns:
+      - name: id_departamento
+        description: "Código do departamento (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: descricao_departamento
+        description: "Descrição textual do departamento"
+        data_tests:
+          - not_null
+
+  - name: stg_secao
+    description: "Seção de produto. Tabela de dimensão pequena."
+    columns:
+      - name: id_secao
+        description: "Código da seção (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: descricao_secao
+        description: "Descrição da seção"
+        data_tests:
+          - not_null
+      - name: id_departamento
+        description: "Referência ao departamento pai"
+
+  - name: stg_tributacao_desc
+    description: "Descrição do código de tributação ICMS. Tabela de referência pequena. Nota: a MVA é extraída deste texto conforme CONTEXTO.md."
+    columns:
+      - name: id_tributacao
+        description: "Código de tributação (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: descricao_tributacao
+        description: "Descrição completa do código (contém MVA para ST)"
+        data_tests:
+          - not_null
+
+  - name: stg_tributacao_piscofins
+    description: "Descrição do código de tributação para PIS/COFINS. Tabela de referência pequena."
+    columns:
+      - name: id_tributacao_piscofins
+        description: "Código de tributação PIS/COFINS (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: descricao_tributacao_piscofins
+        description: "Descrição do código"
+        data_tests:
+          - not_null
+
+  - name: stg_fornecedor
+    description: >
+      Fornecedor legal da nota fiscal. AVISO: este é o CODFORNEC do WinThor.
+      Não é o mesmo que FORNECEDOR do modelo, que é o texto do departamento (PCDEPTO).
+      Nome e UF de origem constam apenas nesta tabela.
+    columns:
+      - name: id_fornecedor
+        description: "Código do fornecedor legal (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: nome_fornecedor
+        description: "Razão social do fornecedor"
+        data_tests:
+          - not_null
+      - name: uf_origem
+        description: "UF de origem. Usado para lookup de alíquota de ICMS na compra (seed_icms_origem)."
+
+  - name: stg_filial
+    description: "Filiais da empresa. Tabela muito pequena (9 linhas)."
+    columns:
+      - name: id_filial
+        description: "Código da filial (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: cnpj
+        description: "CNPJ da filial. Usado para identificar cliente próprio (transferência entre filiais)."
+
+  - name: stg_regiao
+    description: "Região de venda. AVISO: a região vem do PEDIDO (pcpedc.numregiao), não de PCCLIENT.numregiaocli."
+    columns:
+      - name: id_regiao
+        description: "Código da região (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: [1, 2]
+      - name: nome_regiao
+        description: "Nome da região: 1=VAREJO, 2=ATACADO. Confirmado no banco."
+        data_tests:
+          - not_null
+
+  - name: stg_cliente
+    description: "Cadastro de clientes."
+    columns:
+      - name: id_cliente
+        description: "Código do cliente (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: cnpj
+        description: "CNPJ do cliente"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Preço — tabela pequena com testes
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: stg_preco_tabela
+    description: >
+      Tabela de preço por produto e região (varejo/atacado). A chave é composta
+      (produto + região). Testa not_null nas chaves; a unicidade é composta, para
+      depois (não força aqui).
+    columns:
+      - name: id_produto
+        description: "Código do produto"
+        data_tests:
+          - not_null
+      - name: id_regiao
+        description: "Região: 1=varejo, 2=atacado"
+        data_tests:
+          - not_null
+      - name: preco_venda
+        description: "Preço de venda sugerido para a região"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Estoque — tabelas grandes (sem testes por performance)
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: stg_estoque
+    description: >
+      Posição de estoque por produto e filial. AVISO: tabela de ~70k linhas.
+      Testes de unicidade composta (id_produto, id_filial) adicionados: ~1s em 70k linhas.
+      A qualidade é garantida pela origem (CEDEP) que já aplica suas próprias regras.
+    columns:
+      - name: id_produto
+        description: "Código do produto"
+        data_tests:
+          - not_null
+      - name: id_filial
+        description: "Código da filial"
+        data_tests:
+          - not_null
+      - name: quantidade_estoque
+        description: "Quantidade em estoque (posição atual)"
+      - name: quantidade_gerencial
+        description: "Quantidade gerencial. QTESTGER=0 conta como dia sem estoque (rotina 2080)."
+      - name: quantidade_pedida
+        description: "Quantidade pedida (em trânsito)"
+      - name: quantidade_bloqueada
+        description: "Quantidade bloqueada"
+      - name: quantidade_avaria
+        description: "Quantidade de avaria (QTINDENIZ). Qt. Bloqueada no relatório = qtbloqueada - qtindeniz."
+      - name: quantidade_reservada
+        description: "Quantidade reservada"
+      - name: quantidade_industria
+        description: "Quantidade em indústria (terceirização)"
+      - name: data_ultima_entrada
+        description: "Data da última entrada de estoque"
+      - name: quantidade_ultima_entrada
+        description: "Quantidade da última entrada"
+      - name: data_ultima_saida
+        description: "Data da última saída de estoque"
+      - name: custo_ultima_entrada
+        description: "Custo unitário da última entrada"
+      - name: valor_ultima_entrada
+        description: "VL_ULT_ENT nunca é dividido pela embalagem de compra — já vem unitário."
+      - name: giro_diario
+        description: "Giro diário em unidades"
+
+  - name: stg_produto_filial
+    description: >
+      Dados adicionais do produto por filial. Tabela de ~70k linhas.
+      Sem testes por performance.
+    columns:
+      - name: id_produto
+        description: "Código do produto"
+      - name: id_filial
+        description: "Código da filial"
+      - name: quantidade_palete
+        description: "Quantidade de unidades por palete (QTTOTPAL)"
+
+  - name: stg_estoque_complemento
+    description: >
+      Liga nota de entrada de devolução à nota de venda original.
+      Tabela de ~63k linhas. Sem testes por performance.
+    columns:
+      - name: id_transacao_entrada
+        description: "ID da transação de entrada de devolução"
+      - name: id_transacao_venda
+        description: "ID da transação de venda original (liga entrada de devolução à venda)"
+
+  - name: stg_historico_estoque
+    description: >
+      Histórico diário de estoque. ENORME: 117.108.128 linhas.
+      Sem testes: um unique/not_null causaria full scan travando o build.
+      Este é o maior volume de dados do projeto. Qualidade garantida pela origem.
+    columns:
+      - name: id_produto
+        description: "Código do produto"
+      - name: id_filial
+        description: "Código da filial"
+      - name: data
+        description: "Data do registro histórico"
+      - name: quantidade_gerencial
+        description: "Quantidade gerencial no dia. QTESTGER=0 = dia sem estoque."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Tributação — tabela pequena com testes
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: stg_tributacao
+    description: >
+      Tributação por produto, filial e UF de destino. Chave composta
+      (produto + filial_nf + uf_destino).
+      SEM TESTES, deliberadamente: 1.638.198 linhas, e a tabela cresce com
+      produto x filial x UF. O valor dos testes aqui seria baixo — uf_destino
+      nulo não corrompe nada, só deixa de casar no join, que é por ON e não
+      por WHERE. Não acrescente testes aqui sem medir o custo antes.
+    columns:
+      - name: id_produto
+        description: "Código do produto"
+      - name: id_filial_nf
+        description: "Filial de emissão da NF"
+      - name: uf_destino
+        description: "UF de destino da NF. O modelo consulta com 'BA' no ON do join, nunca no WHERE — no WHERE descartaria produto sem linha de tributação."
+      - name: id_tributacao
+        description: "Código de tributação ICMS (referencia stg_tributacao_desc)"
+      - name: id_tributacao_piscofins
+        description: "Código de tributação PIS/COFINS (referencia stg_tributacao_piscofins)"
+
+  - name: stg_movimentacao
+    description: >
+      Movimentação de itens. ENORME: 25.051.690 linhas.
+      Sem testes: um unique causaria full scan travando o build de horas.
+      Tabela de origem PCMOV contém faturamento (CODOPER S/SM/SB), devolução (ED),
+      venda futura (condvenda=7 usa QTCONT/PUNITCONT), etc. Região vem do pedido.
+    columns:
+      - name: id_transacao_venda
+        description: "ID único da transação de venda"
+      - name: id_transacao_item
+        description: "ID do item na transação"
+      - name: id_transacao_entrada
+        description: "ID da transação de entrada (para devoluções)"
+      - name: id_produto
+        description: "Código do produto"
+      - name: id_cliente
+        description: "Código do cliente"
+      - name: id_filial
+        description: "Código da filial"
+      - name: id_regiao
+        description: "Região vem do pedido (PCPEDC.NUMREGIAO), não do cliente."
+      - name: quantidade
+        description: "Quantidade bruta da linha (PCMOV.QT). Não é líquida: o cálculo de líquido (faturado - devolvido) nasce em SUM() na camada intermediate."
+      - name: quantidade_contratada
+        description: "Quantidade contratada (usada quando condvenda=7, venda futura)"
+      - name: preco_unitario
+        description: "Preço unitário no faturamento"
+      - name: preco_unitario_contratado
+        description: "Preço unitário contratado (para venda futura)"
+      - name: valor_frete
+        description: "Valor de frete"
+      - name: valor_outras_despesas
+        description: "Valor de outras despesas"
+      - name: valor_frete_rateio
+        description: "Frete com rateio"
+      - name: valor_outros
+        description: "Outros valores"
+      - name: valor_repasse
+        description: "Valor de repasse"
+      - name: valor_st
+        description: "Valor de ICMS-ST"
+      - name: custo_financeiro
+        description: "Custo financeiro"
+      - name: data_movimento
+        description: "Data do movimento"
+      - name: data_cancelamento
+        description: "Data do cancelamento (se cancelado)"
+      - name: codigo_operacao
+        description: "Código da operação (S/SM/SB=faturamento, ED=devolução, etc.)"
+      - name: tipo_mercadoria
+        description: "Tipo de mercadoria"
+
+  - name: stg_mov_complemento
+    description: >
+      Complemento de movimentação (PCMOVCOMPLE). ENORME: 25.012.714 linhas.
+      Sem testes por performance. VLSUBTOTITEM é a fonte preferida de valor faturado.
+    columns:
+      - name: id_transacao_item
+        description: "ID do item (chave para join com stg_movimentacao)"
+      - name: valor_subtotal_item
+        description: "Valor do subtotal do item. Fonte preferida do valor faturado."
+      - name: bonificacao
+        description: "Flag de bonificação (S/N), não valor"
+      - name: valor_st_transferencia_cd
+        description: "Valor de ST em transferência CD"
+      - name: valor_fecp
+        description: "Valor de FECP"
+      - name: valor_fecp_transferencia_cd
+        description: "Valor de FECP em transferência CD"
+
+  - name: stg_nota_saida
+    description: >
+      Nota fiscal de saída. GRANDE: 4.634.402 linhas.
+      Sem testes por performance. Critérios de nota válida seguem rotina 1464.
+    columns:
+      - name: id_transacao_venda
+        description: "ID da transação de venda (chave para join com stg_movimentacao)"
+      - name: id_filial
+        description: "Filial emitente"
+      - name: condicao_venda
+        description: "Condição de venda (tipos de transação: 1=venda normal, 7=venda futura, etc.)"
+      - name: tipo_venda
+        description: "Tipo de venda (normal, remessa, etc.)"
+      - name: codigo_fiscal
+        description: "Código fiscal da NF"
+      - name: data_saida
+        description: "Data de emissão da NF"
+      - name: data_cancelamento
+        description: "Data de cancelamento (se cancelada)"
+
+  - name: stg_nota_entrada
+    description: >
+      Nota fiscal de entrada (devoluções). Critérios seguem rotina 1464.
+    columns:
+      - name: id_transacao_entrada
+        description: "ID da transação de entrada (chave para join com estoque_complemento)"
+      - name: id_cliente_devolucao
+        description: "Código do cliente que devolveu (PCNFENT.CODFORNEC guarda CODCLI, não fornecedor; medido 100% casam com PCCLIENT, 34% casam também com PCFORNEC por coincidência de código)"
+      - name: id_filial
+        description: "Filial receptora"
+      - name: data_entrada
+        description: "Data de entrada da NF"
+      - name: data_cancelamento
+        description: "Data de cancelamento (se cancelada)"
+      - name: tipo_descarga
+        description: "Tipo de descarga (manual, automatizada, etc.)"
+      - name: codigo_fiscal
+        description: "Código fiscal da NF"
+      - name: tipo_movimento_garantia
+        description: "Tipo de movimento de garantia"
+      - name: observacao
+        description: "Campo livre de observações"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Decisões humanas — tabelas de aplicação (APP_*)
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: stg_decisao_preco
+    description: >
+      Decisão vigente de margem e preço por produto (origem APP_DECISAO_PRECO).
+      O dbt apenas lê esta tabela, nunca escreve. Linha ausente = sem decisão.
+      Margem nula = sem decisão de margem (o padrão 20% é aplicado no model, não aqui).
+      Preço final nunca é preenchido automaticamente com uma sugestão.
+      GABARITO: DUAS margens alvo, uma por canal (CN=atacado, DD=varejo), cada uma alimentando sua própria cadeia de preço sugerido.
+      Aplicar a do atacado no varejo erra em silêncio todo SKU com margens diferentes.
+    columns:
+      - name: id_produto
+        description: "Código do produto"
+        data_tests:
+          - unique
+          - not_null
+      - name: margem_alvo
+        description: "Margem alvo de atacado decidida pela direção (fração: 0.2 = 20%)"
+      - name: margem_alvo_varejo
+        description: "Margem alvo de varejo decidida pela direção (fração: 0.2 = 20%). CRÍTICO: coluna separada porque atacado e varejo têm margens diferentes e cadeias de preço distintas."
+      - name: alt_pv_at_av
+        description: "Preço de venda final para atacado à vista (decidido manualmente)"
+      - name: alt_pv_var_av
+        description: "Preço de venda final para varejo à vista (decidido manualmente)"
+      - name: atualizado_em
+        description: "Data/hora em que a decisão foi registrada"
+      - name: atualizado_por
+        description: "Usuário que registrou a decisão"
+
+  - name: stg_decisao_pedido
+    description: >
+      Pedido decidido por produto. O FATOR_EXIBICAO fica congelado no instante
+      da decisão. unidades = PEDIDO x FATOR_EXIBICAO. O fator é snapshot de propósito:
+      recalculá-lo depois mudaria retroativamente o significado da decisão.
+    columns:
+      - name: id_produto
+        description: "Código do produto"
+        data_tests:
+          - unique
+          - not_null
+      - name: pedido
+        description: "Quantidade decidida em sua unidade natural"
+      - name: fator_exibicao
+        description: "Fator de embalagem de compra (snapshot no instante da decisão)"
+      - name: atualizado_em
+        description: "Data/hora em que a decisão foi registrada"
+      - name: atualizado_por
+        description: "Usuário que registrou a decisão"
+
+# ───────────────────────────────────────────────────────────────────────────
+# Seeds — tabelas de apoio extraídas da planilha v10
+# ───────────────────────────────────────────────────────────────────────────
+
+seeds:
+  - name: seed_parametros
+    description: >
+      Parâmetros globais do modelo: alíquotas, fatores e regras. 28 linhas.
+      Alteração aqui recalcula todo o modelo. AVISO: ATIVO='N' marca parâmetros que a própria
+      planilha declara sem efeito — estão aqui como registro histórico apenas.
+      Usar um parâmetro com ATIVO='N' em cálculo é erro.
+      Últimas adições: COBERTURA_ALVO_PADRAO, N_MESES_PADRAO, CRED_IMPORTADO_LIMIAR.
+      MES_REF_ULT_FECHADO agora é 2026-07-01.
+    columns:
+      - name: PARAMETRO
+        description: "Nome do parâmetro (texto)"
+        data_tests:
+          - unique
+          - not_null
+      - name: VALOR
+        description: "Valor do parâmetro (VARCHAR porque inclui texto como 'LITROS')"
+        data_tests:
+          - not_null
+      - name: ATIVO
+        description: "Marcador S/N: 'N' indica parâmetro declarado sem efeito na planilha (só registro histórico)"
+        data_tests:
+          - accepted_values:
+              values: ['S', 'N']
+      - name: OBS
+        description: "Observação ou origem do valor"
+
+  - name: seed_fornecedor
+    description: >
+      Metadados de fornecedor: período de média de venda, cobertura alvo,
+      unidade de pedido e comprador. Uma linha por departamento.
+    columns:
+      - name: FORNECEDOR
+        description: "Nome do departamento/fornecedor"
+        data_tests:
+          - unique
+          - not_null
+      - name: MESES_MEDIA
+        description: "Número de meses para cálculo da média de venda"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [2, 3, 4, 6, 9, 12]
+      - name: COBERTURA_ALVO
+        description: "Dias de cobertura desejada para sugestão de pedido"
+        data_tests:
+          - not_null
+      - name: PEDIDO_EM
+        description: "Unidade em que o pedido é expresso: UNIDADE ou MASTER. A fórmula K/FATOR_EXIBICAO testa K=MASTER para decidir se aplica fator."
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['UNIDADE', 'MASTER']
+      - name: COMPRADOR
+        description: "Nome do comprador responsável"
+
+  - name: seed_icms
+    description: >
+      Tabela de tributação ICMS por código. Contém MVA (para ST), alíquota,
+      redução de base e ICMS efetivo. AVISO: MVA é nula para regimes não-ST
+      (NORMAL, ST_RECOLHIDO) — coluna esparsa.
+      Linha de aviso original: "CONFERIR COM O FISCAL ANTES DE PRECIFICAR"
+    columns:
+      - name: COD_TRIBUTACAO
+        description: "Código de tributação (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: DESCRICAO
+        description: "Descrição do código conforme SEFAZ (contém MVA entre parênteses para ST)"
+      - name: MODALIDADE
+        description: "Tipo de tributação: NORMAL, ST_SUBSTITUTO, ST_RECOLHIDO"
+        data_tests:
+          - accepted_values:
+              values: ['NORMAL', 'ST_SUBSTITUTO', 'ST_RECOLHIDO']
+          - not_null
+      - name: MVA
+        description: "Margem de Valor Agregado (nula para não-ST, valor decimal para ST_SUBSTITUTO)"
+      - name: ALIQ_ICMS_SAIDA
+        description: "Alíquota de ICMS na saída (0 para ST)"
+      - name: REDUCAO_BASE
+        description: "Redução de base em percentual (fração: 0.41176 = 41,176%)"
+      - name: ICMS_EF_SAIDA
+        description: "ICMS efetivo na saída (calculado considerando redução)"
+      - name: ICMS_EF_SEM_REDUCAO
+        description: "ICMS efetivo sem aplicar redução de base"
+
+  - name: seed_icms_origem
+    description: >
+      Alíquota de ICMS na compra, por UF de origem. Regra padrão interestadual
+      (destino BA). Usada para cálculo do crédito de ICMS na entrada.
+    columns:
+      - name: UF_ORIGEM
+        description: "Sigla da UF de origem (SP, RJ, MG, BA, etc.)"
+        data_tests:
+          - unique
+          - not_null
+      - name: ALIQ_ICMS_COMPRA
+        description: "Alíquota de ICMS aplicável na compra (fração: 0.07 = 7%)"
+        data_tests:
+          - not_null
+
+  - name: seed_credito
+    description: >
+      Crédito de compra por fornecedor e código ICMS. Calibrado com EMBALMASTER
+      da tabela 8105. Permite ajuste fino do crédito conforme padrão real de compra.
+    columns:
+      - name: FORNECEDOR
+        description: "Nome do departamento/fornecedor"
+        data_tests:
+          - not_null
+      - name: COD_ICMS
+        description: "Código de tributação ICMS"
+        data_tests:
+          - not_null
+      - name: CREDITO
+        description: "Percentual de crédito de ICMS (fração: 0.15 = 15%)"
+        data_tests:
+          - not_null
+
+  - name: seed_piscofins
+    description: >
+      Descrição de códigos de tributação para PIS/COFINS e alíquota efetiva.
+      Linha de aviso original: "CONFERIR COM O FISCAL ANTES DE PRECIFICAR"
+    columns:
+      - name: CODTRIBPISCOFINS
+        description: "Código de tributação PIS/COFINS (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: DESCRICAO
+        description: "Descrição do código conforme SEFAZ"
+        data_tests:
+          - not_null
+      - name: ALIQ_EFETIVA
+        description: "Alíquota efetiva de PIS/COFINS (fração: 0.0925 = 9,25%)"
+        data_tests:
+          - not_null
+
+  - name: seed_embalagem
+    description: >
+      Tabela de embalagens e seus fatores de conversão.
+      Colunas UNID_POR_EMB e LITROS_POR_EMB permitem cálculo de fatores para
+      pedidos em diferentes medidas.
+    columns:
+      - name: EMBALAGEM
+        description: "Descrição/código da embalagem (ex.: '12X1L', '20LT')"
+        data_tests:
+          - unique
+          - not_null
+      - name: UNID_POR_EMB
+        description: "Número de unidades por embalagem"
+      - name: LITROS_POR_EMB
+        description: "Litros totais por embalagem (0 para produtos não-líquidos)"
+      - name: LITROS_POR_UNIDADE
+        description: "Litros por unidade individual (0 para não-líquidos)"
+
+  - name: seed_sucessao
+    description: >
+      Mapeamento de sucessão de produtos: quando um produto é descontinuado
+      e sua venda é migrada para outro. AVISO: nada é aplicado enquanto ATIVO
+      não for 'SIM'. Colunas ANTIGO_2/PESO_2 são esparsas (caso raro de duas
+      trocas em sequência).
+    columns:
+      - name: CODIGO_NOVO
+        description: "Código do produto novo (chave primária)"
+        data_tests:
+          - unique
+          - not_null
+      - name: ANTIGO_1
+        description: "Código do primeiro produto antigo"
+      - name: PESO_1
+        description: "Peso/proporção da transição para o primeiro antigo (fração)"
+      - name: ANTIGO_2
+        description: "Código do segundo produto antigo (raro, para transição em duas etapas)"
+      - name: PESO_2
+        description: "Peso/proporção para o segundo antigo (esparsa)"
+      - name: ATIVO
+        description: "Ativação da sucessão: valores observados NAO, SIM"
+
+  - name: seed_est_fabrica
+    description: >
+      Estoque em fábrica / disponibilidade de produtos em armazém.
+      Uso: EST_FABRICA = DISPONIVEL / FATOR_EXIBICAO, alimentando o alerta CHECK_FABRICA
+      (dispara quando pedido ultrapassa estoque disponível na fábrica).
+    columns:
+      - name: COD_FAB
+        description: "Código de fábrica/lote do produto"
+        data_tests:
+          - unique
+          - not_null
+      - name: DESCRICAO
+        description: "Descrição do produto e tamanho/variante"
+      - name: DISPONIVEL
+        description: "Quantidade disponível no estoque"
+      - name: UN
+        description: "Unidade (CX=caixa, BB=barril, TB=tambor, CO=container, etc.)"
+      - name: LOCAL
+        description: "Local de armazenagem (MKLOG, etc.)"
+      - name: FORNECEDOR
+        description: "Fornecedor responsável"
