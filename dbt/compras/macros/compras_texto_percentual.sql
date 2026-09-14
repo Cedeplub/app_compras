@@ -4,7 +4,7 @@
   (CHECK_MARGEM_INSTAVEL) e DB (CHECK_MARGEM_INSTAVEL_VAREJO).
 
   ── ⚠ MELHORIA A4 | uma casa decimal, com VÍRGULA (divergência DELIBERADA) ───
-  Registro: MELHORIAS.md item A4, aprovado em 21/08/2026; CONTEXTO.md §6.0.
+  Registro: REGRAS.md §6.4 (item A4), aprovado em 21/08/2026.
   Não reverter para "fechar o validador".
 
   O QUE A PLANILHA FAZ. As três fórmulas escrevem TEXT(<razao>,"0.0%"), que em

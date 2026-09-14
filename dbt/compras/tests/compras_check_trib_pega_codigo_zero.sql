@@ -7,8 +7,8 @@
 -- de tributacao estava VAZIO, e `nvl(cod_tributacao, COD_TRIB_ICMS_PADRAO)`
 -- sempre preenche. 0 celulas de 8.772.
 --
--- O Diretor de Compras decidiu ampliar a regra (PENDENCIAS_DIRETORIA.md item
--- 4; CONTEXTO.md 6.4): o alerta passa a disparar quando o codigo e' vazio OU
+-- O Diretor de Compras decidiu ampliar a regra (REGRAS.md §6.1, item 4):
+-- o alerta passa a disparar quando o codigo e' vazio OU
 -- ZERO. Com isso ele cobre os 5 SKUs de PCTABTRIB com `codst = 0`, que saem
 -- sem MODALIDADE, sem aliquota e com margem em branco - e que antes saiam sem
 -- alerta nenhum. A premissa do teste inverteu junto: agora ele exige que o

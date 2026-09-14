@@ -45,7 +45,7 @@ número em vez de uma fórmula calcular. Portanto:
 Ao gravar em `APP_DECISAO_PEDIDO`, grave **junto o `FATOR_EXIBICAO` vigente naquele
 instante**. A quantidade da decisão é lida a partir dele, não do fator corrente do
 cadastro: decisão tomada não muda de tamanho porque o cadastro atualizou depois. Decisão
-explícita do Diretor de Compras, em `MELHORIAS.md` A5.
+explícita do Diretor de Compras, em `REGRAS.md §6.4` (A5).
 
 ## Convenções
 

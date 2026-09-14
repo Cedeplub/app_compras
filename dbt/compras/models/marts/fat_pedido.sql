@@ -39,8 +39,8 @@
 -- nas colunas abaixo é ESPERADO - não é defeito de porte, e reverter qualquer
 -- uma desfaz decisão de negócio já tomada. Duas origens:
 --   (a) decisões do Diretor de Compras que ele ainda NÃO aplicou na planilha
---       (PENDENCIAS_DIRETORIA.md itens 3 e 4; CONTEXTO.md §6.0/§6.4);
---   (b) melhorias aprovadas em 21/08/2026 (MELHORIAS.md; CONTEXTO.md §6.0),
+--       (REGRAS.md §6.1, itens 3 e 4);
+--   (b) melhorias aprovadas em 21/08/2026 (REGRAS.md §6.4),
 --       que valem porque a planilha passou a ser PONTO DE PARTIDA, não alvo de
 --       réplica exata.
 --   1. CH, CY, CO, DE - cenário "ST s/Valor" usa ICMS_SEM_RED (alíquota CHEIA)
@@ -82,10 +82,11 @@
 --
 -- E o que este model continua NÃO consertando, de propósito:
 --   - BQ (CRED_ICMS) lê o crédito EMPÍRICO (DR), não a tabela dCredito (BO).
---     Decidido em 21/08/2026 como INTENCIONAL (PENDENCIAS item 2, PDF §8.5): o
---     Winthor não expõe a tributação de entrada/saída por item, e a diferença
---     custo x valor é o proxy que alimenta o cálculo real. Nada a mudar.
---   - PENDENCIAS_DIRETORIA.md item 5 (PEDIDO_UNIDADES com fator corrente x
+--     Decidido em 21/08/2026 como INTENCIONAL (REGRAS.md §6.1, item 2; PDF
+--     §8.5): o Winthor não expõe a tributação de entrada/saída por item, e a
+--     diferença custo x valor é o proxy que alimenta o cálculo real. Nada a
+--     mudar.
+--   - REGRAS.md §6.1, item 5 (PEDIDO_UNIDADES com fator corrente x
 --     congelado) continua ABERTO e reproduzido como a planilha faz. Enquanto
 --     houver item aberto ali, ele é citado em toda entrega.
 --

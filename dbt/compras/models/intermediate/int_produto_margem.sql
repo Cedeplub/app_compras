@@ -50,8 +50,8 @@
 -- reducao, e ele nao se aplica a quem vende no varejo. Criar essa coluna por
 -- simetria seria inventar um numero que a planilha nao tem.
 -- ── ⚠ DIVERGENCIA DELIBERADA DO ARQUIVO EM referencia/ (CH e CY) ───────────
--- Decidido pelo Diretor de Compras em 21/08/2026 (PENDENCIAS_DIRETORIA.md,
--- item 1; CONTEXTO.md 6.4). O cenario "ST s/Valor" usava $CA2 = ICMS_SAIDA_EF,
+-- Decidido pelo Diretor de Compras em 21/08/2026 (REGRAS.md §6.1, item 1).
+-- O cenario "ST s/Valor" usava $CA2 = ICMS_SAIDA_EF,
 -- a aliquota COM reducao de base. Isso era ERRO NA PLANILHA: o regime de
 -- substituicao tributaria e' mecanica separada do BENEFICIO de reducao de
 -- base, e um nao deve carregar o outro. CH e CY passam a usar $CB2 =

@@ -3,9 +3,11 @@
 -- A quantidade que o comprador decidiu pedir e tudo que se calcula a partir dela.
 --
 -- Gabarito: docs/gabarito_pedido_formulas.txt. Mapa coluna a coluna:
---   BA PEDIDO           DIGITADA - sem fórmula. Vem de APP_DECISAO_PEDIDO.
+--   BA PEDIDO           DIGITADA - sem fórmula. Vem de APP_PEDIDO_ITEM
+--                       (agregado por produto em stg_decisao_pedido).
 --   BB PEDIDO_UNIDADES  $BA2 * $K2   (⚠ MELHORIA A5: fator CONGELADO
---                       da decisao quando ela existe - ver secao propria)
+--                       da decisao quando ela existe - ver secao propria;
+--                       desde 12/09/2026 vem SOMADO do staging)
 --   BC PEDIDO_NA_MEDIDA IF(MEDIDA_PEDIDO="LITROS",$BB2*$L2,
 --                          IF(=" PESO",$BB2*$M2, IFERROR($BB2/$J2,0)))
 --   BD VALOR_PEDIDO     IF($BW2="","",$BB2*$BW2)
@@ -17,8 +19,9 @@
 --
 -- ── ⚠ BA | PEDIDO é DECISÃO HUMANA, como ALT_PV_* ──────────────────────────
 -- CONTEXTO.md regra 10 e §2. É uma das cinco colunas digitadas da planilha
--- inteira, e a única do bloco de compra. Vem de APP_DECISAO_PEDIDO por LEFT
--- JOIN. Diferença deliberada em relação a ALT_PV_*: aqui a ausência de decisão
+-- inteira, e a única do bloco de compra. Vem de APP_PEDIDO_ITEM por LEFT JOIN,
+-- através de `stg_decisao_pedido`, que muda o grão de (PEDIDO x PRODUTO) para
+-- PRODUTO somando em unidade REAL. Diferença deliberada em relação a ALT_PV_*: aqui a ausência de decisão
 -- vale ZERO, não nulo, porque a planilha traz a coluna zerada (medido: 8.772
 -- de 8.772 linhas com PEDIDO = 0) e porque BB/BC/BF a usam em aritmética -
 -- nulo apagaria MESES_EST+PED de todo SKU sem decisão. "Não pedi nada" e
@@ -30,16 +33,18 @@
 --
 -- ── ⚠ MELHORIA A5 (24/08/2026) | BB usa o FATOR CONGELADO na decisão ───────
 -- DIVERGÊNCIA DELIBERADA da planilha. Decidida pelo Diretor de Compras em
--- 24/08/2026 (PENDENCIAS_DIRETORIA.md item 5; MELHORIAS.md A5; CONTEXTO.md
--- §6.0). Registro do que era: até 24/08/2026 este model reproduzia `$BA2*$K2`
+-- 24/08/2026 (REGRAS.md §6.1, item 5; §6.4, A5). Registro do que era: até
+-- 24/08/2026 este model reproduzia `$BA2*$K2`
 -- com o fator CORRENTE, e a divergência entre os dois fatores ficava anotada
 -- aqui como "reproduza, não julgue".
 --
 -- O que a planilha faz: `BB = $BA2 * $K2`, com K recalculado a cada abertura.
 -- O que passamos a fazer: quando EXISTE decisão gravada, BB usa o
--- FATOR_EXIBICAO que APP_DECISAO_PEDIDO congelou no instante da decisão (a
--- tabela foi desenhada assim na Etapa 0 - ver sql/02_tabelas_app.sql, item 3,
--- justamente prevendo isto). Quando NÃO existe decisão, não há fator congelado
+-- FATOR_EXIBICAO que o ITEM DO PEDIDO congelou no instante da decisão
+-- (`APP_PEDIDO_ITEM.FATOR_EXIBICAO`, NOT NULL - ver sql/04_tabelas_pedido.sql,
+-- item 2; a tabela velha, APP_DECISAO_PEDIDO, tinha a mesma coluna pelo mesmo
+-- motivo, e é por ela existir nas duas que a troca de fonte de 12/09/2026 não
+-- mexeu na regra). Quando NÃO existe decisão, não há fator congelado
 -- e vale o corrente da linha (K) - é o caso de 100% dos SKUs hoje, e é o que
 -- mantém o modelo idêntico ao gabarito enquanto ninguém decidiu nada.
 --
@@ -61,9 +66,12 @@
 -- mesma informação com outro nome, e nome duplicado é onde o recálculo volta
 -- por descuido.
 --
--- Impacto medido em 24/08/2026: 0 SKUs (APP_DECISAO_PEDIDO vazia). A regra foi
+-- Impacto medido em 24/08/2026: 0 SKUs (APP_DECISAO_PEDIDO vazia). Remedido em
+-- 12/09/2026, já sobre APP_PEDIDO_ITEM: 66 SKUs com decisão gravada, contra os
+-- 4 da tabela velha - e nenhum SKU repetido entre os 4 pedidos, então a soma
+-- ainda é de uma parcela só. A regra foi
 -- exercitada de ponta a ponta com decisões de teste gravadas e apagadas - ver
--- MELHORIAS.md A5 - e é protegida pelo teste singular
+-- REGRAS.md §6.4 (A5) - e é protegida pelo teste singular
 -- `compras_pedido_unidades_usa_fator_congelado`.
 --
 -- ── BC | a unidade do pedido sai de PARÂMETRO, não de constante ────────────
@@ -136,7 +144,9 @@ quantidade as (
         c.custo_tot_oficial,
         p.medida_pedido,
         p.palete_limiar,
-        -- BA: sem linha em APP_DECISAO_PEDIDO = nao ha pedido = zero
+        -- BA: sem linha em APP_PEDIDO_ITEM = nao ha pedido = zero. Com linha,
+        -- e o total do SKU reexpresso na unidade de exibicao da ULTIMA decisao
+        -- (stg_decisao_pedido ja fez a conta, porque o grao de la e' o item).
         nvl(dp.pedido, 0)                                  as pedido,
         -- MELHORIA A5: o fator que vale para ESTA decisao. Com decisao gravada,
         -- o CONGELADO manda; sem decisao nao existe congelado e vale o corrente
@@ -147,12 +157,13 @@ quantidade as (
              then dp.fator_exibicao
              else b.fator_exibicao
         end                                                as fator_exibicao_pedido,
-        -- BB: $BA2 * fator da decisao (congelado quando ha decisao - cabecalho)
-        nvl(dp.pedido, 0)
-            * case when dp.id_produto is not null
-                   then dp.fator_exibicao
-                   else b.fator_exibicao
-              end                                          as pedido_unidades
+        -- BB: unidades REAIS, vindas prontas do staging. NAO multiplique aqui.
+        -- A fonte tem grao PEDIDO x PRODUTO e cada item tem o SEU fator
+        -- congelado; `pedido * fator_do_item_mais_recente` reconverteria o
+        -- total de um SKU presente em dois pedidos pelo fator errado. A
+        -- multiplicacao que existia aqui so era valida quando a fonte tinha uma
+        -- linha por produto (APP_DECISAO_PEDIDO, ate 12/09/2026).
+        nvl(dp.unidades, 0)                                as pedido_unidades
       from base b
       join classe_abc a on a.codigo = b.codigo
       join demanda    d on d.codigo = b.codigo

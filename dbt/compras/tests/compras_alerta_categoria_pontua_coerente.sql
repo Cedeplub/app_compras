@@ -1,5 +1,5 @@
 -- Invariante que este teste previne: a taxonomia decidida pelo Diretor de
--- Compras em 02/09/2026 (v2/DECISOES_DIRETOR.md item 1) sair do lugar sem que
+-- Compras em 02/09/2026 (REGRAS.md §7.1) sair do lugar sem que
 -- ninguém perceba.
 --
 -- `categoria` e `pontua` são duas colunas de duas letras que decidem, sozinhas,

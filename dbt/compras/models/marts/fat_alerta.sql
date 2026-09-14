@@ -1,6 +1,6 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- fat_alerta — os CHECK_* da aba `pedido` DESPIVOTADOS, na TAXONOMIA decidida
--- pelo Diretor de Compras em 02/09/2026 (v2/DECISOES_DIRETOR.md item 1).
+-- pelo Diretor de Compras em 02/09/2026 (REGRAS.md §7.1).
 -- Grão: 1 linha por SKU x TIPO DE ALERTA ATIVO. SKU sem nenhum alerta não
 -- aparece; SKU com quatro alertas aparece quatro vezes.
 --

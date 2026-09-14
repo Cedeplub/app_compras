@@ -13,6 +13,159 @@ ela existe.
 
 ---
 
+## 0. Ponto de partida — para quem não leu nada
+
+Esta seção existe para uma sessão nova ou um desenvolvedor novo conseguirem colocar o
+sistema no ar **sem abrir mais nenhum arquivo além deste**. Ela entra como `§0`, antes do
+`§1`, para não renumerar as seções `§1`–`§7` que já existem — `validar/validar_pedido.py:6`
+cita `§6.2` e `§6.3` pelo número, e ~80 arquivos citam este documento pelo nome.
+
+### 0.1 O que é este projeto
+
+A CEDEP decide compra e preço de **8.841 SKUs** hoje numa planilha Excel
+(`MODELO_COMPRAS_CEDEP_v11.xlsx`, 122 colunas de decisão, ~980 mil fórmulas) mantida à
+mão. Este projeto reproduz essa planilha em dois entregáveis:
+
+1. **Um fluxo dbt** (`dbt/compras/`) que lê o ERP (WinThor/CEDEP), reproduz toda a lógica
+   fiscal, de margem, preço e alerta em SQL, e grava o resultado no schema Oracle
+   `COMPRAS` — as 122 colunas viram a tabela `FAT_PEDIDO`/`COMPRAS_PEDIDO`.
+2. **Um dashboard** (FastAPI + React) que lê esse resultado, deixa o comprador montar e
+   exportar pedidos por fornecedor, e deixa o **Diretor de Compras** decidir preço.
+
+Quem usa: o **Diretor de Compras** (decisão de preço, tela de Alertas, celular pela rede
+interna) e os **compradores por departamento** (ex.: Washington, Felipe — ver
+`seed_fornecedor.csv`), que analisam a tela de Alertas/Monitoramento e montam pedidos.
+
+### 0.2 A fronteira de acesso
+
+```
+CEDEP (WinThor)  --SELECT-->  dbt  --cria/atualiza-->  schema COMPRAS  <--le/escreve--  dashboard
+   somente leitura                                     ^                                    |
+   nunca escrito                                       +---------- APP_* -------------------+
+```
+
+O dbt é o único que enxerga o `CEDEP`, e só com `SELECT` (exceção nominal: `validar/`, que
+lê os dois lados para comparar — nunca escreve). O dashboard só enxerga o schema
+`COMPRAS`, e escreve exclusivamente nas tabelas `APP_*`; o dbt lê essas `APP_*` de volta
+como `source` para fechar o ciclo. A frase que resume a consequência prática, e que
+precisa estar na cabeça de quem mexe em qualquer uma das duas pontas:
+
+> **Uma decisão gravada no dashboard só chega ao `fat_pedido` no próximo `dbt run`.** O
+> dashboard mostra o que está gravado em `APP_*` direto, na hora; o modelo recalculado
+> (e, com ele, alertas e indicadores derivados) só reflete essa decisão depois do
+> próximo build.
+
+Detalhe completo, com autorização de escrita e prefixos, em `§2` abaixo.
+
+### 0.3 Como subir
+
+**Desenvolvimento** — duas janelas de terminal, a partir da raiz do repositório
+(`C:\Users\Administrator\Desktop\app_compras_v2`):
+
+1. Duplo clique em **`teste.bat`**. Ele confere Python, dependências e `.env`, descobre o
+   IPv4 da máquina (`IP_LAN`) e sobe `uvicorn app.main:app --host <IP_LAN> --port 8020
+   --reload`. Fica em `http://<IP_LAN>:8020`.
+   ⚠ **O `--host` é o IP da máquina (ex. `192.168.0.50`), nunca `0.0.0.0`**, por dois
+   motivos: (a) o socket órfão de `0.0.0.0:8020` (§0.4) faz o bind em `0.0.0.0` falhar
+   com `WinError 10048`; (b) o Diretor de Compras precisa abrir a tela **pelo celular**,
+   na rede interna — acesso só por `127.0.0.1` não atende esse requisito.
+2. Duplo clique em **`teste_front.bat`**. Confere `npm`/`node_modules`, sobe `npm run dev`
+   (Vite) em `http://<IP_LAN>:5173`, com proxy de `/api` para `192.168.0.50:8020`.
+3. Abra `http://<IP_LAN>:5173` no navegador (ou no celular, mesma rede) e faça login
+   (§0.7).
+
+Cada `.bat` fecha com `CTRL+C` (responda `S`) ou fechando a janela no X.
+
+**Produção** — o desenho (ver `historico/PROMPT_ETAPA_14_MIGRACAO_REPOSITORIO.md §8`):
+serviço NSSM `app_compras` rodando `uvicorn app.main:app --host 127.0.0.1 --port 8020`
+(sem `--reload`), e nginx na porta 80 servindo o build estático de `npm run build`
+(`app/static/v2/`) em `/`, com proxy de `/api/` para o uvicorn — endereço
+`http://192.168.0.50/`. Scripts em `infra/` (`instalar_servico.ps1`,
+`instalar_nginx.ps1`, `infra/nginx/compras.conf`, `infra/README.md` com a ordem e como
+desfazer). **Enquanto o socket órfão existir (§0.4), o bind e o `proxy_pass` usam o IP
+específico `192.168.0.50` em vez de `127.0.0.1`/`0.0.0.0`.**
+⚠ Em 14/09/2026 esses scripts **ainda não foram escritos/instalados** neste repositório
+— só existe `infra/agendar_atualizacao.ps1`. Ver §0.6 antes de assumir que a produção
+está de pé.
+
+### 0.4 O socket órfão
+
+Desde **25/08/2026 08:34** existe um socket órfão escutando em `0.0.0.0:8020`. O processo
+dono, **PID 2240, não existe mais** — mas o socket segue segurando a porta, sem responder
+a nada.
+
+Três consequências, todas medidas:
+
+1. Subir qualquer coisa com `--host 0.0.0.0:8020` falha com `WinError 10048` (porta em
+   uso), mesmo sem nenhum processo vivo nela.
+2. Uma requisição a `127.0.0.1:8020` cai no órfão e fica pendurada até o timeout — parece
+   o servidor travado, não é.
+3. Os três contornos hoje em vigor por causa disso: `teste.bat` faz bind no IP da rede
+   (`IP_LAN`) em vez de `0.0.0.0`; o proxy do Vite aponta para o IP da rede, não para
+   `127.0.0.1`; e o desenho de produção (§0.3) usa `192.168.0.50` em vez de
+   `127.0.0.1`/`0.0.0.0` enquanto o órfão existir.
+
+Isso já mandou gente investigar "o servidor caiu" quando o servidor nunca tinha subido.
+**A correção de verdade é reiniciar esta máquina** — o que também derruba outros serviços
+de produção nela (`relatorio_compras` na 8010, e mais uvicorns em 8000/8001/8077/8100, de
+outras áreas). Não é decisão a tomar sozinho; ver
+`historico/PROMPT_ETAPA_14_MIGRACAO_REPOSITORIO.md §9.1` e §13 pergunta 1.
+
+### 0.5 Onde cada coisa mora
+
+| O quê | Caminho |
+|---|---|
+| Raiz do repositório | `C:\Users\Administrator\Desktop\app_compras_v2` |
+| Convenções, fronteira de acesso, banco | `CONTEXTO.md` (este arquivo) |
+| Regras de negócio, fiscal, alertas, decisões do Diretor | `REGRAS.md` |
+| Fluxo dbt (models, seeds, tests) | `dbt/compras/` |
+| Ambiente virtual do dbt (não versionado) | `dbt/env_server/` |
+| Botão/agendador/`.bat` de atualização | `dbt/atualizar.py`, `dbt/rodar_dbt.bat` |
+| API (FastAPI) — só `/api`, sem HTML | `app/main.py`, `app/api/`, `app/core/`, `app/servicos/` |
+| Acesso ao Oracle (único ponto) | `app/core/database.py` |
+| Autenticação, sessão, admin inicial | `app/core/auth.py` |
+| Front (React + Vite) | `web/src/` — 11 telas em `web/src/telas/` |
+| Configuração de produção (NSSM, nginx) | `infra/` — ver §0.3 |
+| Gabaritos extraídos da planilha/PDF | `docs/` |
+| Planilha e PDF originais | `referencia/` |
+| Scripts de validação contra a planilha | `validar/` |
+| `.env` (credenciais, fora do git) | raiz do repositório, copiado de `.env.exemplo` |
+| Registro do que já foi decidido/medido e não é mais atual | `historico/` (não é fonte de verdade — ver `historico/README.md`) |
+
+### 0.6 O que está no ar hoje
+
+**Verificado em 14/09/2026.** O corte para produção deste repositório (`app_compras_v2`,
+§0.3) **ainda não foi feito**: `Get-Service app_compras` não existe, e
+`C:\nginx\conf\nginx.conf` só tem os vhosts `gestaosac.cdp.lub` e `dre.cdp.lub` — nenhuma
+entrada para compras.
+
+O que responde nas portas 8020/5173 agora é o **modo de desenvolvimento da pasta antiga**:
+PID 2508 (`192.168.0.50:8020`) e PID 6912 (`0.0.0.0:5173`), ambos com linha de comando
+apontando para `C:\Users\Administrator\Desktop\app_compras` (a pasta pré-migração, ainda
+não congelada), não para este repositório. Isto é, **hoje ninguém está rodando o código
+de `app_compras_v2`** — o repositório está pronto (dbt com `env_server`, front com
+`node_modules`), mas ainda não foi colocado no ar. Antes de confiar que "o sistema já
+está de pé", confira com `Get-CimInstance Win32_Process -Filter "ProcessId=<PID>" | select
+CommandLine` de qual pasta o processo realmente veio.
+
+### 0.7 O que fazer primeiro
+
+1. **Banco:** a partir de `dbt/`, rode `rodar_dbt.bat` (chama `atualizar.py --origem
+   manual`, que faz `dbt seed` + `dbt run` + `dbt test` nessa ordem). Leva **entre 158 e
+   577 segundos, mediana ≈ 7 minutos** — não os "~70 s" que documentação antiga
+   menciona; esse número envelheceu. Confira ao final: `FAT_PEDIDO` e `DIM_PRODUTO` com
+   **8.841** linhas.
+2. **`.env`:** se ainda não existir na raiz, copie de `.env.exemplo` e preencha
+   `ORA_PASSWORD` (e confira `ORA_CLIENT_DIR`). Sem isso `config.validar()` recusa subir,
+   de propósito.
+3. **API:** duplo clique em `teste.bat` (raiz). Se `APP_USUARIO` estiver vazia, o
+   `startup` cria o usuário `admin` com **senha aleatória**, impressa **uma única vez** no
+   log do próprio terminal (`Usuario inicial criado: login=admin senha=...`). Copie essa
+   senha dali — ela não aparece em nenhum outro lugar.
+4. **Front:** duplo clique em `teste_front.bat` (raiz). Abre em `http://<IP_LAN>:5173`.
+5. **Login:** entre com `admin` e a senha do passo 3. A troca de senha é obrigatória no
+   primeiro acesso (`senha_provisoria=1`).
+
 ## 1. O que estamos construindo
 
 A versão online do modelo de compras e precificação da CEDEP, hoje uma planilha Excel

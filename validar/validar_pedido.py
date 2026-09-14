@@ -108,9 +108,9 @@ Uso:
    Desde 21/08/2026 o modelo diverge DE PROPOSITO do gabarito (v11) em um
    conjunto NOMEADO de colunas, por duas origens distintas:
      - decisoes do Diretor de Compras que ele ainda NAO aplicou na planilha
-       (PENDENCIAS_DIRETORIA.md itens 3 e 4; CONTEXTO.md 6.0/6.4): BO, CC e,
+       (REGRAS.md 6.1, itens 3 e 4): BO, CC e,
        por tabela, D;
-     - MELHORIAS APROVADAS (MELHORIAS.md; CONTEXTO.md 6.0), porque a planilha
+     - MELHORIAS APROVADAS (REGRAS.md 6.4), porque a planilha
        passou a ser PONTO DE PARTIDA e nao alvo de replica exata: AP (A3),
        AV/CL/DB (A4), AQ (D1), BB/BC/BD/BE/BF (A5) e, por tabela, D.
    ATENCAO: AQ (D1) e BB/BC/BD/BE/BF (A5) tem efeito ZERO hoje - as tabelas de que
@@ -156,7 +156,7 @@ alguem decidir que o gabarito e' que esta certo.
 
    AJUSTE 3 - atribuicao de D (ALERTA) RECALCULADA a cada execucao contra os
    dados reais do dia (`atribuir_divergencia_alerta`/`COMPONENTES_ALERTA`),
-   nunca contra o numero antigo de MELHORIAS.md/CONTEXTO.md - CONTEXTO §6.0.1
+   nunca contra o numero antigo de REGRAS.md/CONTEXTO.md - CONTEXTO §6.0.1
    e' explicito que esses numeros envelhecem sozinhos. Reporta linha nao
    atribuivel a componente nenhum em vez de presumir zero.
 """
@@ -482,7 +482,7 @@ RAIZES_CONDICIONAIS: dict[str, float] = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DIVERGENCIA ESPERADA POR DECISAO (CONTEXTO.md 6.4, PENDENCIAS_DIRETORIA.md)
+# DIVERGENCIA ESPERADA POR DECISAO (REGRAS.md 6.1 e 6.4)
 #
 # ⚠ ISTO NAO DESLIGA VERIFICACAO NENHUMA. Estas colunas continuam sendo lidas,
 # comparadas, contadas e impressas exatamente como todas as outras, no mesmo
@@ -515,13 +515,13 @@ LETRAS_DIVERGENCIA_POR_DECISAO = {
           "Fora do ST, DE fica identica a DG.",
     "DF": "PENDENCIAS item 1 (21/08/2026): CONSEQUENCIA de DE (= DE x FATOR_PRAZO_VAREJO). "
           "Sem alteracao propria de formula.",
-    "BO": "PENDENCIAS item 3 (21/08/2026): grafia do seed_credito corrigida de 'CAR80' para "
+    "BO": "REGRAS.md 6.1 item 3 (21/08/2026): grafia do seed_credito corrigida de 'CAR80' para "
           "'CAR 80', com espaco, para casar com o departamento da base. Esperado: 41 SKUs "
           "deixam de cair no credito empirico e passam a usar o tabelado.",
-    "CC": "PENDENCIAS item 4 (21/08/2026): CHECK_TRIB deixou de ser formula morta - dispara "
+    "CC": "REGRAS.md 6.1 item 4 (21/08/2026): CHECK_TRIB deixou de ser formula morta - dispara "
           "com codigo de tributacao vazio OU zero. Esperado: exatamente os 5 SKUs de "
           "codst = 0.",
-    # ── MELHORIAS APROVADAS em 21/08/2026 (MELHORIAS.md; CONTEXTO.md 6.0) ──
+    # ── MELHORIAS APROVADAS em 21/08/2026 (REGRAS.md 6.4) ──
     # Diferente das linhas acima, estas NAO sao "a planilha ainda nao foi
     # atualizada": sao mudancas que o gabarito nao tem e nao vai ter, decididas
     # porque a planilha virou ponto de partida.
@@ -558,7 +558,7 @@ LETRAS_DIVERGENCIA_POR_DECISAO = {
     # gravada - dali em diante a divergencia passa a ser esperada nos SKUs que
     # tiverem decisao com fator diferente do corrente, e SO' neles.
     # A regra foi exercitada de ponta a ponta em 24/08/2026 com duas decisoes de
-    # teste gravadas e apagadas (MELHORIAS.md A5) e e' protegida pelo teste
+    # teste gravadas e apagadas (REGRAS.md 6.4, A5) e e' protegida pelo teste
     # singular compras_pedido_unidades_usa_fator_congelado.
     "BB": "MELHORIA A5 (24/08/2026): PEDIDO_UNIDADES. A planilha faz $BA2*$K2 com o fator "
           "CORRENTE; passamos a usar o FATOR_EXIBICAO CONGELADO em APP_DECISAO_PEDIDO quando "
@@ -1336,7 +1336,7 @@ def imprimir_atribuicao_alerta(a: AtribuicaoAlerta):
     print("#" * 92)
     print("ATRIBUICAO DE ALERTA (D) - RECALCULADA AGORA (AJUSTE 3, CONTEXTO.md 6.0.1)")
     print("#" * 92)
-    print("Numeros de registro (MELHORIAS.md/PENDENCIAS_DIRETORIA.md/CONTEXTO.md) sao FOTO do dia")
+    print("Numeros de registro (REGRAS.md/CONTEXTO.md) sao FOTO do dia")
     print("da medicao e envelhecem sozinhos (ex.: 1.793 em 21/08 -> 2.146 em 24/08, sem mudanca de")
     print("codigo). Por isso esta secao NAO cita o numero antigo como referencia - recalcula contra")
     print("os dois lados de HOJE, componente a componente, na MESMA linha.")
@@ -1487,10 +1487,10 @@ def imprimir_resumo_executivo(r: ResultadoPedido):
                 f"REPROVADA - {c.divergentes}/{c.total_comparavel} linhas divergem"
             print(f"  [{c.letra}] {c.header}: {estado}")
     print()
-    print("Colunas com DIVERGENCIA ESPERADA POR DECISAO (CONTEXTO.md 6.0 e 6.4):")
+    print("Colunas com DIVERGENCIA ESPERADA POR DECISAO (REGRAS.md 6.1 e 6.4):")
     print("  Duas origens, ambas registradas e com dono:")
-    print("    (a) DECISAO DO DIRETOR ainda nao aplicada na planilha (PENDENCIAS itens 3 e 4);")
-    print("    (b) MELHORIA APROVADA (MELHORIAS.md A3/A4/D1/A5) - a planilha e' ponto de partida,")
+    print("    (a) DECISAO DO DIRETOR ainda nao aplicada na planilha (REGRAS.md 6.1, itens 3 e 4);")
+    print("    (b) MELHORIA APROVADA (REGRAS.md 6.4, A3/A4/D1/A5) - a planilha e' ponto de partida,")
     print("        nao alvo de replica exata, e estas mudancas nao vao existir no xlsx.")
     print("  Elas continuam sendo comparadas e contadas normalmente - o rotulo diz de quem e' a")
     print("  explicacao, e ISENTA a coluna do limiar generico de 99,9% (AJUSTE 1, 25/08/2026) -")

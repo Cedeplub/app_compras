@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- 04_tabela_atualizacao.sql
+-- 06_tabela_atualizacao.sql
 --
 -- Cria APP_ATUALIZACAO no schema COMPRAS: uma linha por execucao do dbt.
 --

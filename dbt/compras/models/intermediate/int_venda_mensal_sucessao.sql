@@ -33,7 +33,7 @@
 -- int_venda_mensal_pivot para o motivo.
 --
 -- ── ⚠ VD_ANT_3M (coluna AQ) | MELHORIA D1: a assimetria foi FECHADA ───────
--- Registro: MELHORIAS.md item D1, aprovado em 21/08/2026; CONTEXTO.md §6.0.
+-- Registro: REGRAS.md §6.4 (item D1), aprovado em 21/08/2026.
 -- Divergência DELIBERADA da planilha — não reverter.
 --
 -- O QUE A PLANILHA FAZ. gabarito_pedido_formulas.txt, coluna AQ:

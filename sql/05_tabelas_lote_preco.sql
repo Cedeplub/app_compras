@@ -6,8 +6,8 @@
 -- tem PK em ID_PRODUTO e por isso só guarda "o último preço decidido por
 -- SKU" — gravar de novo sobrescreve. Não agrupa itens, não tem dono, não tem
 -- status, não tem caminho até quem digita o preço no Winthor (rotina 201).
--- Mesmo impasse que APP_DECISAO_PEDIDO tinha antes da Etapa 9, e mesma
--- resposta (§4.1): entidade nova, a antiga intacta. APP_DECISAO_PRECO e
+-- Mesmo impasse que a antiga APP_DECISAO_PEDIDO tinha antes da Etapa 9, e
+-- mesma resposta (§4.1): entidade nova, a antiga intacta. APP_DECISAO_PRECO e
 -- APP_DECISAO_PRECO_HIST não são tocadas por este script — continuam sendo o
 -- que volta para o modelo no próximo dbt run (CONTEXTO.md §6 regra 10); o
 -- lote é o que sai da diretoria em direção a quem digita no Winthor.
@@ -16,12 +16,12 @@
 -- APP_LOTE_PRECO_ITEM (as linhas, com o snapshot "de -> para" por canal) e
 -- APP_LOTE_PRECO_STATUS_HIST (o rastro da máquina de estados).
 --
--- Mesmas convenções de 02_tabelas_app.sql e 03_tabelas_pedido.sql, não
--- repetidas aqui em detalhe: idempotente via checagem em
--- USER_TABLES/USER_INDEXES antes de criar; colunas de chave técnica em
--- GENERATED ALWAYS AS IDENTITY (nunca BY DEFAULT); rodar conectado como
--- COMPRAS; evolução de schema depois de publicado é ALTER em script de
--- migração à parte, nunca editando este arquivo.
+-- Mesmas convenções de 02_tabelas_auth.sql, 03_tabelas_decisao.sql e
+-- 04_tabelas_pedido.sql, não repetidas aqui em detalhe: idempotente via
+-- checagem em USER_TABLES/USER_INDEXES antes de criar; colunas de chave
+-- técnica em GENERATED ALWAYS AS IDENTITY (nunca BY DEFAULT); rodar
+-- conectado como COMPRAS; evolução de schema depois de publicado é ALTER em
+-- script de migração à parte, nunca editando este arquivo.
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -174,7 +174,7 @@ comment on column app_lote_preco.atualizado_por is
 -- canal (atacado, varejo).
 --
 -- CHAVE: (ID_LOTE, ID_PRODUTO), natural e composta — mesmo raciocínio de
--- APP_PEDIDO_ITEM (03_tabelas_pedido.sql): um produto aparece no máximo uma
+-- APP_PEDIDO_ITEM (04_tabelas_pedido.sql): um produto aparece no máximo uma
 -- vez no mesmo lote; acrescentar o mesmo produto de novo ao Rascunho é
 -- responsabilidade da aplicação (atualizar a linha, não duplicar).
 --
@@ -265,7 +265,7 @@ comment on column app_lote_preco_item.atualizado_por is
 -- 3. APP_LOTE_PRECO_STATUS_HIST — o caminho percorrido pela máquina de
 -- estados do lote.
 --
--- Mesmo raciocínio de APP_PEDIDO_STATUS_HIST (03_tabelas_pedido.sql): o
+-- Mesmo raciocínio de APP_PEDIDO_STATUS_HIST (04_tabelas_pedido.sql): o
 -- status sozinho, em APP_LOTE_PRECO, não conta a história de como o lote
 -- chegou lá — esta tabela é o único lugar onde o par (STATUS_ANTERIOR,
 -- STATUS_NOVO) fica registrado.

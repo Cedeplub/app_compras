@@ -66,7 +66,7 @@
 -- A chave e' o texto "$F2&"|"&$BJ2" - FORNECEDOR (que e' o texto do
 -- DEPARTAMENTO, CONTEXTO.md regra 7) concatenado com o codigo de ICMS.
 -- ⚠ DIVERGENCIA DELIBERADA DO ARQUIVO EM referencia/, decidida pelo Diretor
--- de Compras em 21/08/2026 (PENDENCIAS_DIRETORIA.md item 3; CONTEXTO.md 6.4).
+-- de Compras em 21/08/2026 (REGRAS.md §6.1, item 3).
 -- O seed trazia `CAR80` e o departamento na base e' `CAR 80`, COM ESPACO: a
 -- busca falhava NA PROPRIA PLANILHA e esses SKUs caiam no credito empirico.
 -- O Diretor decidiu corrigir a GRAFIA DO SEED para bater com a base, e nao

@@ -17,7 +17,7 @@
 -- ⚠ MUDOU EM 02/09/2026, e a mudança é o ponto: a lista de 14 checks é lida
 -- direto de `int_produto_alerta`, não mais de `fat_alerta`. Antes as duas
 -- tabelas tinham a MESMA taxonomia e uma servia de espelho da outra; desde a
--- taxonomia decidida pelo Diretor (v2/DECISOES_DIRETOR.md item 1) elas
+-- taxonomia decidida pelo Diretor (REGRAS.md §7.1) elas
 -- divergem de propósito - `fat_alerta` renomeia dois tipos, parte PARADO em
 -- dois, remove INATIVO e acrescenta dois alertas que a planilha não tem.
 -- Continuar lendo de lá faria este teste reprovar por causa da TELA, não do

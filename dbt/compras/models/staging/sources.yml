@@ -82,8 +82,21 @@ sources:
           MARGEM_ALVO nula = sem decisao de margem (o padrao de 20% e aplicado no model,
           nao na tabela). ALT_PV_* nulo NUNCA e preenchido automaticamente com uma
           sugestao calculada.
-      - name: app_decisao_pedido
+      # APP_DECISAO_PEDIDO saiu daqui em 12/09/2026. Era escrita so pela tela v1,
+      # que nao veio para este repositorio: ultimo evento de auditoria em
+      # 25/08/2026. A decisao de pedido da v2 mora em APP_PEDIDO + APP_PEDIDO_ITEM,
+      # e ate essa data nao chegava ao fat_pedido. Ver stg_decisao_pedido.sql.
+      - name: app_pedido
         description: >
-          Pedido decidido por produto, com o FATOR_EXIBICAO congelado no instante da
-          decisao. unidades = PEDIDO x FATOR_EXIBICAO. O fator e snapshot de proposito:
-          recalcula-lo depois mudaria retroativamente o significado da decisao.
+          Cabecalho do pedido de compra da v2: fornecedor, STATUS (Rascunho ->
+          Orcamento Enviado -> Fechado -> Exportado) e quem gravou. Entra na cadeia
+          do fat_pedido so para dar dono ao item; NENHUM status e filtrado, porque
+          a coluna BA do gabarito e "quanto o comprador decidiu comprar", nao
+          "quanto foi aprovado".
+      - name: app_pedido_item
+        description: >
+          As linhas do pedido, grao (ID_PEDIDO, ID_PRODUTO). FATOR_EXIBICAO e
+          snapshot do instante da gravacao (MELHORIA A5) e e OBRIGATORIO ler
+          QUANTIDADE junto com ele: unidades reais = QUANTIDADE x FATOR_EXIBICAO.
+          O mesmo SKU pode estar em dois pedidos com fatores diferentes - somar
+          QUANTIDADE sem o fator soma caixa com unidade.

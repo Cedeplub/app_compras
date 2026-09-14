@@ -1,7 +1,7 @@
 -- Invariante que este teste previne: `fat_alerta` PERDER ou INVENTAR um alerta
 -- da planilha ao traduzir os CHECK_* para a taxonomia da tela.
 --
--- Desde 02/09/2026 (v2/DECISOES_DIRETOR.md item 1) `fat_alerta` não é mais um
+-- Desde 02/09/2026 (REGRAS.md §7.1) `fat_alerta` não é mais um
 -- espelho literal de `int_produto_alerta`: renomeia dois tipos, PARTE
 -- CHECK_ESTOQUE_PARADO em SEM_GIRO/BAIXO_GIRO, remove INATIVO e acrescenta dois
 -- alertas que não existem na planilha. Cada uma dessas quatro operações é uma
@@ -14,9 +14,10 @@
 --   ramo 2 - toda linha de fat_alerta com ordem <= 14 tem um CHECK_* ativo de
 --            texto igual por trás;
 --   ramo 3 - CHECK_INATIVO ativo NÃO pode virar linha (foi retirado da
---            taxonomia; hoje ele é 100% vazio porque depende de PEDIDO, mas no
---            dia em que houver decisão gravada em APP_DECISAO_PEDIDO ele passa
---            a ter valor e o ramo deixa de ser decorativo).
+--            taxonomia; era 100% vazio enquanto PEDIDO vinha da tabela morta
+--            APP_DECISAO_PEDIDO, e desde 12/09/2026 PEDIDO vem de
+--            APP_PEDIDO_ITEM — com decisão gravada de verdade, o ramo deixa de
+--            ser decorativo).
 --
 -- ⚠ A comparação é por (codigo, texto), não por (codigo, tipo): SEM_GIRO e
 -- BAIXO_GIRO compartilham o texto de CHECK_ESTOQUE_PARADO de propósito, então

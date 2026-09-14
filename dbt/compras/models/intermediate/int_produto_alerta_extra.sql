@@ -2,7 +2,7 @@
 -- int_produto_alerta_extra — os DOIS alertas que NÃO existem na planilha.
 --
 -- Qual coluna Excel reproduz: NENHUMA, e isso é o ponto do model. Decisão do
--- Diretor de Compras de 02/09/2026 (v2/DECISOES_DIRETOR.md item 1): a taxonomia
+-- Diretor de Compras de 02/09/2026 (REGRAS.md §7.1): a taxonomia
 -- da tela de Alertas ganha `OPORTUNIDADE_DE_GIRO` (peso 3) e `MARGEM_ALTA`
 -- (peso 1), que a aba `pedido` não tem.
 --

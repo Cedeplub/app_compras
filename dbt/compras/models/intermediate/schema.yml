@@ -348,7 +348,7 @@ models:
       Herda QATUAL, Q00..Q11 e as médias MED02..MED12 com os DOIS pesos
       (gabarito_pedido_formulas.txt colunas AC/AD/AE/AF/AG), e VD_ANT_3M
       TAMBÉM com os dois - na planilha (coluna AQ) só existe o termo de PESO_1,
-      e a MELHORIA D1 fechou essa assimetria (MELHORIAS.md; CONTEXTO.md §6.0;
+      e a MELHORIA D1 fechou essa assimetria (REGRAS.md §6.4;
       impacto ZERO hoje). Ver o cabeçalho do model. V00..V05, VATUAL, CLI_*, DIAS_SEM_EST*,
       FORA_DE_LINHA e TX_DEVOLUCAO_3M passam direto do próprio SKU, sem
       herança nenhuma. Hoje as 25 linhas de seed_sucessao estão ATIVO='NAO' -
@@ -419,8 +419,8 @@ models:
         description: "PASSA DIRETO, sem herança."
       - name: vd_ant_3m
         description: >
-          HERDA com os DOIS pesos. ⚠ MELHORIA D1 (MELHORIAS.md; CONTEXTO.md
-          §6.0): na planilha (gabarito coluna AQ) o termo com $DN2/PESO_2
+          HERDA com os DOIS pesos. ⚠ MELHORIA D1 (REGRAS.md §6.4): na
+          planilha (gabarito coluna AQ) o termo com $DN2/PESO_2
           simplesmente não existe, e AQ herdava só com peso_1 - assimetria
           contra as colunas irmãs AD/AE/AF e AG, que somam os dois. Fechamos a
           assimetria; divergência DELIBERADA da planilha, com impacto ZERO hoje
@@ -894,7 +894,7 @@ models:
           BO | CRED_TOTAL. seed_credito pela chave FORNECEDOR|COD_ICMS; sem
           linha cai no crédito empírico (DR).
           ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
-          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 3, CONTEXTO.md §6.4): o
+          (21/08/2026 - REGRAS.md §6.1, item 3): o
           seed trazia CAR80 e o departamento da base é "CAR 80", COM ESPAÇO, de
           modo que a busca falhava na própria planilha e 41 SKUs caíam no
           empírico. A grafia do seed foi corrigida para "CAR 80" e esses 41
@@ -1067,7 +1067,7 @@ models:
           (cheia) e custo CUSTO_TOT_s/VALOR + CUSTO_ADICIONAL_IMAGEM. É o
           regime ST calculado sobre o valor da nota.
           ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
-          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4): a
+          (21/08/2026 - REGRAS.md §6.1, item 1): a
           planilha antiga usava ICMS_SAIDA_EF (com redução), o que era erro -
           substituição tributária e redução de base são mecânicas separadas.
           Itens em regime ST não mudam (as duas alíquotas já eram idênticas);
@@ -1105,7 +1105,7 @@ models:
           CY | MARGEM_ST_s/VALOR_VAREJO. Cenário ST s/Valor do varejo, com
           alíquota ICMS_SEM_RED (cheia).
           ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
-          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4). A
+          (21/08/2026 - REGRAS.md §6.1, item 1). A
           planilha antiga usava ICMS_SAIDA_EF (com redução), contrariando o PDF
           §8.2, que já mandava o varejo usar sempre a cheia. Fora do regime ST,
           CY passa a ser idêntica a CZ.
@@ -1171,7 +1171,7 @@ models:
           CO | PV_SUG_ST_s/VALOR_AV. Custo (BV + BX) sobre 1 - ICMS_SEM_RED -
           PISCOF_EF - comissão - MARGEM_ALVO.
           ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
-          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4): era
+          (21/08/2026 - REGRAS.md §6.1, item 1): era
           ICMS_SAIDA_EF. Fora do regime ST, CO passa a ser idêntica a CS.
       - name: pv_sug_st_s_valor_ap
         description: >
@@ -1215,7 +1215,7 @@ models:
           DE | PV_SUG_ST_s/VALOR_VAR_AV. Custo (BV + BX) sobre denominador com
           ICMS_SEM_RED e MARGEM_ALVO_VAREJO.
           ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
-          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 1, CONTEXTO.md §6.4): era
+          (21/08/2026 - REGRAS.md §6.1, item 1): era
           ICMS_SAIDA_EF. Fora do regime ST, DE passa a ser idêntica a DG.
       - name: pv_sug_st_s_valor_var_ap
         description: >
@@ -1281,11 +1281,11 @@ models:
     description: >
       Colunas BA a BG da aba `pedido`: a quantidade que o comprador decidiu
       pedir e tudo que se calcula a partir dela. Grão: 1 linha por SKU, espinha
-      int_produto_base. BA é DECISÃO HUMANA (APP_DECISAO_PEDIDO), com a
-      diferença deliberada de que ausência de decisão vale ZERO e não nulo -
-      BB/BC/BF a usam em aritmética. ⚠ MELHORIA A5 (MELHORIAS.md; CONTEXTO.md
-      §6.0): BB usa o FATOR_EXIBICAO CONGELADO em APP_DECISAO_PEDIDO quando
-      existe decisão gravada, e o CORRENTE (K, o que o gabarito manda) só
+      int_produto_base. BA é DECISÃO HUMANA (APP_PEDIDO_ITEM, agregado em
+      stg_decisao_pedido desde 12/09/2026), com a diferença deliberada de que
+      ausência de decisão vale ZERO e não nulo - BB/BC/BF a usam em aritmética.
+      ⚠ MELHORIA A5 (REGRAS.md): BB usa o FATOR_EXIBICAO CONGELADO no item do
+      pedido quando existe decisão gravada, e o CORRENTE (K, o que o gabarito manda) só
       quando não existe - decisão tomada não muda de tamanho porque o cadastro
       atualizou depois. Propaga para BC, BD, BE e BF; NÃO propaga para BG, que
       é estoque. A unidade do pedido (BC) e o limiar do palete (BE) saem do
@@ -1298,8 +1298,9 @@ models:
           - not_null
       - name: pedido
         description: >
-          BA | PEDIDO. DECISÃO HUMANA, na unidade de EXIBIÇÃO. Sem linha em
-          APP_DECISAO_PEDIDO vale 0. Hoje 100% zero, como na planilha.
+          BA | PEDIDO. DECISÃO HUMANA, na unidade de EXIBIÇÃO da última
+          decisão. Sem item em APP_PEDIDO_ITEM vale 0. Medido em 12/09/2026:
+          66 SKUs com pedido gravado, os demais zero (na planilha é 100% zero).
         data_tests: [not_null]
       - name: fator_exibicao_pedido
         description: >
@@ -1311,11 +1312,12 @@ models:
         data_tests: [not_null]
       - name: pedido_unidades
         description: >
-          BB | PEDIDO_UNIDADES. BA x FATOR_EXIBICAO_PEDIDO - o pedido em
-          unidades. ⚠ MELHORIA A5: o fator é o congelado na decisão, não o
-          corrente. Hoje 0 SKUs afetados (APP_DECISAO_PEDIDO vazia); a regra é
-          protegida pelo teste singular
-          compras_pedido_unidades_usa_fator_congelado.
+          BB | PEDIDO_UNIDADES. Vem PRONTO de stg_decisao_pedido.unidades =
+          sum(QUANTIDADE x FATOR_EXIBICAO) dos itens do SKU - unidade REAL. NÃO
+          multiplique BA pelo fator aqui: com o SKU em dois pedidos de fatores
+          diferentes, isso reconverteria o total pelo fator errado. ⚠ MELHORIA
+          A5: o fator é o congelado no item, não o corrente. A regra é protegida
+          pelo teste singular compras_pedido_unidades_usa_fator_congelado.
         data_tests: [not_null]
       - name: pedido_na_medida
         description: >
@@ -1357,7 +1359,7 @@ models:
       ⚠ Critério de aceite (CONTEXTO.md §6.1.1): zero divergência em cada
       CHECK_* ESTRUTURAL, individualmente. CHECK_ESTOQUE_PARADO e
       CHECK_FORA_DE_LINHA são VOLÁTEIS; CHECK_FABRICA e CHECK_INATIVO dependem
-      de decisão humana. CHECK_TRIB é fórmula morta - PENDENCIAS_DIRETORIA.md,
+      de decisão humana. CHECK_TRIB é fórmula morta - REGRAS.md §6.1,
       item 4.
     columns:
       - name: codigo
@@ -1387,8 +1389,8 @@ models:
           nada mude no dado.
       - name: check_fora_de_linha
         description: >
-          AP | CHECK_FORA_DE_LINHA. ⚠ MELHORIA A3 (MELHORIAS.md; CONTEXTO.md
-          §6.0): a planilha lê a coluna do MÊS CORRENTE e 71 SKUs com 'S' em mês
+          AP | CHECK_FORA_DE_LINHA. ⚠ MELHORIA A3 (REGRAS.md §6.4): a
+          planilha lê a coluna do MÊS CORRENTE e 71 SKUs com 'S' em mês
           fechado saíam 'N' por não terem linha no mês, sem alertar. Passamos a
           ler o registro MAIS RECENTE em que o SKU aparece — os 71 passam a
           alertar (de 1 para 72 SKUs). Divergência DELIBERADA da planilha.
@@ -1397,8 +1399,8 @@ models:
       - name: check_devolucao_alta
         description: >
           AV | CHECK_DEVOLUCAO_ALTA. Taxa de devolução de 3 meses acima de
-          TX_DEVOLUCAO_ALERTA. ESTRUTURAL. ⚠ MELHORIA A4 (MELHORIAS.md;
-          CONTEXTO.md §6.0): a planilha imprime percentual INTEIRO com dois
+          TX_DEVOLUCAO_ALERTA. ESTRUTURAL. ⚠ MELHORIA A4 (REGRAS.md §6.4):
+          a planilha imprime percentual INTEIRO com dois
           dígitos ("05%") porque lê "0.0%" no locale pt-BR; passamos a imprimir
           uma casa decimal com vírgula ("5,5%"). Divergência DELIBERADA do
           texto - ver macros/compras_texto_percentual.sql.
@@ -1415,7 +1417,7 @@ models:
         description: >
           CC | CHECK_TRIB. Dispara quando COD_ICMS está VAZIO **ou ZERO**.
           ⚠ DIVERGE do xlsx em referencia/ POR DECISÃO do Diretor de Compras
-          (21/08/2026 - PENDENCIAS_DIRETORIA.md item 4, CONTEXTO.md §6.4). A
+          (21/08/2026 - REGRAS.md §6.1, item 4). A
           planilha só testava "vazio", e vazio nunca acontece
           (COD_TRIB_ICMS_PADRAO sempre preenche): era fórmula morta, 0 células
           em 8.772. Com o zero incluído passa a cobrir os 5 SKUs de
@@ -1436,8 +1438,8 @@ models:
         description: >
           CL | CHECK_MARGEM_INSTAVEL. CHOOSE(NIVEL_MARGEM) nos três textos, com
           o PIOR cenário (MARGEM_SEM_RED, alíquota cheia) e o sufixo
-          " (fora da curva A)". ESTRUTURAL. ⚠ MELHORIA A4 (MELHORIAS.md;
-          CONTEXTO.md §6.0): o percentual passa a sair com uma casa decimal e
+          " (fora da curva A)". ESTRUTURAL. ⚠ MELHORIA A4 (REGRAS.md §6.4):
+          o percentual passa a sair com uma casa decimal e
           vírgula ("MARGEM CRITICA - pior cenario 5,5%") em vez do inteiro de
           dois dígitos da planilha ("05%"). Divergência DELIBERADA do texto.
       - name: check_sucessao
@@ -1464,7 +1466,7 @@ models:
   - name: int_produto_alerta_extra
     description: >
       Os dois alertas criados pela taxonomia do Diretor de Compras em
-      02/09/2026 (v2/DECISOES_DIRETOR.md item 1): OPORTUNIDADE_DE_GIRO e
+      02/09/2026 (REGRAS.md §7.1): OPORTUNIDADE_DE_GIRO e
       MARGEM_ALTA. Nenhum dos dois tem coluna na aba `pedido`, e é por isso que
       NÃO nasceram em int_produto_alerta - lá dentro eles entrariam na string
       ALERTA (coluna D), que é gabarito e coluna crítica do aceite

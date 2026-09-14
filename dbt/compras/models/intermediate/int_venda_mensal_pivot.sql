@@ -25,7 +25,7 @@
 --
 -- ── ⚠ MELHORIA A3 | FORA_DE_LINHA vem do registro MAIS RECENTE, não do mês
 --    corrente (divergência DELIBERADA da planilha) ────────────────────────────
--- Registro: MELHORIAS.md item A3, aprovado em 21/08/2026; CONTEXTO.md §6.0.
+-- Registro: REGRAS.md §6.4 (item A3), aprovado em 21/08/2026.
 --
 -- O QUE A PLANILHA FAZ: o passo "Atual" do Power Query recorta fVendaMes no mês
 -- corrente e é dali que sai a coluna Y (FORA_DE_LINHA); quem não tem linha no

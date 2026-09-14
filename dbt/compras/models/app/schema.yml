@@ -32,7 +32,7 @@ models:
       - name: TIPO_ALERTA
         description: >
           ⚠ INTERFACE PÚBLICA, e os valores MUDARAM em 02/09/2026
-          (v2/DECISOES_DIRETOR.md item 1). MARGEM_INSTAVEL -> MARGEM_BAIXA,
+          (REGRAS.md §7.1). MARGEM_INSTAVEL -> MARGEM_BAIXA,
           MARGEM_INSTAVEL_VAREJO -> MARGEM_BAIXA_VAREJO, PARADO -> SEM_GIRO +
           BAIXO_GIRO, INATIVO removido, OPORTUNIDADE_DE_GIRO e MARGEM_ALTA
           criados. Consulta do dashboard que cite um nome velho volta VAZIA, não

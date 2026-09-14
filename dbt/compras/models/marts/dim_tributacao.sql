@@ -30,7 +30,7 @@
 -- para o mesmo código: ICMS_EF_SAIDA (com redução, atacado) e
 -- ICMS_EF_SEM_REDUCAO (cheia, varejo). Elas não são "a certa e a antiga" - são
 -- dois regimes, e usar a reduzida no varejo mostra margem melhor do que a real.
--- Ver PENDENCIAS_DIRETORIA.md item 1: a coluna CY da planilha faz exatamente
+-- Ver REGRAS.md §6.1, item 1: a coluna CY da planilha faz exatamente
 -- isso, em 5.613 SKUs, e está reproduzida assim aguardando o Diretor.
 --
 -- ── Os códigos que o catálogo usa e a tabela não tem ──────────────────────
@@ -38,8 +38,8 @@
 -- inverso, que é o perigoso: os 5 SKUs de PCTABTRIB com codst = 0
 -- (CONTEXTO.md §6.2), cujo código está preenchido e não existe aqui. Eles saem
 -- sem modalidade, sem alíquota, com margem em branco - e sem alerta, porque
--- CHECK_TRIB testa "vazio", não "não encontrado" (PENDENCIAS_DIRETORIA.md item
--- 4). Como esta dimensão tem grão no seed, esses códigos não aparecem como
+-- CHECK_TRIB testa "vazio", não "não encontrado" (REGRAS.md §6.1, item 4).
+-- Como esta dimensão tem grão no seed, esses códigos não aparecem como
 -- linha, e não devem aparecer: inventar linha para código inexistente seria
 -- criar uma tributação que não há. Quem precisa deles olha
 -- `fat_pedido where modalidade is null`.

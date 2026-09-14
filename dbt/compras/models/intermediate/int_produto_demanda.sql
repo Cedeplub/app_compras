@@ -70,7 +70,7 @@
 -- A herança de produto descontinuado (colunas DK/DL/DM/DN) já está aplicada lá:
 -- QATUAL/Q00..Q11/MED* e `vd_ant_3m` herdam TODOS com os DOIS pesos. ⚠ Na
 -- planilha AQ (VD_ANT_3M) herdava só com PESO_1 - assimetria fechada pela
--- MELHORIA D1 (MELHORIAS.md; CONTEXTO.md §6.0), com impacto ZERO hoje. Deste
+-- MELHORIA D1 (REGRAS.md §6.4), com impacto ZERO hoje. Deste
 -- lado sobra só a divisão por $K2, que é decisão de exibição da aba `pedido`.
 --
 -- ── AT | VAR_PV: por que os $K2 se cancelam ─────────────────────────────────

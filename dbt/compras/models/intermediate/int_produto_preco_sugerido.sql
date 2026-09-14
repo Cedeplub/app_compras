@@ -33,8 +33,8 @@
 --     Sem Reducao -> CB (cheia)       e $BY2
 --
 -- ── ⚠ DIVERGENCIA DELIBERADA DO ARQUIVO EM referencia/ (CO e DE) ───────────
--- Decidido pelo Diretor de Compras em 21/08/2026 (PENDENCIAS_DIRETORIA.md,
--- item 1; CONTEXTO.md 6.4). O cenario "ST s/Valor" usava $CA2 = ICMS_SAIDA_EF
+-- Decidido pelo Diretor de Compras em 21/08/2026 (REGRAS.md §6.1, item 1).
+-- O cenario "ST s/Valor" usava $CA2 = ICMS_SAIDA_EF
 -- (aliquota COM reducao de base). Era ERRO NA PLANILHA: substituicao
 -- tributaria e beneficio de reducao de base sao mecanicas separadas. CO e DE
 -- passam a usar $CB2 = ICMS_SEM_RED; CP e DF mudam por consequencia, sem

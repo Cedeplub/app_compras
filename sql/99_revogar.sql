@@ -1,10 +1,12 @@
 --------------------------------------------------------------------------------
 -- 99_revogar.sql
 --
--- Desfaz por completo o que 01_usuario_compras.sql e 02_tabelas_app.sql
--- criaram. Rodar como um usuário com privilégio de administrar contas (ex.:
--- SYSTEM ou um DBA nominal), nunca como o próprio COMPRAS — o DROP USER
--- precisa ser feito de fora.
+-- Desfaz por completo o que 01_usuario_compras.sql e os scripts de tabela
+-- (02_tabelas_auth.sql, 03_tabelas_decisao.sql, 04_tabelas_pedido.sql,
+-- 05_tabelas_lote_preco.sql, 06_tabela_atualizacao.sql) criaram. Rodar como
+-- um usuário com privilégio de administrar contas (ex.: SYSTEM ou um DBA
+-- nominal), nunca como o próprio COMPRAS — o DROP USER precisa ser feito de
+-- fora.
 --
 -- ATENÇÃO: a seção 2 (DROP USER CASCADE) apaga todas as tabelas APP_* e todo
 -- dado nelas, sem retorno. Só rodar em desligamento definitivo do projeto ou
@@ -79,18 +81,29 @@ revoke create table      from compras;
 revoke create session    from compras;
 
 --------------------------------------------------------------------------------
--- 4. Desfaz as tabelas APP_* criadas por 02_tabelas_app.sql, sem apagar o
---    usuário. Ordem inversa de dependência (FKs primeiro). Comentado por
---    padrão pelo mesmo motivo da seção 2: isto apaga dado de negócio e de
---    login. Descomente só se o objetivo for esse. Isto NÃO derruba objetos
---    do dbt (stg_/int_/dim_/fat_) — ver aviso no cabeçalho do arquivo.
+-- 4. Desfaz as tabelas APP_* criadas por 02_tabelas_auth.sql,
+--    03_tabelas_decisao.sql, 04_tabelas_pedido.sql, 05_tabelas_lote_preco.sql
+--    e 06_tabela_atualizacao.sql, sem apagar o usuário. Ordem inversa de
+--    dependência (FKs primeiro, mesma ordem de sql/98_limpar_dados.sql).
+--    Comentado por padrão pelo mesmo motivo da seção 2: isto apaga dado de
+--    negócio e de login. Descomente só se o objetivo for esse. Isto NÃO
+--    derruba objetos do dbt (stg_/int_/dim_/fat_) — ver aviso no cabeçalho
+--    do arquivo. APP_DECISAO_PEDIDO não aparece aqui: deixou de existir na
+--    Etapa 14 (sql/00_LEIAME.md) — se sobrar numa base antiga, seu DROP é
+--    decisão à parte, fora deste script.
 --------------------------------------------------------------------------------
--- drop table compras.app_auditoria purge;
 -- drop table compras.app_sessao purge;
--- drop table compras.app_usuario purge;
--- drop table compras.app_decisao_pedido purge;
+-- drop table compras.app_auditoria purge;
+-- drop table compras.app_pedido_item purge;
+-- drop table compras.app_pedido_status_hist purge;
+-- drop table compras.app_pedido purge;
+-- drop table compras.app_lote_preco_item purge;
+-- drop table compras.app_lote_preco_status_hist purge;
+-- drop table compras.app_lote_preco purge;
 -- drop table compras.app_decisao_preco_hist purge;
 -- drop table compras.app_decisao_preco purge;
+-- drop table compras.app_atualizacao purge;
+-- drop table compras.app_usuario purge;
 
 --------------------------------------------------------------------------------
 -- 5. Só depois de 2 (ou de 3+4, se o schema for esvaziado manualmente por

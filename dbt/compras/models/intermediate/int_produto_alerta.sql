@@ -67,7 +67,7 @@
 -- nada mude no dado (CONTEXTO.md §6.1.1 - componente VOLÁTIL de ALERTA).
 --
 -- ── ⚠ AP | MELHORIA A3: os 71 SKUs que NÃO alertavam passam a alertar ──────
--- Registro: MELHORIAS.md item A3, aprovado em 21/08/2026; CONTEXTO.md §6.0.
+-- Registro: REGRAS.md §6.4 (item A3), aprovado em 21/08/2026.
 -- Divergência DELIBERADA da planilha — não reverter para "fechar o validador".
 --
 -- O QUE A PLANILHA FAZ: FORA_DE_LINHA vem SÓ da linha do mês corrente do
@@ -87,16 +87,20 @@
 -- comprador mexe nele), mas deixou de virar com a virada do mês.
 --
 -- ── X e Y | dependem de PEDIDO, que é decisão humana ───────────────────────
--- Os dois só disparam com $BA2 preenchido, e BA vem de APP_DECISAO_PEDIDO
--- (hoje vazia). Saem 100% vazios, como na planilha - onde a coluna PEDIDO
--- também está zerada nas 8.772 linhas. Não é dado faltando (CONTEXTO.md
+-- Os dois só disparam com $BA2 preenchido. Até 12/09/2026 BA vinha de
+-- APP_DECISAO_PEDIDO, escrita só pela tela v1 e parada desde 25/08 - saíam 100%
+-- vazios, como na planilha, onde a coluna PEDIDO também está zerada em todas as
+-- linhas. Desde a troca de fonte, BA vem de APP_PEDIDO_ITEM (a decisão da v2) e
+-- os dois checks DEIXAM de ser decorativos: 66 SKUs com pedido gravado em
+-- 12/09/2026, contra os 4 da tabela velha. Continuam classificados como
+-- DEPENDENTES DE DECISÃO HUMANA (CONTEXTO.md §6.1.1): divergir da planilha
+-- neles é esperado, porque a planilha não tem a decisão. Não é dado faltando (CONTEXTO.md
 -- §6.1.1 - componentes DEPENDENTES DE DECISÃO HUMANA de ALERTA).
 -- Em X, o `IF($W2="","",...)` é a porta: SKU sem estoque de fábrica não é
 -- comparável, então não alerta - e não alertar é diferente de "estoque zero".
 --
 -- ── ⚠ CC | CHECK_TRIB deixou de ser FÓRMULA MORTA (divergência deliberada) ─
--- Decidido pelo Diretor de Compras em 21/08/2026 (PENDENCIAS_DIRETORIA.md
--- item 4; CONTEXTO.md §6.4).
+-- Decidido pelo Diretor de Compras em 21/08/2026 (REGRAS.md §6.1, item 4).
 --
 -- Como era: `IF($BJ2="","TRIB NAO ENCONTRADA","")` testava se o código de
 -- tributação está VAZIO. Ele nunca está - int_produto_fiscal aplica
@@ -143,8 +147,8 @@
 -- no varejo: a alíquota CHEIA, sem redução de base. Usar a margem oficial aqui
 -- mostraria um número melhor do que o pior caso, que é justamente o que o
 -- alerta existe para mostrar.
--- ⚠ Sobre o formato do percentual: MELHORIA A4 (MELHORIAS.md; CONTEXTO.md
--- §6.0). A planilha imprime percentual INTEIRO com dois dígitos ("05%"),
+-- ⚠ Sobre o formato do percentual: MELHORIA A4 (REGRAS.md §6.4). A planilha
+-- imprime percentual INTEIRO com dois dígitos ("05%"),
 -- porque o "0.0%" da fórmula é lido no locale pt-BR do arquivo, onde o "."
 -- é separador de MILHAR. Nós passamos a imprimir uma casa decimal com
 -- vírgula ("5,5%"), que é o que a máscara quis dizer — sem isso o alerta não

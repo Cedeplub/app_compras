@@ -83,7 +83,7 @@ final as (
 
         -- limiares dos DOIS alertas NOVOS de fat_alerta (02/09/2026). Nao tem
         -- coluna na planilha - nascem da taxonomia decidida pelo Diretor de
-        -- Compras (v2/DECISOES_DIRETOR.md item 1). Moram aqui pela mesma regra
+        -- Compras (REGRAS.md §7.1). Moram aqui pela mesma regra
         -- de sempre: constante em formula e defeito.
         {{ compras_parametro_num('OPORTUNIDADE_GIRO_MESES') }}   as oportunidade_giro_meses,
         {{ compras_parametro_num('MARGEM_ALTA_MIN') }}           as margem_alta_min,

@@ -1,20 +1,22 @@
 --------------------------------------------------------------------------------
--- 03_tabelas_pedido.sql
+-- 04_tabelas_pedido.sql
 --
 -- Etapa 9 do ciclo v2 (v2/PLANO.md §2.4, §"Etapa 9"): cria a entidade "pedido"
--- que hoje não existe no banco. APP_DECISAO_PEDIDO (02_tabelas_app.sql) tem PK
--- em ID_PRODUTO e por isso só guarda "a última quantidade decidida por SKU" —
--- gravar de novo sobrescreve. Não agrupa itens, não tem fornecedor dono, não
--- tem status, não tem histórico. Este script cria as três tabelas que faltam:
--- APP_PEDIDO (o cabeçalho), APP_PEDIDO_ITEM (as linhas) e
--- APP_PEDIDO_STATUS_HIST (o rastro da máquina de estados).
+-- da v2. APP_DECISAO_PEDIDO — a tabela antiga, com PK em ID_PRODUTO, que só
+-- guardava "a última quantidade decidida por SKU", não agrupava itens, não
+-- tinha fornecedor dono, não tinha status, não tinha histórico — deixou de
+-- existir na Etapa 14 (a única escritora era a tela v1, parada desde
+-- 25/08/2026; a v2 grava aqui desde a Etapa 9). Este script cria as três
+-- tabelas que a substituem: APP_PEDIDO (o cabeçalho), APP_PEDIDO_ITEM (as
+-- linhas) e APP_PEDIDO_STATUS_HIST (o rastro da máquina de estados).
 --
--- Mesmas convenções de 02_tabelas_app.sql, não repetidas aqui em detalhe:
--- idempotente via checagem em USER_TABLES/USER_INDEXES antes de criar; colunas
--- de chave técnica em GENERATED ALWAYS AS IDENTITY (nunca BY DEFAULT, ver o
--- porquê no cabeçalho de 02_tabelas_app.sql); rodar conectado como COMPRAS;
--- evolução de schema depois de publicado é ALTER em script de migração à
--- parte, nunca editando este arquivo.
+-- Mesmas convenções de 02_tabelas_auth.sql e 03_tabelas_decisao.sql, não
+-- repetidas aqui em detalhe: idempotente via checagem em USER_TABLES/
+-- USER_INDEXES antes de criar; colunas de chave técnica em GENERATED ALWAYS
+-- AS IDENTITY (nunca BY DEFAULT, ver o porquê no cabeçalho de
+-- 02_tabelas_auth.sql); rodar conectado como COMPRAS; evolução de schema
+-- depois de publicado é ALTER em script de migração à parte, nunca editando
+-- este arquivo.
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -39,7 +41,7 @@
 -- é responsabilidade da aplicação, registrada em APP_PEDIDO_STATUS_HIST; um
 -- CHECK não consegue expressar "depende do valor anterior" sem trigger, e o
 -- projeto prefere manter essa lógica em Python e auditável (mesmo raciocínio
--- do comentário de APP_USUARIO.ativo em 02_tabelas_app.sql: regra de negócio
+-- do comentário de APP_USUARIO.ativo em 02_tabelas_auth.sql: regra de negócio
 -- fica no app, não em trigger).
 --
 -- Editável só em Rascunho/Orçamento Enviado (campo vira texto em
@@ -93,7 +95,7 @@ end;
 /
 
 comment on table app_pedido is
-    'Cabeçalho de um pedido de compra: um fornecedor/departamento, um status, um autor. Substitui o modelo antigo (APP_DECISAO_PEDIDO, PK em ID_PRODUTO, uma linha por SKU sem agrupamento) para as telas de Pedidos Salvos do v2 (PROTOTIPO.md §2.4-2.8). Sempre de UM fornecedor só (exigência do formato de importação Winthor, rotina 220): a aplicação cria um APP_PEDIDO por departamento presente no carrinho ao salvar, nunca um pedido com fornecedores misturados.';
+    'Cabeçalho de um pedido de compra: um fornecedor/departamento, um status, um autor. Substitui o modelo antigo (APP_DECISAO_PEDIDO, PK em ID_PRODUTO, uma linha por SKU sem agrupamento — removida na Etapa 14) para as telas de Pedidos Salvos do v2 (PROTOTIPO.md §2.4-2.8). Sempre de UM fornecedor só (exigência do formato de importação Winthor, rotina 220): a aplicação cria um APP_PEDIDO por departamento presente no carrinho ao salvar, nunca um pedido com fornecedores misturados.';
 comment on column app_pedido.id_pedido is
     'Chave técnica sequencial (IDENTITY, GENERATED ALWAYS — nunca aceita id explícito em uso normal, mesmo padrão de APP_DECISAO_PRECO_HIST.id_hist).';
 comment on column app_pedido.fornecedor is
@@ -119,20 +121,19 @@ comment on column app_pedido.atualizado_por is
 -- regra impossível de violar por acidente, sem precisar de um id técnico que
 -- ninguém usaria.
 --
--- QUANTIDADE congela a mesma decisão de projeto que APP_DECISAO_PEDIDO já
--- tomou (02_tabelas_app.sql, tabela 3, MELHORIA A5): PEDIDO é digitado na
--- unidade de EXIBIÇÃO (caixa, se o fornecedor é MASTER; unidade, senão -
--- PROTOTIPO.md §5 "calcularSugestaoPedido"), e a conversão pra unidades reais
--- (o que entra na coluna "quantidade" do arquivo Winthor - §5 "Regra de
--- exportação Winthor") depende de FATOR_EXIBICAO, que mora no cadastro do
--- produto/fornecedor e MUDA com o tempo. Um pedido Fechado ou Exportado é uma
--- decisão já tomada; se a linha só guardasse QUANTIDADE e a aplicação lesse o
--- fator atual do cadastro na hora de exportar, uma mudança de cadastro depois
--- do fechamento alteraria em silêncio a quantidade que vai pro Winthor da
--- mesma forma que alteraria APP_DECISAO_PEDIDO. Por isso o item também guarda
--- FATOR_EXIBICAO, congelado no instante em que a linha foi criada/atualizada:
--- quantidade em unidades = QUANTIDADE x FATOR_EXIBICAO, sempre lidos juntos
--- desta mesma linha.
+-- QUANTIDADE congela a mesma decisão de projeto que já valia para a tabela
+-- antiga (MELHORIA A5): PEDIDO é digitado na unidade de EXIBIÇÃO (caixa, se o
+-- fornecedor é MASTER; unidade, senão - PROTOTIPO.md §5
+-- "calcularSugestaoPedido"), e a conversão pra unidades reais (o que entra na
+-- coluna "quantidade" do arquivo Winthor - §5 "Regra de exportação Winthor")
+-- depende de FATOR_EXIBICAO, que mora no cadastro do produto/fornecedor e
+-- MUDA com o tempo. Um pedido Fechado ou Exportado é uma decisão já tomada;
+-- se a linha só guardasse QUANTIDADE e a aplicação lesse o fator atual do
+-- cadastro na hora de exportar, uma mudança de cadastro depois do fechamento
+-- alteraria em silêncio a quantidade que vai pro Winthor. Por isso o item
+-- também guarda FATOR_EXIBICAO, congelado no instante em que a linha foi
+-- criada/atualizada: quantidade em unidades = QUANTIDADE x FATOR_EXIBICAO,
+-- sempre lidos juntos desta mesma linha.
 --
 -- PRECO_UNITARIO nasce de p.custoGerencial (PROTOTIPO.md §3.7) mas é editável
 -- em tela enquanto o pedido está em Rascunho/Orçamento Enviado; é ele, não um
@@ -146,12 +147,12 @@ comment on column app_pedido.atualizado_por is
 -- DELETEs manualmente para um relacionamento que é sempre 1:N de posse total.
 --
 -- SEM FK para o catálogo de produtos (ID_PRODUTO = CODPROD do CEDEP): mesma
--- fronteira de projeto que já vale para APP_DECISAO_PRECO/APP_DECISAO_PEDIDO
--- (CONTEXTO.md §2, nada de schema cruzando pro CEDEP) e mesma razão de
--- negócio — um produto pode sair do catálogo (descontinuado) depois que o
--- pedido foi fechado/exportado, e o item precisa continuar existindo como
--- registro histórico do que foi decidido e enviado, mesmo que o produto não
--- exista mais para pedidos novos.
+-- fronteira de projeto que já vale para APP_DECISAO_PRECO (CONTEXTO.md §2,
+-- nada de schema cruzando pro CEDEP) e mesma razão de negócio — um produto
+-- pode sair do catálogo (descontinuado) depois que o pedido foi
+-- fechado/exportado, e o item precisa continuar existindo como registro
+-- histórico do que foi decidido e enviado, mesmo que o produto não exista
+-- mais para pedidos novos.
 --------------------------------------------------------------------------------
 declare
     v_existe number;
@@ -187,7 +188,7 @@ comment on column app_pedido_item.id_produto is
 comment on column app_pedido_item.quantidade is
     'Quantidade digitada pelo comprador, na unidade de EXIBIÇÃO do produto (caixa fechada se o fornecedor é MASTER, unidade senão — PROTOTIPO.md §5), não a unidade real de estoque. CHECK > 0: quantidade zero não é gravada, é removida da linha pela aplicação (onBlur/botão remover, §2.6). Para a quantidade em unidades reais (o que vai na exportação Winthor), multiplicar por FATOR_EXIBICAO desta mesma linha.';
 comment on column app_pedido_item.fator_exibicao is
-    'Snapshot do fator de conversão (EMBAL_COMPRA quando o fornecedor é MASTER, senão 1) vigente no instante em que esta linha foi gravada/atualizada — mesmo raciocínio e mesma necessidade de congelamento que APP_DECISAO_PEDIDO.fator_exibicao (02_tabelas_app.sql, MELHORIA A5): recalcular com o fator atual do cadastro depois que o pedido foi fechado/exportado mudaria em silêncio uma quantidade já enviada ao Winthor. CHECK > 0.';
+    'Snapshot do fator de conversão (EMBAL_COMPRA quando o fornecedor é MASTER, senão 1) vigente no instante em que esta linha foi gravada/atualizada — mesmo raciocínio e mesma necessidade de congelamento que a tabela antiga já tinha (MELHORIA A5): recalcular com o fator atual do cadastro depois que o pedido foi fechado/exportado mudaria em silêncio uma quantidade já enviada ao Winthor. CHECK > 0.';
 comment on column app_pedido_item.preco_unitario is
     'Preço unitário decidido para este item (nasce de custoGerencial no momento em que o produto entra no pedido — PROTOTIPO.md §3.7 — e é editável em tela enquanto o pedido está em Rascunho/Orçamento Enviado). É este valor, não um preço recalculado depois, que vai na coluna de preço do arquivo de exportação Winthor. CHECK > 0.';
 comment on column app_pedido_item.criado_em is
@@ -204,7 +205,7 @@ comment on column app_pedido_item.criado_em is
 -- por isso guarda o par (STATUS_ANTERIOR, STATUS_NOVO) e não só o novo valor.
 --
 -- STATUS_ANTERIOR é NULLABLE: a primeira linha do histórico de um pedido é a
--- própria criação (nasce em Rascunho), sem "de onde veio".
+-- própria criação (nasce em Rascunho, sem "de onde veio").
 --
 -- FK PARA APP_PEDIDO com ON DELETE CASCADE, mesma razão de APP_PEDIDO_ITEM:
 -- histórico de status de um pedido que não existe mais não tem valor de

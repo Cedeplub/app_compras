@@ -4,7 +4,7 @@
 -- serve a busca de alertas de uma página inteira, que já sai ordenada.
 --
 -- CATEGORIA ganhou índice em 02/09/2026: desde a separação entre "Decisões" e
--- "Pendência de Cadastro" (v2/DECISOES_DIRETOR.md item 2), TODA consulta das
+-- "Pendência de Cadastro" (REGRAS.md §7.2), TODA consulta das
 -- duas telas carrega `where CATEGORIA = ...` — é o filtro mais frequente da
 -- tabela, à frente de TIPO_ALERTA. O índice é COMPOSTO com TIPO_ALERTA, e não
 -- solto: CATEGORIA tem só dois valores (seletividade grosseira, que sozinha
@@ -31,7 +31,7 @@
 -- (OPORTUNIDADE_DE_GIRO e MARGEM_ALTA) - ver fat_alerta.sql e
 -- int_produto_alerta_extra.sql.
 --
--- ⚠ TIPO_ALERTA mudou em 02/09/2026 (v2/DECISOES_DIRETOR.md item 1): é
+-- ⚠ TIPO_ALERTA mudou em 02/09/2026 (REGRAS.md §7.1): é
 -- INTERFACE PÚBLICA e a tela filtra por ele. MARGEM_INSTAVEL virou
 -- MARGEM_BAIXA, MARGEM_INSTAVEL_VAREJO virou MARGEM_BAIXA_VAREJO, PARADO virou
 -- SEM_GIRO/BAIXO_GIRO e INATIVO deixou de existir. Consulta antiga que cite os
@@ -53,7 +53,7 @@ select
     texto_alerta    as TEXTO_ALERTA,
     ordem_exibicao  as ORDEM_EXIBICAO,
     -- 'DECISAO' | 'CADASTRO'. CADASTRO sai da tela de Alertas e vai para a de
-    -- Pendência de Cadastro (v2/DECISOES_DIRETOR.md item 2).
+    -- Pendência de Cadastro (REGRAS.md §7.2).
     categoria       as CATEGORIA,
     -- 'S' | 'N'. 'N' = a linha aparece mas NÃO entra no score de priorização.
     -- É o caso de FORA_DE_LINHA (badge visual) e de toda a categoria CADASTRO.

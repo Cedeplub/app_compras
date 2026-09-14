@@ -7,8 +7,7 @@ ao comprador por que um produto está no topo. Se os dois divergirem, a lista fi
 ordenada por um critério e legendada por outro, e ninguém percebe.
 
 Os pesos e rótulos abaixo são os que o **Diretor de Compras decidiu** em
-02/09/2026 (`v2/DECISOES_DIRETOR.md`, respostas aos itens 1 e 4) — não são mais
-proposta minha.
+02/09/2026 (`REGRAS.md` §7.1 e §7.4) — não são mais proposta minha.
 
 ⚠ `TIPOS` cobre só a categoria DECISAO. Os alertas de CADASTRO (IMPORTADO,
 LITRAGEM, TRIB, MVA, SUCESSAO, FABRICA) saíram da tela de Alertas por decisão do

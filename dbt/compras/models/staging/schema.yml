@@ -439,23 +439,42 @@ models:
 
   - name: stg_decisao_pedido
     description: >
-      Pedido decidido por produto. O FATOR_EXIBICAO fica congelado no instante
-      da decisão. unidades = PEDIDO x FATOR_EXIBICAO. O fator é snapshot de propósito:
-      recalculá-lo depois mudaria retroativamente o significado da decisão.
+      Pedido decidido por produto, agregado a partir de APP_PEDIDO_ITEM (fonte
+      desde 12/09/2026; antes era APP_DECISAO_PEDIDO, escrita só pela tela v1 e
+      parada em 25/08/2026). O grão da fonte é PEDIDO x PRODUTO e cada item tem
+      o SEU FATOR_EXIBICAO congelado, então a agregação soma em unidade REAL —
+      somar QUANTIDADE entre itens de fatores diferentes somaria caixa com
+      unidade. Nenhum STATUS de pedido é filtrado: BA significa "quanto o
+      comprador decidiu comprar", não "quanto foi aprovado".
     columns:
       - name: id_produto
-        description: "Código do produto"
+        description: "Código do produto. Uma linha por produto, depois da agregação."
         data_tests:
           - unique
           - not_null
-      - name: pedido
-        description: "Quantidade decidida em sua unidade natural"
+      - name: unidades
+        description: >
+          sum(QUANTIDADE x FATOR_EXIBICAO) dos itens do SKU — unidade REAL. É o
+          que alimenta BB (PEDIDO_UNIDADES) direto, sem nova multiplicação.
+        data_tests:
+          - not_null
       - name: fator_exibicao
-        description: "Fator de embalagem de compra (snapshot no instante da decisão)"
+        description: >
+          Fator congelado do item MAIS RECENTE do SKU (desempate por ID_PEDIDO
+          para a ordenação ser total). Serve só para reexibir: é a unidade em que
+          `pedido` está expresso.
+        data_tests:
+          - not_null
+      - name: pedido
+        description: >
+          BA. `unidades / fator_exibicao` — o total do SKU reexpresso na unidade
+          de exibição da última decisão. Com um único item devolve exatamente a
+          QUANTIDADE digitada; com itens de fatores diferentes pode sair
+          fracionário, e isso é a informação verdadeira.
       - name: atualizado_em
-        description: "Data/hora em que a decisão foi registrada"
+        description: "Data/hora do item mais recente deste produto (APP_PEDIDO_ITEM.CRIADO_EM)"
       - name: atualizado_por
-        description: "Usuário que registrou a decisão"
+        description: "Usuário da última gravação do pedido dono do item mais recente"
 
 # ───────────────────────────────────────────────────────────────────────────
 # Seeds — tabelas de apoio extraídas da planilha v10
