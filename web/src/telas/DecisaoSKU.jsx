@@ -291,14 +291,33 @@ function Grafico({ p, mesReferencia }) {
           })}
         </div>
       </div>
-      <div className="flex items-end gap-2" style={{ height: 84 }}>
+      {/* A altura precisa caber o PIOR caso: rótulo de valor + barra máxima
+          (56px) + mês + nota, empilhados com `items-end` (âncora embaixo) e
+          sem clipe de overflow — se a soma passar da altura do contêiner, o
+          excesso sobe por cima do cabeçalho acima (botões de métrica), porque
+          nada aqui corta o que estoura a caixa. Sem `leading-none`, um
+          `<span>` de 9px herda line-height 1.5 do body (13,5px de caixa, não
+          9): dois rótulos de texto (valor + mês) mais a nota já somam
+          13,5+56+13,5+8 = 91px de conteúdo, e com os `gap-1` (4px×3) chega a
+          103px — 19px acima dos 84px de antes. É o caso EXATO da barra "ano
+          anterior" do print: ela sempre carrega uma `nota`, então é a que
+          mais frequentemente é também a mais alta.
+          `leading-none` faz cada linha de texto valer exatamente o
+          font-size (9px, 9px, 8px) em vez de 1.5×; com isso o pior caso passa
+          a ser 9+4+56+4+9+4+8 = 94px — por isso a caixa cresceu para 100
+          (6px de folga para arredondamento de sub-pixel entre navegadores).
+          `whitespace-nowrap` no rótulo de valor evita que "R$ 8.393,69"
+          (Faturamento) quebre em duas linhas numa coluna estreita a 375px —
+          o que voltaria a estourar o orçamento de altura independente do
+          valor de `height` aqui embaixo. */}
+      <div className="flex items-end gap-2" style={{ height: 100 }}>
         {barras.map((b) => (
           <div key={b.rotulo} className="flex flex-1 flex-col items-center justify-end gap-1">
-            <span className="num text-[9px] text-gray-500">{fmt(b.valor)}</span>
+            <span className="num whitespace-nowrap text-[9px] leading-none text-gray-500">{fmt(b.valor)}</span>
             <div className="w-full rounded-t"
                  style={{ background: b.cor, height: `${Math.max(2, (b.valor / maior) * 56)}px` }} />
-            <span className="text-[9px] text-gray-500">{b.rotulo}</span>
-            {b.nota && <span className="text-[8px] leading-none text-gray-400">{b.nota}</span>}
+            <span className="whitespace-nowrap text-[9px] leading-none text-gray-500">{b.rotulo}</span>
+            {b.nota && <span className="whitespace-nowrap text-[8px] leading-none text-gray-400">{b.nota}</span>}
           </div>
         ))}
       </div>
