@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Check, ChevronDown, ChevronLeft, Layers, Loader2 } from "lucide-react";
 import { api } from "../api/cliente.js";
+import { useCarrinho } from "../contexto/carrinho.jsx";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import { simular, TOLERANCIA_PRECO_IGUAL, valorAntesDoCredito } from "../precificacao.js";
 import {
@@ -40,7 +41,15 @@ export default function DecisaoSKU() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
   const [cenarioSel, setCenarioSel] = useState("st_valor");
-  const [pedido, setPedido] = useState("");
+  // O campo de quantidade não tem mais estado próprio: ele LÊ e ESCREVE
+  // direto no carrinho de `Pedidos.jsx` (mesmo mapa {codigo: quantidade},
+  // mesmo contexto — `contexto/carrinho.jsx`, Etapa 13). Por ser derivado (não
+  // um `useState` inicializado uma vez), o campo nasce com o que já houver no
+  // carrinho para ESTE produto, e também acompanha trocar de produto sem
+  // remontar a tela — sem precisar do `useEffect` de reset que `BlocoPreco`
+  // precisa para o preço (comentário ali embaixo), porque aqui não há valor
+  // "local" para ficar preso ao produto anterior.
+  const { carrinho, setCarrinho } = useCarrinho();
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -67,7 +76,13 @@ export default function DecisaoSKU() {
   // embal_compra quando o departamento é MASTER, e 1 quando não. O protótipo
   // refaz essa pergunta com uma lista de 5 nomes escrita à mão (§5/§9).
   const fator = p.fatorExibicao || 1;
-  const pedidoNum = Number(String(pedido).replace(",", ".")) || 0;
+  // Mesma chave que `Pedidos.jsx` usa (`p.codigo`, não o `codigo` cru da URL)
+  // — os dois são o mesmo texto depois de virar chave de objeto, mas usar o
+  // campo do produto carregado deixa explícito que é o MESMO carrinho, com a
+  // MESMA convenção de unidade (caixas quando `emCaixa`, unidades quando não
+  // — o rótulo do campo abaixo é idêntico ao de `Pedidos.jsx:516`).
+  const pedidoValor = carrinho[p.codigo] ?? "";
+  const pedidoNum = Number(String(pedidoValor).replace(",", ".")) || 0;
   const pedidoUnidades = pedidoNum * fator;
   const coberturaAtual = p.mediaJanela > 0 ? p.estDisp / p.mediaJanela : null;
   const coberturaAposPedido = p.mediaJanela > 0
@@ -134,7 +149,7 @@ export default function DecisaoSKU() {
                       aoConcluir={carregar} />
         </div>
 
-        <DecisaoCompra p={p} pedido={pedido} setPedido={setPedido}
+        <DecisaoCompra p={p} pedidoValor={pedidoValor} setCarrinho={setCarrinho}
                        fator={fator} pedidoUnidades={pedidoUnidades}
                        coberturaAposPedido={coberturaAposPedido} />
       </div>
@@ -603,8 +618,28 @@ function CenarioCard({ cenario, margemAlvo }) {
 
 /* --------------------------------------------------------- decisão compra --- */
 
-function DecisaoCompra({ p, pedido, setPedido, fator, pedidoUnidades, coberturaAposPedido }) {
+function DecisaoCompra({ p, pedidoValor, setCarrinho, fator, pedidoUnidades, coberturaAposPedido }) {
   const emCaixa = fator > 1;
+
+  // Zero ou campo apagado REMOVE o SKU do carrinho — não deixa um item com
+  // "0" pendurado (contaria no contador do rodapé de `Pedidos.jsx` e
+  // confundiria: o Diretor abriria o carrinho e veria um produto que "decidiu
+  // zero", quando na verdade é só um valor que ele nem chegou a manter).
+  // Escrito como *ausência da chave*, não `"0"` — o mesmo motivo por que
+  // `salvar()` em `Pedidos.jsx` filtra `quantidade > 0`.
+  function aoDigitar(v) {
+    setCarrinho((c) => {
+      const num = Number(String(v).replace(",", ".")) || 0;
+      if (v === "" || num <= 0) {
+        if (!(p.codigo in c)) return c;
+        const resto = { ...c };
+        delete resto[p.codigo];
+        return resto;
+      }
+      return { ...c, [p.codigo]: v };
+    });
+  }
+
   return (
     <div className="mt-4 rounded-xl px-3.5 py-3"
          style={{ background: `${RED}0D`, border: `1px solid ${RED}33` }}>
@@ -616,7 +651,7 @@ function DecisaoCompra({ p, pedido, setPedido, fator, pedidoUnidades, coberturaA
           : "(unidades)"}
       </label>
       <input id={`pedido-${p.codigo}`} type="text" inputMode="decimal"
-             value={pedido} onChange={(e) => setPedido(e.target.value)}
+             value={pedidoValor} onChange={(e) => aoDigitar(e.target.value)}
              placeholder={p.sugCobertura != null ? numero(p.sugCobertura, 0) : "—"}
              className="num w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-md font-medium" />
 
@@ -646,11 +681,27 @@ function DecisaoCompra({ p, pedido, setPedido, fator, pedidoUnidades, coberturaA
 
       {/* O protótipo tem aqui o botão "Enviar pra quem digita no Winthor", que
           não envia nada e nem se desabilita depois de clicado (§8). Não porto um botão que
-          mente. A quantidade acima é simulação de verdade — muda a cobertura
-          projetada ao vivo — e gravar pedido entra na Etapa 9, junto com a
-          entidade "pedido", que hoje não existe no banco. */}
+          mente. Etapa 9 criou a entidade "pedido"; Etapa 13 fez o carrinho
+          sobreviver à troca de tela; o que faltava (o Diretor notou, 14/09) era
+          LIGAR este campo a ele — sem isso a quantidade calculada aqui morria
+          ao sair do produto, e tinha que ser redigitada de cabeça na tela de
+          Pedidos. Agora o número digitado acima já está no carrinho: esta
+          tela não grava nada sozinha (isso continua sendo o botão "Salvar
+          pedido(s)" de `/pedidos`), só avisa que o número já foi para lá. */}
       <p className="mt-2.5 text-2xs" style={{ color: AMBAR }}>
-        Simulação. Gravar e enviar pedido entra na Etapa 9, com a entidade de pedido.
+        {pedidoUnidades > 0 ? (
+          <>
+            Quantidade no carrinho. Nada foi gravado ainda —{" "}
+            <Link to="/pedidos" className="font-semibold underline">
+              revise e salve o pedido em Pedidos
+            </Link>.
+          </>
+        ) : (
+          <>
+            Digite uma quantidade para adicionar ao carrinho. Gravar o pedido é feito em{" "}
+            <Link to="/pedidos" className="font-semibold underline">Pedidos</Link>.
+          </>
+        )}
       </p>
     </div>
   );
