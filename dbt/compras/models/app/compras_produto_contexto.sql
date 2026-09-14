@@ -20,7 +20,7 @@
 -- acrescentar coluna em qualquer um dos dois quebraria de uma vez o teste
 -- compras_fat_pedido_122_colunas, o espelho compras_app_pedido_espelha_fat e a
 -- validação célula a célula contra a V10/V11, que casa coluna pelo NOME. As
--- telas de Precificação e Decisão do SKU (v2/PLANO.md §2.2/§2.3,
+-- telas de Precificação e Decisão do SKU (historico/PLANO_v2_20260901.md §2.2/§2.3,
 -- v2/prototipo/PROTOTIPO.md §2.9/§2.10/§3.9) precisam de contexto que a
 -- planilha não tem; esse contexto mora aqui, ao lado, e é juntado por CODIGO.
 --

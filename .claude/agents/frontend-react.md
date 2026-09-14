@@ -5,7 +5,7 @@ model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-Leia `CONTEXTO.md` e `v2/PLANO.md` na raiz do projeto antes de qualquer coisa. **Só eles.**
+Leia `CONTEXTO.md` (inclusive `§0`) na raiz do projeto antes de qualquer coisa. **Só ele.**
 
 **Não leia `REGRAS.md`.** São 460 linhas de regra fiscal, margem e critério de aceite
 numérico — nada ali alcança o seu trabalho. Se a sua tarefa encostar numa regra fiscal,

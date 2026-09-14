@@ -88,8 +88,8 @@ export default function Pedidos() {
   // O carrinho é {codigo: quantidade}. Etapa 13, §6.2: vive em
   // `contexto/carrinho.jsx` (sessionStorage por aba), não mais em
   // `useState` local — no protótipo ele se perdia ao trocar de aba, sem
-  // aviso (§2.4), e isso contradizia o que `v2/PLANO.md` §3 já tinha
-  // decidido para a Etapa 9 ("o carrinho sobrevive à troca de tela").
+  // aviso (§2.4), e isso contradizia o que `historico/PLANO_v2_20260901.md`
+  // §3 já tinha decidido para a Etapa 9 ("o carrinho sobrevive à troca de tela").
   const { carrinho, setCarrinho } = useCarrinho();
   const [salvando, setSalvando] = useState(false);
   const [confirmacao, setConfirmacao] = useState(null);

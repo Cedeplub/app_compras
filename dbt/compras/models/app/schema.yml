@@ -80,7 +80,7 @@ models:
     description: >
       Tabela física COMPRAS_PRODUTO_CONTEXTO. Grão: 1 linha por SKU (CODIGO),
       o mesmo de COMPRAS_PEDIDO. Existe porque as telas de Precificação e
-      Decisão do SKU (v2/PLANO.md §2.2) precisam de três campos que NÃO estão
+      Decisão do SKU (historico/PLANO_v2_20260901.md §2.2) precisam de três campos que NÃO estão
       na aba `pedido` da planilha - e fat_pedido/compras_pedido reproduzem
       aquelas 122 colunas e só elas. É juntada por LEFT JOIN em CODIGO no
       serviço da API, no mesmo molde de COMPRAS_IND_FORNECEDOR. Ver o

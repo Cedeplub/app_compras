@@ -12,7 +12,7 @@
 -- `status` nasce em "Todos", diferente de Alertas que nasce em "Ativo") - a
 -- mesma convenção de int_cadastro_estoque.status.
 --
--- DEPARTAMENTO/SECAO (não FORNECEDOR): vocabulário do v2 (v2/PLANO.md §4,
+-- DEPARTAMENTO/SECAO (não FORNECEDOR): vocabulário do v2 (historico/PLANO_v2_20260901.md §4,
 -- item 1 do backlog - "Fornecedor" virou "Departamento" na interface nova).
 -- COMPRAS_VENDA_MENSAL já segue essa convenção (CODEPTO/DEPARTAMENTO/
 -- CODSEC/SECAO); aqui é o mesmo padrão, não o nome FORNECEDOR usado dentro de

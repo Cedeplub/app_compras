@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 -- 04_tabelas_pedido.sql
 --
--- Etapa 9 do ciclo v2 (v2/PLANO.md §2.4, §"Etapa 9"): cria a entidade "pedido"
+-- Etapa 9 do ciclo v2 (historico/PLANO_v2_20260901.md §2.4, §"Etapa 9"): cria a entidade "pedido"
 -- da v2. APP_DECISAO_PEDIDO — a tabela antiga, com PK em ID_PRODUTO, que só
 -- guardava "a última quantidade decidida por SKU", não agrupava itens, não
 -- tinha fornecedor dono, não tinha status, não tinha histórico — deixou de

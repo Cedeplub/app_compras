@@ -9,8 +9,9 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
  * maior do que só "faltava aba nova": SAIR da tela de Pedidos (ainda que na
  * mesma aba, ida e volta) zerava o carrinho inteiro, porque ele vivia em
  * `useState({})` dentro de `Pedidos.jsx`, sem contexto nem storage nenhum.
- * `v2/PLANO.md` §3 (Etapa 9) já registrava "o carrinho sobrevive à troca de
- * tela" como diferença deliberada do protótipo — ficou por fazer até aqui.
+ * `historico/PLANO_v2_20260901.md` §3 (Etapa 9) já registrava "o carrinho
+ * sobrevive à troca de tela" como diferença deliberada do protótipo — ficou
+ * por fazer até aqui.
  *
  * Duas decisões de desenho, já tomadas no prompt desta etapa:
  *

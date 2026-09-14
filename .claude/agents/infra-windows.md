@@ -38,11 +38,20 @@ o código de saída de verdade.
 
 ## Produção
 
-- **NSSM**: serviço `app_compras`, uvicorn **sem** `--reload`, escutando em `127.0.0.1`
-  (não `0.0.0.0` — quem expõe é o nginx), stdout/stderr em `logs\webapp.log`.
-- **nginx**: proxy reverso para a porta do app, com `X-Forwarded-For`/`-Proto`, ele
-  próprio como serviço NSSM. Este é o primeiro app da casa atrás de proxy, então é aqui
-  que entram HTTPS e `COOKIE_SECURE=1`.
+Já instalado e rodando (confira com `Get-Service app_compras` antes de assumir o
+contrário — ver `CONTEXTO.md §0.6` para o estado mais atual):
+
+- **NSSM**: serviço `app_compras`, automático, uvicorn `app.main:app --host 127.0.0.1
+  --port 8020` **sem** `--reload` (não `0.0.0.0` — quem expõe é o nginx), stdout/stderr
+  em `logs\webapp.log`.
+- **nginx**: na porta **80**, servindo o build estático (`app/static/v2/`) em `/` e proxy
+  de `/api/` para `127.0.0.1:8020`, com `X-Forwarded-For`/`-Proto`.
+  ⚠ **A decisão desta etapa é HTTP, não HTTPS** — não há certificado/TLS na frente.
+  `APP_COOKIE_SECURE` fica em `0` no `.env` de produção. **Nunca ligue
+  `APP_COOKIE_SECURE=1` enquanto o site for servido em HTTP puro**: cookie `Secure` em
+  origem HTTP não é enviado pelo navegador, e o sintoma é 401 em toda tela — parece
+  defeito de autenticação, não é. Se um dia entrar HTTPS de verdade, aí sim liga junto
+  com o certificado, nunca antes.
 - **Tarefa Agendada** diária para o dbt, depois da janela de geração dos dados.
 
 ## Convenções de .bat nesta casa

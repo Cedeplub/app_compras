@@ -33,9 +33,15 @@ tabelas que a aplicação escreve.
 
 - `sql/01_usuario_compras.sql` — CREATE USER, privilégios de sistema, GRANT SELECT
   nominal nas 19 tabelas do CEDEP listadas no plano.
-- `sql/02_tabelas_app.sql` — `APP_DECISAO_PRECO`, `APP_DECISAO_PRECO_HIST`,
-  `APP_DECISAO_PEDIDO`, `APP_USUARIO`, `APP_SESSAO`, `APP_AUDITORIA`, com PK, NOT NULL
-  e comentários de tabela/coluna.
+- `sql/02_tabelas_auth.sql` — `APP_USUARIO`, `APP_SESSAO`, `APP_AUDITORIA`.
+- `sql/03_tabelas_decisao.sql` — `APP_DECISAO_PRECO`, `APP_DECISAO_PRECO_HIST`.
+- `sql/04_tabelas_pedido.sql` — `APP_PEDIDO` (cabeçalho), `APP_PEDIDO_ITEM` (linhas,
+  com `fator_exibicao` congelado por item — MELHORIA A5) e `APP_PEDIDO_STATUS_HIST`.
+  **`APP_DECISAO_PEDIDO` foi dropada nesta migração** — não recrie esse nome; o modelo
+  atual é cabeçalho+item.
+- `sql/05_tabelas_lote_preco.sql` — `APP_LOTE_PRECO`, `APP_LOTE_PRECO_ITEM`,
+  `APP_LOTE_PRECO_STATUS_HIST`.
+- Todas com PK, NOT NULL e comentários de tabela/coluna.
 - `sql/99_revogar.sql` — o desfazer completo.
 - Bloco do `profiles.yml` (alvos `dev` e `prod`), para o usuário colar em `~/.dbt/`.
 

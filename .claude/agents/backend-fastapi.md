@@ -42,10 +42,12 @@ número em vez de uma fórmula calcular. Portanto:
 
 ## A regra do fator congelado (MELHORIA A5)
 
-Ao gravar em `APP_DECISAO_PEDIDO`, grave **junto o `FATOR_EXIBICAO` vigente naquele
-instante**. A quantidade da decisão é lida a partir dele, não do fator corrente do
-cadastro: decisão tomada não muda de tamanho porque o cadastro atualizou depois. Decisão
-explícita do Diretor de Compras, em `REGRAS.md §6.4` (A5).
+Ao gravar/atualizar item em `APP_PEDIDO_ITEM`, grave **junto o `fator_exibicao` vigente
+naquele instante** (recongelado a cada toque na linha — ver `app/servicos/pedido.py`).
+A quantidade do item é lida a partir dele, não do fator corrente do cadastro: decisão
+tomada não muda de tamanho porque o cadastro atualizou depois. Decisão explícita do
+Diretor de Compras, em `REGRAS.md §6.4` (A5). `APP_DECISAO_PEDIDO`, tabela original desta
+regra, foi dropada nesta migração — o mesmo princípio hoje vale por item de pedido.
 
 ## Convenções
 

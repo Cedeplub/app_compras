@@ -4,16 +4,22 @@
 # Uso:
 #   powershell -ExecutionPolicy Bypass -File infra\desinstalar_nginx.ps1
 #
-# O que faz, NESTA ordem:
+# O que faz, NESTA ordem (nunca fora dela):
 #   1. Backup do nginx.conf atual -> nginx.conf.bkp-desinstalar-<AAAAMMDD>
 #      (backup extra, alem do que instalar_nginx.ps1 ja fez - nunca custa)
 #   2. Remove a linha "include compras.conf;" de dentro do http{}
-#   3. Remove C:\nginx\conf\compras.conf
-#   4. Roda "nginx -t"
-#   5. SO SE o -t passar: "nginx -s reload"
-#      Se o -t falhar: restaura o backup deste passo e NAO recarrega -
-#      gestaosac.cdp.lub e dre.cdp.lub sao producao de outras areas no
-#      MESMO nginx.conf.
+#   3. Roda "nginx -t"
+#      Se o -t falhar: restaura o backup deste passo (nginx.conf volta a
+#      incluir compras.conf) e NAO recarrega. O compras.conf NAO e removido
+#      neste caso - continua no disco, coerente com o include restaurado.
+#   4. SO SE o -t passar: remove C:\nginx\conf\compras.conf
+#      (so agora, porque o arquivo so pode sumir depois que a config sem o
+#      include ja foi provada valida - nunca antes. Um compras.conf orfao no
+#      disco, sem include apontando pra ele, e inofensivo; um include
+#      apontando pra um arquivo ja removido, se o -t tivesse falhado com o
+#      arquivo ja apagado, deixaria o nginx sem subir no proximo reload/boot -
+#      e ai gestaosac.cdp.lub e dre.cdp.lub cairiam junto.)
+#   5. "nginx -s reload"
 # ============================================================================
 
 $NginxDir     = "C:\nginx"
@@ -55,13 +61,11 @@ if ($NovoConteudo -ne $Conteudo) {
     Write-Host " nginx.conf nao tinha o include - nada a remover ali."
 }
 
-# --- 3. Remove o vhost copiado ----------------------------------------------
-if (Test-Path $VhostDestino) {
-    Remove-Item $VhostDestino -Force
-    Write-Host " Removido: $VhostDestino"
-}
-
-# --- 4. Testa antes de recarregar (NAO OPCIONAL) ---------------------------
+# --- 3. Testa ANTES de remover o arquivo (NAO OPCIONAL) --------------------
+# Ordem critica: so removemos compras.conf depois que o nginx.conf SEM o
+# include ja foi provado valido. Enquanto o arquivo ainda existe no disco,
+# qualquer falha aqui e revertida so restaurando o nginx.conf - o compras.conf
+# nao precisa de rollback porque nunca foi tocado.
 Write-Host ""
 Write-Host " Rodando 'nginx -t'..."
 $TesteSaida = & $NginxExe -t -p $NginxDir -c "conf\nginx.conf" 2>&1
@@ -70,10 +74,17 @@ $TesteOk = ($LASTEXITCODE -eq 0)
 
 if (-not $TesteOk) {
     Write-Host ""
-    Write-Host " [ERRO] 'nginx -t' falhou apos a remocao. Restaurando o backup e NAO recarregando."
+    Write-Host " [ERRO] 'nginx -t' falhou apos remover o include. Restaurando o backup e NAO recarregando."
     Copy-Item $Backup $NginxConf -Force
+    Write-Host " compras.conf NAO foi removido - nginx.conf restaurado ainda o referencia."
     Write-Host " O que fazer: confira $Backup a mao antes de tentar de novo."
     Exit 1
+}
+
+# --- 4. So agora, com a config ja provada valida, remove o vhost -----------
+if (Test-Path $VhostDestino) {
+    Remove-Item $VhostDestino -Force
+    Write-Host " Removido: $VhostDestino"
 }
 
 # --- 5. So recarrega se o -t passou ---------------------------------------
