@@ -5,9 +5,10 @@ import { api } from "../api/cliente.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
+import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
-import { simular, TOLERANCIA_PRECO_IGUAL, valorAntesDoCredito } from "../precificacao.js";
-import { moeda, numero, paraCampoPreco, parseNumeroPreco } from "../formato.js";
+import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL, valorAntesDoCredito } from "../precificacao.js";
+import { data as fmtData, moeda, numero, paraCampoPreco, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
 import { textoConfirmacaoLote } from "../lotePrecoStatus.js";
 
 /* Tela — Precificação (PROTOTIPO.md §2.9, .jsx linha 3265).
@@ -41,6 +42,10 @@ const FUNDO_AT = "#EFF6FF";
 const FUNDO_AT_EDIT = "#DBEAFE";
 const FUNDO_VAR = "#F0FDF4";
 const FUNDO_VAR_EDIT = "#DCFCE7";
+// Etapa 15, ponto 3: laranja-50/700 — mesma família das outras faixas
+// (azul-50/100 do atacado, verde-50/100 do varejo), sem disputar com elas.
+const FUNDO_EST = "#FFF7ED";
+const LARANJA_EST = "#C2410C";
 
 const CENARIOS = [
   { id: "st_valor", rotulo: "ST s/Valor" },
@@ -69,6 +74,7 @@ const ROTULO_COLUNA = {
   custo: "Custo",
   valorNf: "Valor NF",
   ultimaEntrada: "Últ. entrada",
+  estoque: "Estoque",
   precoVarejo: "Varejo atual",
 };
 
@@ -83,6 +89,9 @@ export default function Precificacao() {
   const [departamento, setDepartamento] = useState("");
   const [comprador, setComprador] = useState("");
   const [status, setStatus] = useState("Ativo");
+  // Etapa 15, ponto 4: mesmo padrão de `departamento`/`status`/`busca` —
+  // estado local, não na URL (§6.3 do prompt: só `ordenar`/`dir` vivem lá).
+  const [estoque, setEstoque] = useState("");
   const [cenarioSel, setCenarioSel] = useState("st_valor");
   const [busca, setBusca] = useState("");
   const [pagina, setPagina] = useState(1);
@@ -122,6 +131,7 @@ export default function Precificacao() {
         departamento: departamento || null,
         comprador: comprador || null,
         status: status === "Todos" ? null : status,
+        estoque: estoque || null,
         busca: busca || null,
         ordenar, dir,
         cenarioMargem: cenarioSel,
@@ -136,7 +146,7 @@ export default function Precificacao() {
     } finally {
       setCarregando(false);
     }
-  }, [departamento, comprador, status, busca, ordenar, dir, cenarioSel, pagina,
+  }, [departamento, comprador, status, estoque, busca, ordenar, dir, cenarioSel, pagina,
       dtUltEntDe, dtUltEntAte, versaoDados]);
 
   useEffect(() => {
@@ -309,6 +319,8 @@ export default function Precificacao() {
             ))}
           </div>
         </div>
+
+        <FiltroEstoque valor={estoque} aoTrocar={(v) => { setEstoque(v); setPagina(1); }} />
 
         <Campo rotulo="Departamento" largura="w-40">
           <Select valor={departamento} vazio="Todos" opcoes={opcoes?.departamentos ?? []}
@@ -577,6 +589,11 @@ function Tabela({ itens, cenarioSel, parametros, ordenar, dir, aoOrdenar, precos
                 trazia os dois campos. */}
             <CabecalhoOrdenavel {...props} coluna="valorNf" padrao="desc" align="center">Valor NF</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="ultimaEntrada" padrao="desc" align="center">Últ. entrada</CabecalhoOrdenavel>
+            {/* Etapa 15, ponto 3: EST_DISP já viaja no JSON desde a Etapa 7 —
+                zero mudança de API, só a tela que não desenhava. Laranja
+                para não competir com as faixas de atacado (azul) e varejo
+                (verde) que organizam a leitura das 15 colunas. */}
+            <CabecalhoOrdenavel {...props} coluna="estoque" padrao="desc" align="center" style={{ background: FUNDO_EST }}>Estoque</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="preco" padrao="desc" align="center" style={{ background: FUNDO_AT }}>Atacado atual</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="mkp" padrao="asc" align="center" style={{ background: FUNDO_AT }}>MKP AT</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="margem" padrao="asc" align="center" style={{ background: FUNDO_AT }}>Margem AT</CabecalhoOrdenavel>
@@ -593,22 +610,32 @@ function Tabela({ itens, cenarioSel, parametros, ordenar, dir, aoOrdenar, precos
           {itens.map((p) => (
             <Linha key={p.codigo} p={p} cenarioSel={cenarioSel} parametros={parametros}
                    // O campo nasce com o preço já DECIDIDO (editável) quando o mapa
-                   // ainda não tem entrada para o SKU — é a correção do item 2 do
-                   // Diretor ("nem tem opção de editar"). Isto NÃO viola a regra 10
-                   // do CONTEXTO: `p.precoDecididoAtacadoAV` vem de
-                   // `APP_DECISAO_PRECO`, ou seja, é o número que uma PESSOA decidiu
-                   // — o oposto de nascer com `PV_SUG_*` (a sugestão do modelo), que
-                   // continua proibido. Assim que o Diretor digita, o mapa ganha
-                   // entrada própria (abaixo) e passa a mandar nele.
+                   // ainda não tem entrada para o SKU E o preço decidido AINDA NÃO
+                   // foi aplicado no Winthor — é a correção do item 2 do Diretor
+                   // ("nem tem opção de editar"). Isto NÃO viola a regra 10 do
+                   // CONTEXTO: `p.precoDecididoAtacadoAV` vem de `APP_DECISAO_PRECO`,
+                   // ou seja, é o número que uma PESSOA decidiu — o oposto de nascer
+                   // com `PV_SUG_*` (a sugestão do modelo), que continua proibido.
+                   // Assim que o Diretor digita, o mapa ganha entrada própria
+                   // (abaixo) e passa a mandar nele.
+                   //
+                   // Etapa 15, ponto 2: quando o preço decidido JÁ FOI APLICADO no
+                   // Winthor (`precoJaAplicado`), o campo "reseta" — nasce vazio,
+                   // como se não houvesse decisão pendente, porque não há mais
+                   // decisão pendente (o decidido virou o vigente). A linha de apoio
+                   // de `CelulaEdicao`, abaixo, passa a mostrar a data da alteração
+                   // no Winthor em vez do valor decidido.
                    /* `paraCampoPreco`, não `numero()`: o campo precisa nascer no
                       mesmo formato que `parseNumeroPreco` lê de volta sem
                       ponto de milhar (formato.js) — `numero(1234, 2)` produz
                       "1.234,00", que o parser ingênuo (agora removido) lia
                       como "1.234.00" → NaN. */
                    precoAT={precosAT[p.codigo]?.valor
-                     ?? (p.precoDecididoAtacadoAV != null ? paraCampoPreco(p.precoDecididoAtacadoAV) : undefined)}
+                     ?? (p.precoDecididoAtacadoAV != null && !precoJaAplicado(p.pvAtacado, p.precoDecididoAtacadoAV)
+                          ? paraCampoPreco(p.precoDecididoAtacadoAV) : undefined)}
                    precoVAR={precosVAR[p.codigo]?.valor
-                     ?? (p.precoDecididoVarejoAV != null ? paraCampoPreco(p.precoDecididoVarejoAV) : undefined)}
+                     ?? (p.precoDecididoVarejoAV != null && !precoJaAplicado(p.pvVarejo, p.precoDecididoVarejoAV)
+                          ? paraCampoPreco(p.precoDecididoVarejoAV) : undefined)}
                    // A captura acontece AQUI, na digitação — não na hora de gravar em
                    // lote. Guardamos junto do valor digitado o preço DECIDIDO daquele
                    // SKU neste instante: é o que permite ao lote decidir "isto é
@@ -681,6 +708,14 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
         {p.qtdUltimaEntrada != null && <div className="text-gray-400">{numero(p.qtdUltimaEntrada, 0)}</div>}
       </td>
 
+      {/* ⚠ EST_DISP já vem dividido por FATOR_EXIBICAO no dbt
+          (int_produto_demanda) — não dividir de novo, erraria por 12 ou 24
+          em 223 SKUs de departamento MASTER. */}
+      <td className="num px-2 py-2 text-center font-semibold"
+          style={{ background: FUNDO_EST, color: LARANJA_EST }}>
+        {quantidadeEstoque(p.estDisp)}
+      </td>
+
       <td className="num px-2 py-2 text-center" style={{ background: FUNDO_AT }}>{moeda(p.pvAtacado)}</td>
       <td className="num px-2 py-2 text-center text-gray-600" style={{ background: FUNDO_AT }}>{mult(at.mkpAtual)}</td>
       <td className="num px-2 py-2 text-center font-semibold"
@@ -691,7 +726,9 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
       <td className="num px-2 py-2 text-center text-gray-500" style={{ background: FUNDO_AT }}>{moeda(at.sugerido)}</td>
       <CelulaEdicao fundo={FUNDO_AT_EDIT} sim={at} valor={precoAT} aoTrocar={setPrecoAT}
                     rotulo={`Novo preço de atacado do produto ${p.codigo}`}
-                    decidido={p.precoDecididoAtacadoAV} />
+                    decidido={p.precoDecididoAtacadoAV}
+                    aplicado={precoJaAplicado(p.pvAtacado, p.precoDecididoAtacadoAV)}
+                    dataDecisao={p.precoDecididoEm} dataAplicado={p.precoAlteradoEmAtacado} />
 
       <td className="num px-2 py-2 text-center" style={{ background: FUNDO_VAR }}>{moeda(p.pvVarejo)}</td>
       <td className="num px-2 py-2 text-center text-gray-600" style={{ background: FUNDO_VAR }}>{mult(vr.mkpAtual)}</td>
@@ -703,7 +740,9 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
       <td className="num px-2 py-2 text-center text-gray-500" style={{ background: FUNDO_VAR }}>{moeda(vr.sugerido)}</td>
       <CelulaEdicao fundo={FUNDO_VAR_EDIT} sim={vr} valor={precoVAR} aoTrocar={setPrecoVAR}
                     rotulo={`Novo preço de varejo do produto ${p.codigo}`}
-                    decidido={p.precoDecididoVarejoAV} />
+                    decidido={p.precoDecididoVarejoAV}
+                    aplicado={precoJaAplicado(p.pvVarejo, p.precoDecididoVarejoAV)}
+                    dataDecisao={p.precoDecididoEm} dataAplicado={p.precoAlteradoEmVarejo} />
     </tr>
   );
 }
@@ -734,21 +773,27 @@ function Tributacao({ p }) {
  * Defeito A (PROMPT_ETAPA_12 §2: o botão sumia depois da 1ª gravação e nunca
  * reaparecia); remover o botão daqui elimina o defeito por construção, em vez
  * de só consertá-lo. */
-function CelulaEdicao({ fundo, sim, valor, aoTrocar, rotulo, decidido }) {
+function CelulaEdicao({ fundo, sim, valor, aoTrocar, rotulo, decidido, aplicado, dataDecisao, dataAplicado }) {
+  // Etapa 15, ponto 2: "decidido, ainda não aplicado" é o único estado em que
+  // o campo nasce preenchido e a sugestão desce para a linha de apoio — os
+  // dois "efeitos" do decidido (§4.3 do prompt). Uma vez aplicado, é como se
+  // não houvesse decisão pendente: mesmo tratamento visual de "sem decisão".
+  const pendente = decidido != null && !aplicado;
   return (
     <td className="px-2 py-1.5 text-center" style={{ background: fundo, minWidth: 180 }}>
       <div className="flex items-center justify-center gap-1.5">
         <input
           type="text" inputMode="decimal" value={valor ?? ""} aria-label={rotulo}
           onChange={(e) => aoTrocar(e.target.value)}
-          // O placeholder é a SUGESTÃO do cenário — mas só quando NÃO há decisão
-          // ainda: aí o campo nasce vazio e o placeholder é o único jeito de
-          // mostrar a meta, sem preencher por conta própria (é o ponto de decisão
-          // humana que o modelo existe para preservar). Quando já existe decisão,
-          // o campo nasce preenchido com ELA (ver `Tabela`, acima) — a sugestão
-          // desce para a linha de apoio "sugerido" logo abaixo, porque um
+          // O placeholder é a SUGESTÃO do cenário — quando NÃO há decisão
+          // pendente (nem decisão, nem decisão já aplicada): aí o campo nasce
+          // vazio e o placeholder é o único jeito de mostrar a meta, sem
+          // preencher por conta própria (é o ponto de decisão humana que o
+          // modelo existe para preservar). Com decisão PENDENTE, o campo
+          // nasce preenchido com ELA (ver `Tabela`, acima) — a sugestão desce
+          // para a linha de apoio "sugerido" logo abaixo, porque um
           // placeholder não aparece atrás de um valor.
-          placeholder={decidido == null && sim.sugerido != null ? numero(sim.sugerido, 2) : undefined}
+          placeholder={!pendente && sim.sugerido != null ? numero(sim.sugerido, 2) : undefined}
           className="num w-[76px] rounded-md border border-gray-300 bg-white px-1 py-1 text-center text-sm"
         />
         <span className="num whitespace-nowrap text-2xs leading-none"
@@ -761,22 +806,34 @@ function CelulaEdicao({ fundo, sim, valor, aoTrocar, rotulo, decidido }) {
           ? `Pz ${moeda(sim.prazo)} · ${numero(sim.mkpPrazo, 2)}x/${pct(sim.margemPrazo, 0)}`
           : "Pz —"}
       </div>
-      {/* Preço já decidido por gente, lido AO VIVO de APP_DECISAO_PRECO. O
-          protótipo não tem este estado: lá nada é gravado (§8). Fica visível
-          mesmo com o campo já preenchido com este valor: se o Diretor digitar
-          um terceiro número por cima, esta linha continua mostrando o último
-          gravado, para servir de referência do que muda. */}
-      {decidido != null && (
+      {/* Preço já decidido por gente, lido AO VIVO de APP_DECISAO_PRECO — só
+          enquanto PENDENTE (ainda não aplicado no Winthor). A data é a da
+          DECISÃO (`precoDecididoEm`/`APP_DECISAO_PRECO.ATUALIZADO_EM`), nunca
+          a do Winthor — cada linha traz a data da fonte do número ao lado
+          dela (§4.3/§4.5 do prompt). */}
+      {pendente && (
         <div className="num mt-1 text-[9px] leading-none" style={{ color: NAVY }}>
-          decidido {moeda(decidido)}
+          decidido {moeda(decidido)}{dataDecisao ? ` · ${fmtData(dataDecisao)}` : ""}
         </div>
       )}
       {/* A sugestão do cenário só vive no placeholder quando o campo está vazio
-          (sem decisão). Com decisão, o campo já nasce preenchido com ela — a
-          sugestão não desaparece, só muda de casa. */}
-      {decidido != null && sim.sugerido != null && (
+          (sem decisão pendente). Com decisão pendente, o campo já nasce
+          preenchido com ela — a sugestão não desaparece, só muda de casa. */}
+      {pendente && sim.sugerido != null && (
         <div className="num mt-1 text-[9px] leading-none text-gray-400">
           sugerido {moeda(sim.sugerido)}
+        </div>
+      )}
+      {/* Aplicado: o "decidido" some — o preço decidido virou o preço vigente,
+          então repeti-lo ao lado do "atual" da coluna vizinha é ruído. A data
+          é a da ALTERAÇÃO NO WINTHOR (`dataAplicado`, por CANAL — nunca a
+          data da decisão: 79 SKUs têm datas diferentes entre atacado e
+          varejo, §4.5). Nula em 650 SKUs (226 ativos): o texto vira "preço
+          aplicado", sem data — o traço não é uma data, e a linha não some
+          por completo para não ficar idêntica a um SKU nunca decidido. */}
+      {aplicado && (
+        <div className="num mt-1 text-[9px] leading-none" style={{ color: CINZA }}>
+          {dataAplicado ? `preço alterado em ${fmtData(dataAplicado)}` : "preço aplicado"}
         </div>
       )}
     </td>

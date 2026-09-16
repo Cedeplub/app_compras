@@ -68,7 +68,9 @@ _COLUNAS = """
 
     f.cobertura_alvo, f.pedido_em, f.meses_media,
 
-    ctx.regime_fiscal, ctx.qt_ult_saida, ctx.venda_ano_passado
+    ctx.regime_fiscal, ctx.qt_ult_saida, ctx.venda_ano_passado,
+    ctx.dt_ult_alt_pv_atacado, ctx.dt_ult_alt_pv_varejo,
+    d.atualizado_em                                    as decisao_atualizado_em
 """
 
 # ⚠ APP_DECISAO_PRECO entra AO VIVO, por join, e não pelas colunas ALT_PV_* da
@@ -248,6 +250,16 @@ def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
     if filtros.get("dt_ult_ent_ate"):
         condicoes.append("p.dt_ult_ent < :dt_ult_ent_ate")
         binds["dt_ult_ent_ate"] = filtros["dt_ult_ent_ate"] + dt.timedelta(days=1)
+
+    # "com"/"sem" estoque (Etapa 15 §6). `> 0`, não `>= 1`: há SKUs ativos
+    # com 0 < EST_DISP < 1 (o menor 0,0833) que têm produto na prateleira.
+    # Os dois ramos formam uma PARTIÇÃO: com + sem = total, sempre — nulo e
+    # negativo (nenhum hoje) caem em "sem" pelo `nvl`. Fica ANTES do corte de
+    # `incluir_alerta` para valer também no `resumo`/contagem dos KPIs.
+    if filtros.get("estoque") == "com":
+        condicoes.append("nvl(p.est_disp, 0) > 0")
+    elif filtros.get("estoque") == "sem":
+        condicoes.append("nvl(p.est_disp, 0) <= 0")
 
     if not incluir_alerta:
         return (f"where {' and '.join(condicoes)}" if condicoes else ""), binds

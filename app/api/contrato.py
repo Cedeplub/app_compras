@@ -357,6 +357,13 @@ def produto(p: dict) -> dict:
         "precoDecididoVarejoAV": _f(p.get("alt_pv_var_av")),
         "precoDecididoVarejoAP": _f(p.get("alt_pv_var_ap")),
 
+        # Etapa 15 §4: a data ao lado de cada número acompanha a FONTE daquele
+        # número. `_data` (trunca no dia), nunca `_dt` — `data(iso)` de
+        # web/src/formato.js:109 quebra com ISO com hora.
+        "precoAlteradoEmAtacado": _data(p.get("dt_ult_alt_pv_atacado")),
+        "precoAlteradoEmVarejo":  _data(p.get("dt_ult_alt_pv_varejo")),
+        "precoDecididoEm":        _data(p.get("decisao_atualizado_em")),
+
         # ------------------------------------------------------------ sucessão
         "sucessao": _sucessao(p),
         # Avisos livres escritos por gente. Ainda não há tabela (PLANO §2.3).

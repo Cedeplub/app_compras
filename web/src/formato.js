@@ -106,6 +106,13 @@ export const compacto = (v) => {
   return numero(v, 0);
 };
 
+/** Quantidade de estoque em unidade de exibição (EST_DISP já vem dividido por
+ *  FATOR_EXIBICAO). Inteiro sem casas; fracionário com 2 — 1 litro solto de uma
+ *  caixa de 12 vale 0,08 e não pode ser impresso como "0" numa linha que o
+ *  filtro classificou como "com estoque". 10 SKUs ativos hoje, o menor 0,0833. */
+export const quantidadeEstoque = (v) =>
+  v == null ? "—" : numero(v, Number.isInteger(v) ? 0 : 2);
+
 export const data = (iso) => {
   if (!iso) return "—";
   const [ano, mes, dia] = iso.split("-");

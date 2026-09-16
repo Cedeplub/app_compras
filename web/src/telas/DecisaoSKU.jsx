@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronLeft, Layers, Loader2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useCarrinho } from "../contexto/carrinho.jsx";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
-import { simular, TOLERANCIA_PRECO_IGUAL, valorAntesDoCredito } from "../precificacao.js";
+import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL, valorAntesDoCredito } from "../precificacao.js";
 import {
   compacto, data as fmtData, mesCurto, mesesAntes, moeda, numero, paraCampoPreco, parseNumeroPreco,
 } from "../formato.js";
@@ -23,6 +23,7 @@ const NAVY = "#375DA8";
 const RED = "#DE434B";
 const AMBAR = "#B98A2E";
 const AMARELO = "#FBBF24";
+const CINZA = "#6B7280";
 
 const CENARIOS = [
   { id: "st_valor", rotulo: "ST s/Valor" },
@@ -136,6 +137,7 @@ export default function DecisaoSKU() {
                       precoAtual={p.pvAtacado} margemAlvo={p.margemAlvo}
                       fatorPrazo={parametros.fator_prazo_atacado} parametros={parametros}
                       decidido={p.precoDecididoAtacadoAV}
+                      dataDecisao={p.precoDecididoEm} dataAplicado={p.precoAlteradoEmAtacado}
                       aoSalvar={(v) => api.criarOuAcrescentarLotePreco(
                         [{ codigo: p.codigo, precoAtacadoAV: v }])}
                       aoConcluir={carregar} />
@@ -144,6 +146,7 @@ export default function DecisaoSKU() {
                       precoAtual={p.pvVarejo} margemAlvo={p.margemAlvoVarejo}
                       fatorPrazo={parametros.fator_prazo_varejo} parametros={parametros}
                       decidido={p.precoDecididoVarejoAV}
+                      dataDecisao={p.precoDecididoEm} dataAplicado={p.precoAlteradoEmVarejo}
                       aoSalvar={(v) => api.criarOuAcrescentarLotePreco(
                         [{ codigo: p.codigo, precoVarejoAV: v }])}
                       aoConcluir={carregar} />
@@ -385,18 +388,27 @@ function Fiscal({ p, cenarioSel }) {
 /* ------------------------------------------------------------ bloco preço --- */
 
 function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margemAlvo,
-                      fatorPrazo, parametros, decidido, aoSalvar, aoConcluir }) {
+                      fatorPrazo, parametros, decidido, dataDecisao, dataAplicado,
+                      aoSalvar, aoConcluir }) {
   const [expandido, setExpandido] = useState(false);
+  // Etapa 15, ponto 2: "pendente" é o único dos três estados em que o campo
+  // nasce preenchido — decidido, mas AINDA NÃO aplicado no Winthor
+  // (`precoJaAplicado`, precificacao.js). Uma vez aplicado, é como se não
+  // houvesse decisão pendente: o campo "reseta" (nasce vazio, mesma
+  // aparência de "sem decisão") — mesma regra de `Precificacao.jsx`,
+  // `CelulaEdicao`.
+  const aplicado = precoJaAplicado(precoAtual, decidido);
+  const pendente = decidido != null && !aplicado;
   // O campo nasce preenchido com o preço já DECIDIDO (editável) quando existe
-  // decisão — é a correção do item 2 do Diretor ("nem tem opção de editar").
-  // Isto NÃO viola a regra 10 do CONTEXTO: `decidido` vem de
+  // decisão PENDENTE — é a correção do item 2 do Diretor ("nem tem opção de
+  // editar"). Isto NÃO viola a regra 10 do CONTEXTO: `decidido` vem de
   // `APP_DECISAO_PRECO`, o número que uma PESSOA decidiu — o oposto de nascer
-  // com `PV_SUG_*` (a sugestão do modelo), que continua proibido. Sem decisão,
-  // o campo nasce vazio, com a sugestão só no placeholder (abaixo). O
-  // protótipo nasce sempre preenchido com a SUGESTÃO (§2.10) — o que, num
-  // campo que grava em APP_DECISAO_PRECO, faria a tela propor uma decisão que
-  // ninguém tomou.
-  const [valor, setValor] = useState(() => paraCampoPreco(decidido));
+  // com `PV_SUG_*` (a sugestão do modelo), que continua proibido. Sem decisão
+  // pendente (nenhuma decisão, ou decisão já aplicada), o campo nasce vazio,
+  // com a sugestão só no placeholder (abaixo). O protótipo nasce sempre
+  // preenchido com a SUGESTÃO (§2.10) — o que, num campo que grava em
+  // APP_DECISAO_PRECO, faria a tela propor uma decisão que ninguém tomou.
+  const [valor, setValor] = useState(() => paraCampoPreco(pendente ? decidido : null));
   const [estado, setEstado] = useState("parado");
   const [erroSalvar, setErroSalvar] = useState(null);
   // Para onde foi o preço decidido aqui — id do lote e se o servidor abriu um
@@ -412,7 +424,7 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
   // efeito, trocar de SKU por um link (ex.: a partir da Precificação) faria
   // este bloco continuar mostrando o valor do produto ANTERIOR.
   useEffect(() => {
-    setValor(paraCampoPreco(decidido));
+    setValor(paraCampoPreco(pendente ? decidido : null));
     setEstado("parado");
     setErroSalvar(null);
     setConfirmacaoLote(null);
@@ -507,21 +519,37 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
         </label>
         <input id={`preco-${praca}-${p.codigo}`} type="text" inputMode="decimal"
                value={valor} onChange={(e) => aoDigitar(e.target.value)}
-               // Placeholder só quando o campo nasce vazio (sem decisão) — com
-               // decisão ele já nasce preenchido com ELA (acima), e a sugestão
-               // desce para a linha de apoio "sugerido", porque um placeholder
-               // não aparece atrás de um valor.
-               placeholder={decidido == null && sim.sugerido != null ? numero(sim.sugerido, 2) : "—"}
+               // Placeholder só quando o campo nasce vazio (sem decisão
+               // PENDENTE — nem decisão, nem decisão já aplicada) — com
+               // decisão pendente ele já nasce preenchido com ELA (acima), e a
+               // sugestão desce para a linha de apoio "sugerido", porque um
+               // placeholder não aparece atrás de um valor.
+               placeholder={!pendente && sim.sugerido != null ? numero(sim.sugerido, 2) : "—"}
                className="num w-full rounded-lg border border-gray-300 px-3 py-2 text-md font-medium text-gray-900" />
 
-        {decidido != null && (
+        {/* Etapa 15, ponto 2: "Já decidido" só enquanto PENDENTE (ainda não
+            aplicado no Winthor), com a data da DECISÃO ao lado — nunca a do
+            Winthor (§4.3/§4.5 do prompt: cada linha traz a data da fonte do
+            número que está ao lado dela). */}
+        {pendente && (
           <p className="num mt-1 text-2xs" style={{ color: NAVY }}>
-            Já decidido: {moeda(decidido)}
+            Já decidido: {moeda(decidido)}{dataDecisao ? ` · ${fmtData(dataDecisao)}` : ""}
           </p>
         )}
-        {decidido != null && sim.sugerido != null && (
+        {pendente && sim.sugerido != null && (
           <p className="num mt-1 text-2xs text-gray-400">
             Sugerido: {moeda(sim.sugerido)}
+          </p>
+        )}
+        {/* Aplicado: o "Já decidido" some — o valor decidido virou o vigente.
+            A data é a da ALTERAÇÃO NO WINTHOR, por CANAL (nunca a da decisão
+            — 79 SKUs têm datas diferentes entre atacado e varejo). Nula em
+            650 SKUs (226 ativos): "preço aplicado", sem data — o traço não é
+            uma data, e a linha não some por completo (senão um SKU aplicado
+            ficaria idêntico a um nunca decidido). */}
+        {aplicado && (
+          <p className="num mt-1 text-2xs" style={{ color: CINZA }}>
+            {dataAplicado ? `Preço alterado em ${fmtData(dataAplicado)}` : "Preço aplicado"}
           </p>
         )}
 

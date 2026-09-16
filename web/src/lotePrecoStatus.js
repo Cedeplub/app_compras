@@ -73,6 +73,11 @@ export const ROTULO_SITUACAO = {
   divergente: "Divergente",
 };
 
+/** O lote inteiro aplicado — `qtdAplicados >= qtdItens`, com `qtdItens > 0` para que
+ *  um lote vazio não se declare aplicado por vacuidade. Mesma medição do item
+ *  (`_situacao_item` no servidor), agregada; nunca um status gravado. */
+export const loteAplicado = (l) => (l.qtdItens ?? 0) > 0 && (l.qtdAplicados ?? 0) >= (l.qtdItens ?? 0);
+
 /* ------------------------------------------------------- confirmação de POST --- */
 
 /** Texto da confirmação depois de `POST /lotes-preco`, usado tanto pelo rodapé

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ChevronLeft, Download, FileSpreadsheet, Loader2, Printer, Trash2,
+  Check, ChevronLeft, Download, FileSpreadsheet, Loader2, Printer, Trash2,
 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { ordenarLista } from "../componentes/CabecalhoOrdenavel.jsx";
 import {
   COR_SITUACAO, COR_STATUS, ROTULO_AVANCAR, ROTULO_SITUACAO, ROTULO_VOLTAR,
-  podeAvancar, podeVoltar, textoConferencia,
+  loteAplicado, podeAvancar, podeVoltar, textoConferencia,
 } from "../lotePrecoStatus.js";
 import { moeda, numero, paraCampoPreco, parseNumeroPreco } from "../formato.js";
 
@@ -131,6 +131,18 @@ export default function LotePrecoDetalhe() {
             Lote de preços
             <span className="rounded-full px-2 py-0.5 text-2xs font-bold"
                   style={{ background: `${cor}18`, color: cor }}>{lote.status}</span>
+            {/* Contornada, ao contrário do chip de status (preenchido) — mesma
+                distinção visual de PrecosDefinidos.jsx: dois chips iguais
+                seriam lidos como dois valores da mesma máquina de estados,
+                que este projeto decidiu não ter (lotePrecoStatus.js).
+                Aparece também em Rascunho, de propósito — é fato medido. */}
+            {loteAplicado(lote) && (
+              <span title={carimbo ?? undefined}
+                    className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-bold"
+                    style={{ borderColor: COR_SITUACAO.aplicado, color: COR_SITUACAO.aplicado }}>
+                <Check size={11} aria-hidden="true" /> Aplicado
+              </span>
+            )}
           </h2>
           <p className="num mt-0.5 text-xs text-gray-500">
             {numero(itens.length)} item(ns) · {numero(lote.qtdAplicados ?? 0)} de{" "}

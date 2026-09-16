@@ -103,6 +103,23 @@ models:
           (int_cadastro_estoque.qt_ult_saida), par de DT_ULT_SAIDA (AM). NULA
           para SKU sem nenhuma saída registrada - ausência de movimento, não
           quantidade zero. Não é dividida por FATOR_EXIBICAO.
+      - name: DT_ULT_ALT_PV_ATACADO
+        description: >
+          Data da última alteração do preço de venda do ATACADO
+          (int_cadastro_estoque.dt_ult_alt_pv_atacado, de
+          CEDEP.PCTABPR.DTULTALTPVENDA via stg_preco_tabela), região
+          NUMREGIAO = 2 - a mesma região do preço de atacado que a tela mostra
+          ao lado dela. NULO significa "o WinThor nunca registrou alteração de
+          preço deste SKU NESTA REGIÃO" (650 SKUs, 226 ativos em 16/09/2026) -
+          nunca "o preço nunca mudou"; a tela escreve "preço aplicado" sem data.
+      - name: DT_ULT_ALT_PV_VAREJO
+        description: >
+          Data da última alteração do preço de venda do VAREJO
+          (int_cadastro_estoque.dt_ult_alt_pv_varejo, de
+          CEDEP.PCTABPR.DTULTALTPVENDA via stg_preco_tabela), região
+          NUMREGIAO = 1 - a mesma região do preço de varejo. NULO significa "o
+          WinThor nunca registrou alteração de preço deste SKU NESTA REGIÃO"
+          (650 SKUs, 226 ativos em 16/09/2026) - nunca "o preço nunca mudou".
       - name: VENDA_ANO_PASSADO
         description: >
           Quantidade LÍQUIDA vendida no mesmo mês do ano anterior, a barra

@@ -31,6 +31,14 @@ const nulo = (v) => v === null || v === undefined || Number.isNaN(v);
  */
 export const TOLERANCIA_PRECO_IGUAL = 0.005;
 
+/** "O preço decidido por gente já é o preço que está no banco" — por canal.
+ *  Cobre dois casos que a tela não precisa distinguir: o preço foi aplicado no
+ *  Winthor, ou o valor decidido já era o vigente. Nos dois, repetir "decidido
+ *  R$ 66,00" ao lado de um "Atacado atual R$ 66,00" é ruído. */
+export const precoJaAplicado = (precoAtual, precoDecidido) =>
+  precoDecidido != null && precoAtual != null
+  && Math.abs(precoAtual - precoDecidido) < TOLERANCIA_PRECO_IGUAL;
+
 /** MKP = preço ÷ custo. Multiplicador puro, não percentual — trocar os dois
  *  muda a decisão de preço (PROTOTIPO.md §5). */
 export function calcMKP(preco, custo) {

@@ -6,8 +6,9 @@ import { useAtualizacao } from "../contexto/atualizacao.jsx";
 import { useCarrinho } from "../contexto/carrinho.jsx";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
+import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
-import { mesCurto, mesesAntes, moeda, numero } from "../formato.js";
+import { mesCurto, mesesAntes, moeda, numero, quantidadeEstoque } from "../formato.js";
 
 /* Tela — Pedidos (PROTOTIPO.md §2.4, .jsx linha 2735).
  *
@@ -76,6 +77,11 @@ export default function Pedidos() {
   const [departamento, setDepartamento] = useState("");
   const [comprador, setComprador] = useState("");
   const [status, setStatus] = useState("Ativo");
+  // Etapa 15, ponto 4: "" (todos) | "com" | "sem" — mesmo padrão de
+  // `departamento`/`status`/`busca`: estado local, não na URL (só
+  // `ordenar`/`dir` vivem lá, por precisarem ser o mesmo estado do cabeçalho
+  // clicável — §3.3, que não se aplica aqui).
+  const [estoque, setEstoque] = useState("");
   const [busca, setBusca] = useState("");
   const [pagina, setPagina] = useState(1);
   // Etapa 13, ponto 4: mesmo par `ordenar`/`dir` na URL, escrito tanto pelo
@@ -109,6 +115,7 @@ export default function Pedidos() {
         departamento: departamento || null,
         comprador: comprador || null,
         status: status === "Todos" ? null : status,
+        estoque: estoque || null,
         busca: busca || null,
         ordenar, dir, pagina, porPagina: POR_PAGINA,
         dtUltEntDe: dtUltEntDe || null,
@@ -120,7 +127,7 @@ export default function Pedidos() {
     } finally {
       setCarregando(false);
     }
-  }, [departamento, comprador, status, busca, ordenar, dir, pagina,
+  }, [departamento, comprador, status, estoque, busca, ordenar, dir, pagina,
       dtUltEntDe, dtUltEntAte, versaoDados]);
 
   useEffect(() => {
@@ -192,7 +199,8 @@ export default function Pedidos() {
       )}
 
       <Filtros {...{ opcoes, departamento, setDepartamento, comprador, setComprador,
-                     status, setStatus, ordenar, dir, aoOrdenar, busca, setBusca, setPagina,
+                     status, setStatus, estoque, setEstoque, ordenar, dir, aoOrdenar,
+                     busca, setBusca, setPagina,
                      referencia: parametros?.data_referencia,
                      dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte }}
                total={dados?.total} />
@@ -226,7 +234,8 @@ export default function Pedidos() {
 /* ----------------------------------------------------------------- filtros --- */
 
 function Filtros({ opcoes, departamento, setDepartamento, comprador, setComprador,
-                   status, setStatus, ordenar, dir, aoOrdenar, busca, setBusca, setPagina, total,
+                   status, setStatus, estoque, setEstoque, ordenar, dir, aoOrdenar,
+                   busca, setBusca, setPagina, total,
                    referencia, dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte }) {
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -245,6 +254,7 @@ function Filtros({ opcoes, departamento, setDepartamento, comprador, setComprado
           ))}
         </div>
       </div>
+      <FiltroEstoque valor={estoque} aoTrocar={(v) => { setEstoque(v); setPagina(1); }} />
       <Campo rotulo="Departamento" largura="w-44">
         <Select valor={departamento} vazio="Todos" opcoes={opcoes?.departamentos ?? []}
                 aoTrocar={(v) => { setDepartamento(v); setPagina(1); }} />
@@ -439,7 +449,7 @@ function LinhaPedido({ p, valor, aoTrocar, parametros }) {
         </Link>
       </td>
       <td className="px-2 py-2 text-center"><ClasseChip classe={p.classe} /></td>
-      <td className="num px-2 py-2 text-center" style={{ background: F_EST }}>{numero(p.estDisp, 0)}</td>
+      <td className="num px-2 py-2 text-center" style={{ background: F_EST }}>{quantidadeEstoque(p.estDisp)}</td>
       <td className="num px-2 py-2 text-center" style={{ background: F_EST }}>{numero(p.pendente, 0)}</td>
       <td className="num px-2 py-2 text-center font-semibold"
           style={{ background: F_ESTPED, color: "#1D4ED8" }}>{numero(p.estPend, 0)}</td>

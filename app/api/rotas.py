@@ -163,6 +163,9 @@ def listar_produtos(
     # cada lado filtra sozinho se o outro não vier.
     dtUltEntDe: str | None = None,
     dtUltEntAte: str | None = None,
+    # "com"/"sem" estoque, whitelist estrita — vira `where` no servidor
+    # (produto._condicoes), mesma regra que já vale para `ordenar`.
+    estoque: str | None = None,
     # `ordenar` é entrada de usuário virando `order by` — o whitelist de
     # `produto.ORDENACOES_VALIDAS` é a única defesa (§8.2/1-2). `dir` alterna
     # crescente/decrescente a partir do clique no cabeçalho (§3.2/§3.4);
@@ -181,6 +184,10 @@ def listar_produtos(
     if dir is not None and dir not in ("asc", "desc"):
         raise HTTPException(
             status_code=422, detail=f"dir inválido: {dir!r} (use 'asc' ou 'desc').")
+    if estoque not in (None, "com", "sem"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"estoque inválido: {estoque!r} (use 'com' ou 'sem').")
     porPagina = max(1, min(porPagina, MAX_POR_PAGINA))
     # Nunca string crua para bind de data (ORA-01861 já aconteceu neste
     # projeto — ver app/servicos/monitoramento.py:_data). 422 com mensagem em
@@ -208,6 +215,7 @@ def listar_produtos(
         "dt_ult_ent_de": _data("dtUltEntDe", dtUltEntDe),
         "dt_ult_ent_ate": _data("dtUltEntAte", dtUltEntAte),
         "cenario_margem": cenarioMargem,
+        "estoque": estoque,
     }
     linhas, total = produto.listar(filtros, pagina, porPagina, ordenar, dir)
     corpo = contrato.pagina(linhas, total, pagina, porPagina)

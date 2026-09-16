@@ -163,6 +163,8 @@ final as (
         p.codigo                                        as CODIGO,
         t.descricao                                     as REGIME_FISCAL,
         c.qt_ult_saida                                  as QT_ULT_SAIDA,
+        c.dt_ult_alt_pv_atacado                         as DT_ULT_ALT_PV_ATACADO,
+        c.dt_ult_alt_pv_varejo                          as DT_ULT_ALT_PV_VAREJO,
         -- ⚠ DIVIDIDO POR FATOR_EXIBICAO, e essa divisão não é detalhe.
         -- VD_MES_ATUAL e VD_M_1/2/3 saem de int_produto_demanda JÁ divididos
         -- pelo fator (linhas 158-161 de lá): para departamento que pede em

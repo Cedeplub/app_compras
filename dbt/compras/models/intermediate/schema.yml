@@ -101,6 +101,24 @@ models:
         description: "Preço de venda tabelado, região atacado (id_regiao=2)"
       - name: pv_varejo
         description: "Preço de venda tabelado, região varejo (id_regiao=1)"
+      - name: dt_ult_alt_pv_atacado
+        description: >
+          Data da última alteração do preço de venda do ATACADO:
+          CEDEP.PCTABPR.DTULTALTPVENDA via stg_preco_tabela, região NUMREGIAO = 2
+          (id_regiao = 2) - a MESMA resolução de região de pv_atacado, subselect
+          por subselect, para que preço e data exibidos lado a lado sejam sempre
+          do mesmo canal (79 SKUs têm datas diferentes entre atacado e varejo).
+          NULO significa "o WinThor nunca registrou alteração de preço deste SKU
+          NESTA REGIÃO" (650 SKUs, 226 deles ativos em 16/09/2026) - nunca
+          "o preço nunca mudou". Sai crua: sem corte por idade e sem nvl.
+      - name: dt_ult_alt_pv_varejo
+        description: >
+          Data da última alteração do preço de venda do VAREJO:
+          CEDEP.PCTABPR.DTULTALTPVENDA via stg_preco_tabela, região NUMREGIAO = 1
+          (id_regiao = 1) - a MESMA resolução de região de pv_varejo. NULO
+          significa "o WinThor nunca registrou alteração de preço deste SKU NESTA
+          REGIÃO" (650 SKUs, 226 deles ativos em 16/09/2026) - nunca "o preço
+          nunca mudou". Sai crua: sem corte por idade e sem nvl.
 
   # ───────────────────────────────────────────────────────────────────────────
   # int_periodo_mensal — janela temporal do relatório mensal, calculada 1 vez

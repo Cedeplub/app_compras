@@ -4,10 +4,11 @@ with source as (
 
 renamed as (
     select
-        CODPROD       as id_produto,
+        CODPROD              as id_produto,
         -- 1 = varejo, 2 = atacado
-        NUMREGIAO     as id_regiao,
-        PVENDA        as preco_venda
+        NUMREGIAO            as id_regiao,
+        PVENDA               as preco_venda,
+        DTULTALTPVENDA       as data_ultima_alteracao_preco
     from source
 )
 

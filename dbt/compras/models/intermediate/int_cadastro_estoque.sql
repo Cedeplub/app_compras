@@ -138,7 +138,17 @@ final as (
         (select pt.preco_venda from preco_tabela pt
           where pt.id_produto = e.id_produto and pt.id_regiao = 2)        as pv_atacado,
         (select pt.preco_venda from preco_tabela pt
-          where pt.id_produto = e.id_produto and pt.id_regiao = 1)        as pv_varejo
+          where pt.id_produto = e.id_produto and pt.id_regiao = 1)        as pv_varejo,
+        -- ⚠ A data de alteração acompanha o PREÇO DA MESMA REGIÃO, subselect por
+        -- subselect. Não é a mais recente entre as duas, nem uma região canônica:
+        -- medido em 16/09/2026, 79 dos 8.191 SKUs com as duas datas têm datas
+        -- DIFERENTES entre atacado e varejo, e o maior intervalo é de 454 dias.
+        -- Uma data só apareceria errada nesses 79, ao lado do preço do outro canal —
+        -- e a tela mostra os dois canais lado a lado, um do lado do outro.
+        (select pt.data_ultima_alteracao_preco from preco_tabela pt
+          where pt.id_produto = e.id_produto and pt.id_regiao = 2)        as dt_ult_alt_pv_atacado,
+        (select pt.data_ultima_alteracao_preco from preco_tabela pt
+          where pt.id_produto = e.id_produto and pt.id_regiao = 1)        as dt_ult_alt_pv_varejo
       from estoque e
      inner join produto p
         on p.id_produto = e.id_produto

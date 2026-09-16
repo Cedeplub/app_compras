@@ -186,6 +186,8 @@ models:
           - not_null
       - name: preco_venda
         description: "Preço de venda sugerido para a região"
+      - name: data_ultima_alteracao_preco
+        description: "Data da última alteração do preço de venda no WinThor, por (produto, região). NULO significa 'o WinThor nunca registrou alteração de preço deste SKU nesta região' (650 SKUs em 16/09/2026, 226 deles ativos)."
 
   # ───────────────────────────────────────────────────────────────────────────
   # Estoque — tabelas grandes (sem testes por performance)

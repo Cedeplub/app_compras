@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, FileSpreadsheet, Filter, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, FileSpreadsheet, Filter, Loader2, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { Carregando, Erro, Vazio } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
-import { COR_STATUS, ROTULO_AVANCAR, STATUS, podeAvancar, textoConferencia } from "../lotePrecoStatus.js";
+import {
+  COR_SITUACAO, COR_STATUS, ROTULO_AVANCAR, STATUS, loteAplicado, podeAvancar, textoConferencia,
+} from "../lotePrecoStatus.js";
 import { numero } from "../formato.js";
 
 /* Tela — Preços Definidos (PROMPT_ETAPA_12_PRECOS_DEFINIDOS.md §6.3, molde
@@ -134,7 +136,7 @@ export default function PrecosDefinidos() {
 
         <ul className="space-y-2">
           {lotes.map((l) => (
-            <CartaoLote key={l.id} l={l} ocupado={ocupado === l.id}
+            <CartaoLote key={l.id} l={l} ocupado={ocupado === l.id} carimbo={carimbo}
                         aoAvancar={() => agir(l.id, () => api.avancarLotePreco(l.id))}
                         aoExcel={() => agir(l.id, () => baixar(() => api.baixarExcelLotePreco(l.id)))}
                         aoExcluir={() => setAExcluir(l)} />
@@ -169,7 +171,7 @@ async function baixar(chamada) {
   URL.revokeObjectURL(url);
 }
 
-function CartaoLote({ l, ocupado, aoAvancar, aoExcel, aoExcluir }) {
+function CartaoLote({ l, ocupado, carimbo, aoAvancar, aoExcel, aoExcluir }) {
   const cor = COR_STATUS[l.status] ?? "#6B7280";
   const qtdItens = l.qtdItens ?? 0;
   const qtdAplicados = l.qtdAplicados ?? 0;
@@ -183,6 +185,21 @@ function CartaoLote({ l, ocupado, aoAvancar, aoExcel, aoExcluir }) {
                   style={{ background: `${cor}18`, color: cor }}>
               {l.status}
             </span>
+            {/* Tag de "Aplicado" — CONTORNADA (borda + texto, sem fundo
+                preenchido), diferente do chip de status acima (preenchido):
+                dois chips com a mesma aparência lado a lado seriam lidos
+                como dois valores da MESMA máquina de estados, que é
+                exatamente o terceiro status que este projeto decidiu não
+                ter (ver cabeçalho de lotePrecoStatus.js). Aparece também em
+                lote Rascunho, de propósito: é um fato medido contra o
+                banco, não uma etapa do documento. */}
+            {loteAplicado(l) && (
+              <span title={carimbo ?? undefined}
+                    className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-bold"
+                    style={{ borderColor: COR_SITUACAO.aplicado, color: COR_SITUACAO.aplicado }}>
+                <Check size={11} aria-hidden="true" /> Aplicado
+              </span>
+            )}
             {l.observacao && (
               <span className="truncate text-2xs text-gray-500">{l.observacao}</span>
             )}
