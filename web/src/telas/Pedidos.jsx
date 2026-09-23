@@ -726,18 +726,18 @@ function PainelItens({ id, carrinho, itens, cacheProdutos, aoDescartarItem, aoPe
   return (
     <div id={id} role="region" aria-label="Itens no carrinho"
          className="mx-auto max-w-app border-x border-t border-gray-200 bg-white px-4 pt-3 md:px-6">
+      {/* ⚠ O cabeçalho tem SÓ o "X" de fechar, sozinho. "Descartar todos" fica
+          no rodapé, longe dele, e de propósito: na primeira versão os dois
+          eram vizinhos a 12px, e o usuário clicou no "X" achando que era o
+          descartar — a lista fechava e nada era descartado. Dispensar e
+          destruir não podem ficar coladas, ainda mais num painel onde cada
+          linha já tem o seu próprio "X" que DESCARTA aquele item. */}
       <div className="flex items-center justify-between pb-2">
         <span className="text-xs font-semibold text-gray-500">Itens no carrinho</span>
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={aoPedirDescartarTudo}
-                  className="flex items-center gap-1 text-xs font-semibold" style={{ color: RED }}>
-            <Trash2 size={12} aria-hidden="true" /> Descartar todos
-          </button>
-          <button type="button" onClick={aoFechar} aria-label="Fechar lista de itens"
-                  className="text-gray-400">
-            <X size={14} aria-hidden="true" />
-          </button>
-        </div>
+        <button type="button" onClick={aoFechar} aria-label="Fechar lista de itens"
+                className="rounded-md p-1 text-gray-400 hover:text-gray-600">
+          <X size={14} aria-hidden="true" />
+        </button>
       </div>
       <ul className="max-h-56 divide-y divide-gray-100 overflow-y-auto pb-2">
         {linhas.map(([codigo, qtd]) => {
@@ -782,6 +782,15 @@ function PainelItens({ id, carrinho, itens, cacheProdutos, aoDescartarItem, aoPe
           );
         })}
       </ul>
+      {/* Rodapé: a ação destrutiva de conjunto, como BOTÃO de verdade
+          (contornado, com rótulo), não como link espremido ao lado do "X". */}
+      <div className="flex justify-end border-t border-gray-100 py-2">
+        <button type="button" onClick={aoPedirDescartarTudo}
+                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold"
+                style={{ color: RED, borderColor: RED }}>
+          <Trash2 size={12} aria-hidden="true" /> Descartar todos
+        </button>
+      </div>
     </div>
   );
 }
