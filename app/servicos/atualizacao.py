@@ -14,11 +14,22 @@ O processo filho, desacoplado (DETACHED_PROCESS), sobrevive ao reinício da API.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import subprocess
 import sys
 
 from app import config
 from app.core import database
+
+log = logging.getLogger("app_compras.atualizacao")
+
+# Log do disparo (stdout/stderr do Popen do filho). Sem isto, a única
+# mensagem que aponta a causa de um disparo que "não funcionou" (ex.:
+# "dbt.exe não encontrado", achado 1 da Etapa 16) ia para DEVNULL e nunca
+# aparecia em lugar nenhum - custou uma sessão inteira de medição até alguém
+# perceber que a causa estava sendo descartada pelo próprio código. `logs/`
+# já está em `.gitignore`.
+_LOG_DISPARO = config.BASE_DIR / "logs" / "atualizacao_disparo.log"
 
 # CONCLUIDO_COM_AVISO conta como sucesso em toda decisão de negocio (frescor,
 # trava de intervalo entre disparos): dbt run passou, so o dbt test reprovou.
@@ -212,12 +223,36 @@ def disparar(login: str) -> dict:
             raise AtualizacaoRecente(int(faltam_min) + 1)
 
     script = config.BASE_DIR / "dbt" / "atualizar.py"
-    subprocess.Popen(
-        [sys.executable, str(script), "--origem", "manual", "--por", login],
-        cwd=str(config.BASE_DIR),
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-        close_fds=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    # Append, não truncate: cada disparo se soma ao histórico do arquivo -
+    # é um log de diagnóstico, não o registro de execução (esse é o
+    # APP_ATUALIZACAO, gravado pelo próprio filho).
+    # ⚠ Abrir o log NÃO pode derrubar o disparo. Se `logs/` não for gravável
+    # (permissão, disco cheio), o botão tem de continuar funcionando SEM o
+    # diagnóstico - um log de diagnóstico que impede a função que ele
+    # diagnostica troca um defeito silencioso por um barulhento, mas ainda
+    # assim quebra o que funcionava. Sem o arquivo, cai no DEVNULL de antes.
+    try:
+        _LOG_DISPARO.parent.mkdir(parents=True, exist_ok=True)
+        log_disparo = open(_LOG_DISPARO, "a", encoding="utf-8")
+    except OSError:
+        log.warning("Não consegui abrir %s; disparando sem log de diagnóstico.", _LOG_DISPARO)
+        log_disparo = None
+
+    saida = log_disparo if log_disparo is not None else subprocess.DEVNULL
+    try:
+        subprocess.Popen(
+            [sys.executable, str(script), "--origem", "manual", "--por", login],
+            cwd=str(config.BASE_DIR),
+            # Desacoplamento do filho (Etapa 12): sobrevive ao reinício do
+            # uvicorn. Isto NÃO muda aqui - só o destino de stdout/stderr muda.
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+            close_fds=True,
+            stdout=saida,
+            stderr=saida,
+        )
+    finally:
+        # O Popen duplica o descritor para o processo filho; o handle do pai
+        # pode (e deve) ser fechado logo em seguida.
+        if log_disparo is not None:
+            log_disparo.close()
     return estado()

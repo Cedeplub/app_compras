@@ -49,6 +49,21 @@ $NssmExe      = "C:\tools\nssm\nssm.exe"
 $ServicoNome  = "app_compras"
 $ScriptDir    = Split-Path -Parent $PSCommandPath
 $ProjetoRaiz  = Split-Path -Parent $ScriptDir
+
+# --- Trava de raiz: este script so pode operar a producao -------------------
+# Nome do servico, porta e AppDirectory abaixo sao constantes de producao. Uma
+# copia deste script rodada da pasta de dev calcularia $ProjetoRaiz apontando
+# para dev, mas ainda assim removeria/recriaria o servico "app_compras" de
+# PRODUCAO com o AppDirectory de dev. Por isso a trava: nada de escape.
+$RaizProducao = "C:\Users\Administrator\Desktop\app_compras_v2"
+$RaizAtual    = [IO.Path]::GetFullPath($ProjetoRaiz).TrimEnd('\')
+if ($RaizAtual -ne [IO.Path]::GetFullPath($RaizProducao).TrimEnd('\')) {
+    Write-Host " [ERRO] Este script so pode rodar a partir de $RaizProducao (producao)."
+    Write-Host " Pasta detectada: $RaizAtual"
+    Write-Host " O que fazer: para o ambiente de desenvolvimento, suba por teste_dev.bat - nao por scripts de infra/."
+    Exit 1
+}
+
 $PythonExe    = "C:\Program Files\Python313\python.exe"
 $LogsDir      = Join-Path $ProjetoRaiz "logs"
 $DbtProfiles  = "C:\Users\Administrator\.dbt"

@@ -5,3 +5,9 @@ python-multipart>=0.0.9
 oracledb>=2.0
 bcrypt>=4.1
 openpyxl>=3.1
+# Lido por dbt/atualizar.py para conferir, ANTES de rodar o dbt, se o schema
+# que profile/target construiriam e o mesmo que esta instancia registra
+# (trava de schema, Etapa 16). Nao e' dependencia do dbt-core aqui: atualizar.py
+# roda no Python do SISTEMA, nao no venv de dbt/env_server - sem esta linha, uma
+# instalacao limpa faria a trava abortar e a Tarefa Agendada parar de rodar.
+pyyaml>=6.0

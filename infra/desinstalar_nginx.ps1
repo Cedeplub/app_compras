@@ -28,6 +28,22 @@ $NginxExe     = Join-Path $NginxDir "nginx.exe"
 $VhostDestino = Join-Path $NginxDir "conf\compras.conf"
 $DataHoje     = Get-Date -Format "yyyyMMdd"
 $Backup       = Join-Path $NginxDir "conf\nginx.conf.bkp-desinstalar-$DataHoje"
+$ScriptDir    = Split-Path -Parent $PSCommandPath
+$ProjetoRaiz  = Split-Path -Parent $ScriptDir
+
+# --- Trava de raiz: este script so pode operar a producao -------------------
+# O nginx.conf mexido aqui e compartilhado com gestaosac.cdp.lub e
+# dre.cdp.lub, producao de outras areas. Uma copia deste script rodada da
+# pasta de dev ainda assim mexeria nesse mesmo nginx.conf. Por isso a trava:
+# nada de escape.
+$RaizProducao = "C:\Users\Administrator\Desktop\app_compras_v2"
+$RaizAtual    = [IO.Path]::GetFullPath($ProjetoRaiz).TrimEnd('\')
+if ($RaizAtual -ne [IO.Path]::GetFullPath($RaizProducao).TrimEnd('\')) {
+    Write-Host " [ERRO] Este script so pode rodar a partir de $RaizProducao (producao)."
+    Write-Host " Pasta detectada: $RaizAtual"
+    Write-Host " O que fazer: para o ambiente de desenvolvimento, suba por teste_dev.bat - nao por scripts de infra/."
+    Exit 1
+}
 
 Write-Host ""
 Write-Host "========================================================================="

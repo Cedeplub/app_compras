@@ -84,9 +84,10 @@ serviço NSSM `app_compras` rodando `uvicorn app.main:app --host 127.0.0.1 --por
 `instalar_nginx.ps1`, `infra/nginx/compras.conf`, `infra/README.md` com a ordem e como
 desfazer). **Enquanto o socket órfão existir (§0.4), o bind e o `proxy_pass` usam o IP
 específico `192.168.0.50` em vez de `127.0.0.1`/`0.0.0.0`.**
-⚠ Em 14/09/2026 esses scripts **ainda não foram escritos/instalados** neste repositório
-— só existe `infra/agendar_atualizacao.ps1`. Ver §0.6 antes de assumir que a produção
-está de pé.
+⚠ **Atualizado em 23/09/2026:** os seis scripts existem e a produção **está no ar** —
+serviço NSSM `app_compras` em `Running`, vhost nginx instalado e Tarefa Agendada às 06:00
+e 13:00. (O registro anterior desta linha, de 14/09/2026, dizia que nada disso tinha sido
+escrito ainda; envelheceu.) Os seis **recusam rodar fora da pasta de produção** — ver §0.8.
 
 ### 0.4 O socket órfão
 
@@ -134,19 +135,22 @@ outras áreas). Não é decisão a tomar sozinho; ver
 
 ### 0.6 O que está no ar hoje
 
-**Verificado em 14/09/2026.** O corte para produção deste repositório (`app_compras_v2`,
-§0.3) **ainda não foi feito**: `Get-Service app_compras` não existe, e
-`C:\nginx\conf\nginx.conf` só tem os vhosts `gestaosac.cdp.lub` e `dre.cdp.lub` — nenhuma
-entrada para compras.
+**Atualizado em 23/09/2026 (Etapa 16).** O corte para produção deste repositório
+(`app_compras_v2`, §0.3) **foi feito** (commit `9cc0e12`, "Migração para app_compras_v2":
+v1 removido, schema revisto, produção no ar). Hoje `Get-Service app_compras` existe e
+responde `Running` — serviço NSSM, uvicorn em `127.0.0.1:8020`, sem `--reload`, e o nginx
+(porta 80) serve o front estático e faz proxy de `/api/`. Ver §0.8 para o ambiente de
+desenvolvimento, que passou a existir como uma segunda árvore/schema desde a Etapa 16.
 
-O que responde nas portas 8020/5173 agora é o **modo de desenvolvimento da pasta antiga**:
-PID 2508 (`192.168.0.50:8020`) e PID 6912 (`0.0.0.0:5173`), ambos com linha de comando
-apontando para `C:\Users\Administrator\Desktop\app_compras` (a pasta pré-migração, ainda
-não congelada), não para este repositório. Isto é, **hoje ninguém está rodando o código
-de `app_compras_v2`** — o repositório está pronto (dbt com `env_server`, front com
-`node_modules`), mas ainda não foi colocado no ar. Antes de confiar que "o sistema já
-está de pé", confira com `Get-CimInstance Win32_Process -Filter "ProcessId=<PID>" | select
-CommandLine` de qual pasta o processo realmente veio.
+O parágrafo abaixo é o registro histórico da situação **em 14/09/2026**, antes do corte:
+ainda é útil para quem precisar entender a transição, mas não descreve o estado atual.
+
+> Verificado em 14/09/2026. `Get-Service app_compras` não existia, e
+> `C:\nginx\conf\nginx.conf` só tinha os vhosts `gestaosac.cdp.lub` e `dre.cdp.lub` —
+> nenhuma entrada para compras. O que respondia nas portas 8020/5173 era o modo de
+> desenvolvimento da pasta antiga: PID 2508 (`192.168.0.50:8020`) e PID 6912
+> (`0.0.0.0:5173`), ambos apontando para `C:\Users\Administrator\Desktop\app_compras` (a
+> pasta pré-migração), não para este repositório.
 
 ### 0.7 O que fazer primeiro
 
@@ -165,6 +169,32 @@ CommandLine` de qual pasta o processo realmente veio.
 4. **Front:** duplo clique em `teste_front.bat` (raiz). Abre em `http://<IP_LAN>:5173`.
 5. **Login:** entre com `admin` e a senha do passo 3. A troca de senha é obrigatória no
    primeiro acesso (`senha_provisoria=1`).
+
+### 0.8 Dois ambientes: produção e desenvolvimento (Etapa 16, 23/09/2026)
+
+Existem hoje **duas árvores**, dois schemas Oracle isolados no mesmo banco (sem grant
+cruzado entre eles), e nenhum caminho automático de um para o outro:
+
+| | Produção | Desenvolvimento |
+|---|---|---|
+| Pasta | `C:\Users\Administrator\Desktop\app_compras_v2` | `C:\Users\Administrator\Desktop\app_compras_v2_dev` |
+| Schema Oracle | `COMPRAS` (usuário `compras`) | `COMPRAS_DEV` (usuário `compras_dev`) |
+| Como sobe | `infra\instalar_servico.ps1` + `infra\instalar_nginx.ps1` (serviço NSSM + nginx) | `teste_dev.bat` (versionado) |
+| Portas | API 8020 (`127.0.0.1`, atrás do nginx na 80) | API 8021, front Vite 5174 |
+| Tarefa Agendada do dbt | `CEDEP - app_compras - atualizar dados`, 06:00 e 13:00 | nenhuma — dev atualiza sob demanda, de propósito (ver §7 da Etapa 16) |
+
+**Os seis scripts de `infra/` que tocam serviço, Tarefa Agendada ou nginx
+(`instalar_servico.ps1`, `desinstalar_servico.ps1`, `instalar_nginx.ps1`,
+`desinstalar_nginx.ps1`, `agendar_atualizacao.ps1`, `publicar.ps1`) recusam rodar fora da
+pasta de produção** (`Exit 1` logo no início, comparando a raiz calculada com
+`C:\Users\Administrator\Desktop\app_compras_v2`). Isto existe porque nome de serviço, nome
+da Tarefa Agendada e o vhost do nginx são constantes de produção — uma cópia desses
+scripts rodada da pasta de dev mexeria em recursos de produção com caminho de dev.
+
+**Para criar o `dbt/env_server/` de uma árvore nova** (produção ou dev), rode
+`infra\instalar_dbt.ps1` a partir dela. É o único script de `infra/` que roda em
+qualquer árvore — ele só cria um venv Python dentro da própria pasta onde é executado,
+sem tocar em serviço, Tarefa Agendada nem nginx. Detalhe em `infra/README.md`.
 
 ## 1. O que estamos construindo
 

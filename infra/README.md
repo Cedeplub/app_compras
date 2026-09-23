@@ -14,6 +14,7 @@ janela: comando digitado não sobrevive à pessoa que digitou.
 | `desinstalar_nginx.ps1` | remove o `include` e o arquivo, testa e recarrega |
 | `agendar_atualizacao.ps1` | cria a Tarefa Agendada diária do dbt (`dbt seed`+`run`+`test`) |
 | `publicar.ps1` | `npm ci` + `npm run build` + reinício do serviço — o caminho único para colocar um front novo no ar |
+| `instalar_dbt.ps1` | cria `dbt/env_server/` (venv do dbt) na própria árvore — o único script daqui que roda fora de `app_compras_v2` (ver §"Produção × desenvolvimento" abaixo) |
 
 ## A constante `<BIND>`
 
@@ -81,6 +82,38 @@ específico, não a troca do padrão.
 Os dois scripts também conferem, depois do reload/restart, se apareceu
 processo `nginx` com PID novo — é a prova de que a config saiu do disco e
 entrou em memória, não só que o comando não retornou erro.
+
+## Produção × desenvolvimento (Etapa 16, 23/09/2026)
+
+Existem duas árvores, dois schemas Oracle isolados (sem grant cruzado):
+
+| | Produção | Desenvolvimento |
+|---|---|---|
+| Pasta | `C:\Users\Administrator\Desktop\app_compras_v2` | `C:\Users\Administrator\Desktop\app_compras_v2_dev` |
+| Schema Oracle | `COMPRAS` | `COMPRAS_DEV` |
+| Como sobe | os scripts deste `infra/` (serviço NSSM + nginx) | `teste_dev.bat`, na raiz da pasta de dev (versionado) |
+| Portas | API 8020 atrás do nginx (porta 80) | API 8021, front Vite 5174 |
+| Tarefa Agendada do dbt | `CEDEP - app_compras - atualizar dados` | nenhuma — dev atualiza sob demanda |
+
+**Os seis scripts acima que tocam serviço, Tarefa Agendada ou nginx
+(`instalar_servico.ps1`, `desinstalar_servico.ps1`, `instalar_nginx.ps1`,
+`desinstalar_nginx.ps1`, `agendar_atualizacao.ps1`, `publicar.ps1`) recusam rodar fora
+de `app_compras_v2`** — cada um confere, logo no início, que a raiz calculada a partir de
+`$PSCommandPath` é a pasta de produção, e sai com `Exit 1` se não for. Nome de serviço,
+nome de tarefa e vhost de nginx são constantes de produção; rodar a cópia desses scripts
+a partir de outra pasta mexeria em recursos de produção com caminho errado.
+
+**`instalar_dbt.ps1` é a exceção, de propósito.** Ele cria `dbt/env_server/` (o venv do
+dbt) dentro da própria árvore onde é chamado, e não toca em serviço, Tarefa Agendada nem
+nginx — por isso pode (e deve) rodar em qualquer árvore que precise de um `env_server`
+próprio, inclusive a de desenvolvimento:
+
+```
+powershell -ExecutionPolicy Bypass -File infra\instalar_dbt.ps1
+```
+
+Recusa-se a rodar se `dbt\env_server` já existir nessa árvore (apague a pasta à mão
+primeiro). Referência de versão (produção): Python 3.13.2, dbt 1.9.11.
 
 ## O que NÃO fazer
 

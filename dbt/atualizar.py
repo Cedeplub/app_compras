@@ -7,7 +7,11 @@ Chamado por três lugares:
   2. Botão na tela (POST /api/atualizacao): Popen sem wait
   3. rodar_dbt.bat (uso manual): python atualizar.py --origem manual --por USERNAME
 
-Roda sequência seed → run → test com --target PROD.
+Roda sequência seed → run → test com --profile/--target vindos de config.DBT_PROFILE/
+config.DBT_TARGET (por sua vez de DBT_PROFILE/DBT_TARGET no .env; default reproduz o
+comportamento antigo: profile "compras", target "prod"). Antes de tocar no banco ou no
+dbt, recusa rodar se o schema que o profile/target resolveriam não bater com
+config.ORA_SCHEMA - ver `_travar_schema_divergente()`.
 Travado por arquivo para impedir duas execuções simultâneas.
 Grava desfecho em APP_ATUALIZACAO e retorna:
   0 = CONCLUIDO
@@ -40,6 +44,7 @@ import oracledb
 _RAIZ = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RAIZ))
 
+from app import config
 from app.core import database
 
 # Forçar UTF-8 na saída, independente do codepage do console que invocou este
@@ -93,6 +98,68 @@ STATUS_CONCLUIDO_COM_AVISO = "CONCLUIDO_COM_AVISO"
 STATUS_FALHOU = "FALHOU"
 
 FASES = Literal["seed", "run", "test"]
+
+# ============================================================================
+# Trava de schema (Etapa 16, Defeito 2) - roda ANTES de qualquer coisa que
+# toque banco ou disco compartilhado (trava de exclusão, insert em
+# APP_ATUALIZACAO, fases do dbt)
+# ============================================================================
+
+
+def _travar_schema_divergente(profile: str, target: str) -> None:
+    """Recusa a execução se o schema que `profile`/`target` construiriam não
+    for o mesmo schema em que ESTA instância registra o resultado.
+
+    Por que comparar direto com `config.ORA_SCHEMA` (o schema que o .env desta
+    pasta usa para gravar em APP_ATUALIZACAO) e não com uma lista de pastas ou
+    de hosts permitidos: o invariante verdadeiro é "o build tem de cair no
+    mesmo schema em que esta instância registra que buildou" - é ele que
+    impede o Defeito 2 (dev reconstruindo produção e gravando sucesso no
+    schema errado). Uma lista de pastas/ambientes permitidos envelhece na
+    terceira pasta que alguém criar; este invariante não envelhece porque não
+    depende de listar ambientes, só de comparar os dois lados de cada um.
+
+    Falha ao importar `yaml`, ao ler ou ao parsear `profiles.yml`, ou ausência
+    do profile/target/schema esperado: TAMBÉM aborta, com a mesma gravidade de
+    uma divergência real. Uma trava que se desliga sozinha quando não consegue
+    verificar não é trava.
+    """
+    # ⚠ `pyyaml` é dependência DESTE script, declarada em requirements.txt (raiz),
+    # e não vem do dbt-core: este arquivo roda no Python do SISTEMA (o `sys.executable`
+    # do uvicorn, e o `python` da Tarefa Agendada), nunca no venv de `dbt/env_server/`.
+    # Se faltar, a trava aborta de propósito - ver o comentário de falha fechada acima.
+    try:
+        import yaml
+    except Exception as e:
+        log.error("Recusado: não foi possível importar 'yaml' para checar o schema do dbt antes de rodar (%s)", e)
+        sys.exit(1)
+
+    caminho_profiles = pathlib.Path(DBT_PROFILES_DIR) / "profiles.yml"
+    try:
+        conteudo = yaml.safe_load(caminho_profiles.read_text(encoding="utf-8"))
+    except Exception as e:
+        log.error("Recusado: não foi possível ler/parsear %s (%s)", caminho_profiles, e)
+        sys.exit(1)
+
+    try:
+        schema_dbt = conteudo[profile]["outputs"][target]["schema"]
+    except Exception as e:
+        log.error(
+            "Recusado: profile=%s target=%s não define 'outputs.%s.schema' em %s (%s)",
+            profile, target, target, caminho_profiles, e
+        )
+        sys.exit(1)
+
+    if str(schema_dbt).strip().upper() != str(config.ORA_SCHEMA).strip().upper():
+        log.error(
+            "Recusado: a aplicação escreve em %s e o dbt (profile=%s, target=%s) "
+            "construiria %s. Ajuste DBT_PROFILE/DBT_TARGET no .env desta pasta.",
+            config.ORA_SCHEMA, profile, target, schema_dbt
+        )
+        sys.exit(1)
+
+    log.info("Trava de schema OK: profile=%s target=%s -> schema %s (== ORA_SCHEMA)", profile, target, schema_dbt)
+
 
 # ============================================================================
 # Trava de exclusão
@@ -346,12 +413,12 @@ def atualizar_desfecho(
 # ============================================================================
 
 
-def rodar_dbt_fase(fase: FASES, target: str) -> tuple[int, str]:
+def rodar_dbt_fase(fase: FASES, profile: str, target: str) -> tuple[int, str]:
     """Roda uma fase do dbt (seed, run, test).
 
     Retorna (código_saída, stdout+stderr_capturado).
     """
-    cmd = [str(DBT_EXE), fase, "--target", target, "--no-use-colors"]
+    cmd = [str(DBT_EXE), fase, "--profile", profile, "--target", target, "--no-use-colors"]
     log.info("Iniciando: %s", " ".join(cmd))
 
     # DBT_PROFILES_DIR explícito no ambiente do subprocesso: a Tarefa Agendada
@@ -503,25 +570,37 @@ def main():
         help="Usuário que solicitou (só com --origem manual)"
     )
     parser.add_argument(
+        "--profile",
+        default=config.DBT_PROFILE,
+        help=f"Profile do dbt (padrão: config.DBT_PROFILE = {config.DBT_PROFILE!r})"
+    )
+    parser.add_argument(
         "--target",
-        default="prod",
-        help="Target do dbt (padrão: prod)"
+        default=config.DBT_TARGET,
+        help=f"Target do dbt (padrão: config.DBT_TARGET = {config.DBT_TARGET!r})"
     )
 
     args = parser.parse_args()
 
     origem = args.origem.upper()
     por = args.por
+    profile = args.profile
     target = args.target
 
     log.info("=" * 70)
-    log.info("Iniciando atualização (origem=%s, por=%s, target=%s)", origem, por, target)
+    log.info("Iniciando atualização (origem=%s, por=%s, profile=%s, target=%s)", origem, por, profile, target)
     log.info("=" * 70)
 
     # Verificar se arquivo dbt.exe existe
     if not DBT_EXE.exists():
         log.error("dbt.exe não encontrado: %s", DBT_EXE)
         sys.exit(1)
+
+    # Trava de schema (Defeito 2, Etapa 16): tem de rodar ANTES de qualquer
+    # trava de exclusão, insert em APP_ATUALIZACAO ou fase do dbt - uma trava
+    # que dispara depois do insert deixa lixo (linha EM_ANDAMENTO órfã) em
+    # APP_ATUALIZACAO.
+    _travar_schema_divergente(profile, target)
 
     tempo_inicio = time.time()
     id_atualizacao = None
@@ -544,7 +623,7 @@ def main():
 
             for fase in ["seed", "run", "test"]:
                 log.info("Iniciando fase: %s", fase)
-                codigo, saida = rodar_dbt_fase(fase, target)
+                codigo, saida = rodar_dbt_fase(fase, profile, target)
                 saida_acumulada[fase] = saida
 
                 if codigo != 0:

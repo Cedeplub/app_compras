@@ -61,6 +61,24 @@ SESSAO_HORAS = int(os.environ.get("APP_SESSAO_HORAS", "12"))
 # Paginacao da tela de decisao de compra.
 ITENS_POR_PAGINA = int(os.environ.get("APP_ITENS_POR_PAGINA", "50"))
 
+# --------------------------------------------------------------------- dbt ---
+# Profile/target que `dbt/atualizar.py` usa como default dos seus argumentos
+# `--profile`/`--target`. Os defaults abaixo REPRODUZEM o comportamento de hoje
+# (produção não muda de comportamento so por esta constante existir): antes
+# desta mudanca o script ja rodava com profile fixo "compras" (dbt_project.yml)
+# e target default "prod" (argparse). Uma instancia isolada (ex.: dev) define
+# DBT_PROFILE=compras_dev e DBT_TARGET=dev no seu proprio .env.
+#
+# Atencao ao ler: `_carregar_env()` acima usa `os.environ.setdefault`, entao uma
+# variavel de ambiente JA DEFINIDA no processo (por exemplo, pela Tarefa
+# Agendada) vence o que estiver escrito no .env. Hoje a Tarefa Agendada so
+# define DBT_PROFILES_DIR (dbt/atualizar.py), entao isto nao muda nada em
+# producao agora - mas quem for depurar um valor de DBT_PROFILE/DBT_TARGET que
+# "nao bate com o .env" precisa checar o ambiente do processo antes de suspeitar
+# do arquivo.
+DBT_PROFILE = os.environ.get("DBT_PROFILE", "compras")
+DBT_TARGET = os.environ.get("DBT_TARGET", "prod")
+
 
 def validar() -> str:
     """Devolve a mensagem do que falta para subir o app, ou string vazia."""
