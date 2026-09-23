@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Check, ChevronDown, Filter, Loader2, X } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
@@ -78,6 +79,17 @@ const ROTULO_COLUNA = {
   precoVarejo: "Varejo atual",
 };
 
+// Etapa 16 (PROMPT_ETAPA_16): "voltar" agora devolve a tela ANTERIOR de
+// verdade (LotePrecoDetalhe/PedidoDetalhe usam `navegar(-1)`) — sem isto, o
+// filtro escolhido antes de abrir um produto ou um lote se perdia ao
+// remontar a Precificação vazia. `estadoTela.js` é o mecanismo genérico
+// (molde `contexto/carrinho.jsx`); `pagina` entra junto — voltar para a
+// página 7 e cair na 1 é perder o lugar tanto quanto perder o filtro.
+const FILTROS_PADRAO = {
+  departamento: "", comprador: "", status: "Ativo", estoque: "",
+  cenarioSel: "st_valor", busca: "", pagina: 1, dtUltEntDe: "", dtUltEntAte: "",
+};
+
 export default function Precificacao() {
   const { versaoDados } = useAtualizacao();
   const [opcoes, setOpcoes] = useState(null);
@@ -86,21 +98,31 @@ export default function Precificacao() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const [departamento, setDepartamento] = useState("");
-  const [comprador, setComprador] = useState("");
-  const [status, setStatus] = useState("Ativo");
-  // Etapa 15, ponto 4: mesmo padrão de `departamento`/`status`/`busca` —
-  // estado local, não na URL (§6.3 do prompt: só `ordenar`/`dir` vivem lá).
-  const [estoque, setEstoque] = useState("");
-  const [cenarioSel, setCenarioSel] = useState("st_valor");
-  const [busca, setBusca] = useState("");
-  const [pagina, setPagina] = useState(1);
+  const [filtros, setFiltros] = useEstadoPersistente(
+    "app_compras_filtros_precificacao_v1", FILTROS_PADRAO);
+  // Aceita valor direto OU função de atualização (`setX(prev => ...)`) — a
+  // mesma dupla de formas que `useState` aceita, porque `Alertas.jsx` usa a
+  // segunda para alternar tipo de alerta (lista de "ligados").
+  const setCampo = (campo) => (v) => setFiltros((f) => ({
+    ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
+  }));
+  const { departamento, comprador, status, estoque, cenarioSel, busca, pagina,
+          dtUltEntDe, dtUltEntAte } = filtros;
+  const setDepartamento = setCampo("departamento");
+  const setComprador = setCampo("comprador");
+  const setStatus = setCampo("status");
+  const setEstoque = setCampo("estoque");
+  const setCenarioSel = setCampo("cenarioSel");
+  const setBusca = setCampo("busca");
+  const setPagina = setCampo("pagina");
+  const setDtUltEntDe = setCampo("dtUltEntDe");
+  const setDtUltEntAte = setCampo("dtUltEntAte");
   // Etapa 13, ponto 4: `ordenar`/`dir` vivem na URL (`?ordenar=...&dir=...`)
   // e são o MESMO estado que o cabeçalho clicável da tabela escreve — o
   // dropdown "Ordenar por" abaixo e o clique na coluna nunca divergem (§3.3).
+  // Já sobrevive a "voltar" por conta própria (é a própria URL) — não entra
+  // no `estadoTela.js` acima.
   const { ordenar, dir, aoOrdenar } = useOrdenacaoUrl("margem", "asc", setPagina);
-  const [dtUltEntDe, setDtUltEntDe] = useState("");
-  const [dtUltEntAte, setDtUltEntAte] = useState("");
 
   // Preços digitados, por código — {codigo: {valor, decidido}}. Não são
   // gravados até "Definir preços" no rodapé (§4.2 — não existe mais gravação
@@ -115,8 +137,40 @@ export default function Precificacao() {
   // diálogo a cada clique. Sobreviver é a escolha certa aqui; só morrem
   // quando o SKU é de fato gravado (removido do mapa em `definirPrecos`) —
   // nunca por navegação.
-  const [precosAT, setPrecosAT] = useState({});
-  const [precosVAR, setPrecosVAR] = useState({});
+  //
+  // Etapa 16: também sobrevivem a SAIR DA TELA (voltar de `/produto/:codigo`
+  // ou de `/precos-definidos/:id`, que agora usam `navegar(-1)`) — mas só o
+  // `valor` DIGITADO é persistido (`precosATValor`/`precosVARValor`, abaixo),
+  // nunca o `decidido`. `decidido` é um PREÇO vindo do JSON
+  // (`precoDecidido*AV`) — guardá-lo em `sessionStorage` é exatamente o que
+  // `carrinho.jsx` proíbe: ele envelhece no próximo `dbt run`, e comparar
+  // "isto é alteração de verdade?" (`alteracoesLote`, abaixo) contra um
+  // preço que já não existe mais decidiria errado, em silêncio. Por isso o
+  // par completo `{valor, decidido}` continua vivendo só em `useState`
+  // (como sempre viveu) — só a projeção `{codigo: valor}` vai para o
+  // storage, e o `decidido` volta a ser preenchido a partir do JSON fresco
+  // assim que o produto aparece numa página carregada (efeito logo abaixo).
+  const [precosATValor, setPrecosATValor] = useEstadoPersistente(
+    "app_compras_precos_at_precificacao_v1", {});
+  const [precosVARValor, setPrecosVARValor] = useEstadoPersistente(
+    "app_compras_precos_var_precificacao_v1", {});
+  const [precosAT, setPrecosAT] = useState(() => Object.fromEntries(
+    Object.entries(precosATValor).map(([codigo, valor]) => [codigo, { valor }])));
+  const [precosVAR, setPrecosVAR] = useState(() => Object.fromEntries(
+    Object.entries(precosVARValor).map(([codigo, valor]) => [codigo, { valor }])));
+
+  // Grava no storage só a projeção {codigo: valor} — nunca o `decidido` que
+  // mora junto no mesmo mapa em memória (comentário acima).
+  useEffect(() => {
+    setPrecosATValor(Object.fromEntries(
+      Object.entries(precosAT).map(([codigo, entrada]) => [codigo, entrada.valor])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precosAT]);
+  useEffect(() => {
+    setPrecosVARValor(Object.fromEntries(
+      Object.entries(precosVAR).map(([codigo, entrada]) => [codigo, entrada.valor])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precosVAR]);
 
   useEffect(() => {
     api.opcoes().then(setOpcoes).catch((e) => setErro(e.detalhe));
@@ -155,6 +209,47 @@ export default function Precificacao() {
   }, [buscar, busca]);
 
   const itens = dados?.itens ?? [];
+
+  // Recompõe o `decidido` (o outro campo de `precosAT`/`precosVAR`) a partir
+  // do JSON FRESCO recém-carregado — nunca do storage, que só guarda `valor`
+  // (comentário acima, onde os dois mapas nascem). Roda toda vez que a lista
+  // muda (troca de página/filtro, ou o remonte da tela ao "voltar"): para
+  // cada entrada que ainda NÃO TEM `decidido` capturado — as restauradas do
+  // storage, que nascem só com `{valor}` — e cujo produto está na página
+  // recém-carregada, preenche com `p.precoDecididoAtacadoAV`/`VarejoAV` de
+  // AGORA. Uma vez preenchido (mesmo que com `null`, "não há decisão"), a
+  // entrada passa a se comportar EXATAMENTE como uma capturada ao digitar
+  // (`setPrecoAT`/`setPrecoVAR`, na `Tabela` abaixo) — o snapshot não é
+  // sobrescrito de novo, então `alteracoesLote` decide "isto é alteração de
+  // verdade?" da mesma forma nos dois casos, só que a fonte do `decidido` é
+  // sempre o JSON, nunca o `sessionStorage`.
+  useEffect(() => {
+    if (!itens.length) return;
+    setPrecosAT((mapa) => {
+      let mudou = false;
+      const novo = { ...mapa };
+      for (const p of itens) {
+        const entrada = novo[p.codigo];
+        if (entrada && !("decidido" in entrada)) {
+          novo[p.codigo] = { ...entrada, decidido: p.precoDecididoAtacadoAV ?? null };
+          mudou = true;
+        }
+      }
+      return mudou ? novo : mapa;
+    });
+    setPrecosVAR((mapa) => {
+      let mudou = false;
+      const novo = { ...mapa };
+      for (const p of itens) {
+        const entrada = novo[p.codigo];
+        if (entrada && !("decidido" in entrada)) {
+          novo[p.codigo] = { ...entrada, decidido: p.precoDecididoVarejoAV ?? null };
+          mudou = true;
+        }
+      }
+      return mudou ? novo : mapa;
+    });
+  }, [itens]);
 
   // O que o "Gravar todos" de fato manda: só os campos que passariam no MESMO
   // teste do botão unitário (`CelulaEdicao.podeSalvar` — valor > 0 e diferente

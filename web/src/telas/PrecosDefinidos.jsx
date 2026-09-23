@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Check, FileSpreadsheet, Filter, Loader2, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro, Vazio } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import {
@@ -26,13 +27,23 @@ import { numero } from "../formato.js";
 const NAVY = "#375DA8";
 const RED = "#DE434B";
 
+// Etapa 16: filtro sobrevive a "voltar" de `/precos-definidos/:id` (que já
+// usa `navegar(-1)`) — mesmo mecanismo de `Precificacao.jsx`. Os dois status
+// existentes, ambos ligados por padrão — diferente de PedidosSalvos (4
+// status, 2 "em andamento"), aqui isso já é "todos".
+const FILTROS_PADRAO = { statusAtivos: ["Rascunho", "Enviado"] };
+
 export default function PrecosDefinidos() {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
-  // Os dois status existentes, ambos ligados por padrão — diferente de
-  // PedidosSalvos (4 status, 2 "em andamento"), aqui isso já é "todos".
-  const [statusAtivos, setStatusAtivos] = useState(["Rascunho", "Enviado"]);
+
+  const [filtros, setFiltros] = useEstadoPersistente(
+    "app_compras_filtros_precos_definidos_v1", FILTROS_PADRAO);
+  const { statusAtivos } = filtros;
+  const setStatusAtivos = (v) => setFiltros((f) => ({
+    ...f, statusAtivos: typeof v === "function" ? v(f.statusAtivos) : v,
+  }));
   const [ocupado, setOcupado] = useState(null);
   const [aExcluir, setAExcluir] = useState(null);
   // Etapa 13, ponto 4: lista PAGINADA no servidor (§3.1) — mesmo componente

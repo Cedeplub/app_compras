@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown, ChevronRight, Filter } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import { corDoAlerta, detalheDoTexto, iconeDoAlerta } from "../alertas.js";
@@ -40,6 +41,13 @@ const CENARIOS = [
   { id: "sem_red", rotulo: "Sem Redução" },
 ];
 
+// Etapa 16: filtros sobrevivem a "voltar" da Decisão do SKU — mesmo
+// mecanismo de `Precificacao.jsx`.
+const FILTROS_PADRAO = {
+  ativos: [], filtroDepartamento: "", filtroComprador: "", filtroStatus: "Ativo",
+  cenarioSel: "st_valor", busca: "", pagina: 1,
+};
+
 export default function Alertas() {
   const { versaoDados } = useAtualizacao();
   const [opcoes, setOpcoes] = useState(null);
@@ -47,13 +55,21 @@ export default function Alertas() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const [ativos, setAtivos] = useState([]);
-  const [filtroDepartamento, setFiltroDepartamento] = useState("");
-  const [filtroComprador, setFiltroComprador] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("Ativo");
-  const [cenarioSel, setCenarioSel] = useState("st_valor");
-  const [busca, setBusca] = useState("");
-  const [pagina, setPagina] = useState(1);
+  const [filtros, setFiltros] = useEstadoPersistente(
+    "app_compras_filtros_alertas_v1", FILTROS_PADRAO);
+  // Aceita valor direto ou função de atualização — `alternarTipo` (abaixo)
+  // usa a segunda forma para ligar/desligar um tipo de alerta na lista.
+  const setCampo = (campo) => (v) => setFiltros((f) => ({
+    ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
+  }));
+  const { ativos, filtroDepartamento, filtroComprador, filtroStatus, cenarioSel, busca, pagina } = filtros;
+  const setAtivos = setCampo("ativos");
+  const setFiltroDepartamento = setCampo("filtroDepartamento");
+  const setFiltroComprador = setCampo("filtroComprador");
+  const setFiltroStatus = setCampo("filtroStatus");
+  const setCenarioSel = setCampo("cenarioSel");
+  const setBusca = setCampo("busca");
+  const setPagina = setCampo("pagina");
   // Etapa 13, ponto 4: "prioridade" (severidade máxima → curva ABC → soma,
   // decisão do Diretor de 02/09) é a ORDEM COMPOSTA padrão da tela — não é
   // coluna nenhuma (§3.3), então não tem `CabecalhoOrdenavel` correspondente;

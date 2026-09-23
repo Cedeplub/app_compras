@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { ordenarLista } from "../componentes/CabecalhoOrdenavel.jsx";
 import SeletorPeriodo from "../componentes/SeletorPeriodo.jsx";
@@ -24,6 +25,19 @@ const CINZA = "#6B7280";
 
 const ROTULO_DIMENSAO = { departamento: "Departamento", secao: "Seção" };
 
+// Etapa 16: filtros sobrevivem a "voltar" — mesmo mecanismo de
+// `Precificacao.jsx`. Sem `pagina`: as duas tabelas desta tela (por grupo,
+// por produto) não têm paginação própria, ordenam no cliente sobre um
+// recorte já limitado pelo servidor.
+const FILTROS_PADRAO = {
+  granularidade: "Mês", offset: 0, metrica: "faturamento",
+  departamento: "", secao: "", comprador: "",
+  // Nasce em "Todos", diferente das outras telas: histórico realizado vale
+  // mesmo para produto hoje inativo — foi vendido, entrou no faturamento.
+  // É a mesma escolha do protótipo (§2.2).
+  status: "", porProduto: false,
+};
+
 export default function Monitoramento() {
   const { versaoDados } = useAtualizacao();
   const [parametros, setParametros] = useState(null);
@@ -32,17 +46,20 @@ export default function Monitoramento() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const [granularidade, setGranularidade] = useState("Mês");
-  const [offset, setOffset] = useState(0);
-  const [metrica, setMetrica] = useState("faturamento");
-  const [departamento, setDepartamento] = useState("");
-  const [secao, setSecao] = useState("");
-  const [comprador, setComprador] = useState("");
-  // Nasce em "Todos", diferente das outras telas: histórico realizado vale
-  // mesmo para produto hoje inativo — foi vendido, entrou no faturamento.
-  // É a mesma escolha do protótipo (§2.2).
-  const [status, setStatus] = useState("");
-  const [porProduto, setPorProduto] = useState(false);
+  const [filtros, setFiltros] = useEstadoPersistente(
+    "app_compras_filtros_monitoramento_v1", FILTROS_PADRAO);
+  const setCampo = (campo) => (v) => setFiltros((f) => ({
+    ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
+  }));
+  const { granularidade, offset, metrica, departamento, secao, comprador, status, porProduto } = filtros;
+  const setGranularidade = setCampo("granularidade");
+  const setOffset = setCampo("offset");
+  const setMetrica = setCampo("metrica");
+  const setDepartamento = setCampo("departamento");
+  const setSecao = setCampo("secao");
+  const setComprador = setCampo("comprador");
+  const setStatus = setCampo("status");
+  const setPorProduto = setCampo("porProduto");
 
   useEffect(() => {
     api.parametros().then(setParametros).catch((e) => setErro(e.detalhe));

@@ -105,7 +105,19 @@ export default function LotePrecoDetalhe() {
         && !window.confirm("Há um preço digitado que ainda não foi gravado. Sair mesmo assim?")) {
       return;
     }
-    navegar("/precos-definidos");
+    // `navegar(-1)` volta para a tela ANTERIOR de fato — o filtro e a edição
+    // dela (que não são deste componente) sobrevivem porque ela não foi
+    // desmontada por uma navegação nova, só reexibida (Precificação e
+    // Decisão do SKU usam `estadoTela.js`/o próprio `sessionStorage` do
+    // carrinho para isso). Mas `-1` só faz sentido dentro do HISTÓRICO deste
+    // app: se a pessoa abriu `/precos-definidos/41` direto pela URL (link
+    // colado, aba nova), não existe "tela anterior" nossa — `idx` do
+    // react-router (window.history.state.idx) nasce 0 nesse caso, e nunca
+    // sobe além disso sem uma navegação PUSH dentro do app antes. Sem este
+    // fallback, `-1` sairia do app inteiro (ou cairia numa página em branco
+    // do navegador) — pior que o destino fixo de antes.
+    if (window.history.state?.idx > 0) navegar(-1);
+    else navegar("/precos-definidos");
   }
 
   if (carregando) return <Carregando>Buscando o lote…</Carregando>;

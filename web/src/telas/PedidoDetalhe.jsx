@@ -51,6 +51,16 @@ export default function PedidoDetalhe() {
 
   useEffect(() => { carregar(); }, [carregar]);
 
+  // Mesmo mecanismo de `LotePrecoDetalhe.jsx:voltar` — `navegar(-1)` devolve
+  // a tela ANTERIOR de verdade (Pedidos Salvos com o filtro que a pessoa
+  // tinha escolhido, preservado por `estadoTela.js`), com fallback para o
+  // destino fixo quando não há "tela anterior" nossa no histórico (link
+  // direto, aba nova: `window.history.state.idx` nasce 0 nesse caso).
+  function voltar() {
+    if (window.history.state?.idx > 0) navegar(-1);
+    else navegar("/pedidos-salvos");
+  }
+
   async function agir(acao) {
     setOcupado(true);
     setErro(null);
@@ -79,7 +89,7 @@ export default function PedidoDetalhe() {
 
   return (
     <div className="px-4 pb-8 pt-3 md:px-6 md:pt-4">
-      <button type="button" onClick={() => navegar("/pedidos-salvos")}
+      <button type="button" onClick={voltar}
               className="mb-3 flex items-center gap-1 text-sm font-medium" style={{ color: NAVY }}>
         <ChevronLeft size={14} aria-hidden="true" /> Voltar para a lista
       </button>

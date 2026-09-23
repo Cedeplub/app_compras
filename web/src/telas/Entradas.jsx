@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown, Filter, PackagePlus } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro, Vazio } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { ordenarLista } from "../componentes/CabecalhoOrdenavel.jsx";
 import SeletorPeriodo from "../componentes/SeletorPeriodo.jsx";
@@ -43,6 +44,14 @@ function agrupar(itens, referencia) {
     .map((k) => [k, grupos.get(k)]);
 }
 
+// Etapa 16: filtros sobrevivem a "voltar" — mesmo mecanismo de
+// `Precificacao.jsx`. `ordenar`/`dir` (abaixo) ficam de fora, de propósito:
+// são estado local desta tela (não a URL), e persistir o par de ordenação de
+// uma lista sem paginação não estava no pedido — o pedido é filtro e edição.
+const FILTROS_PADRAO = {
+  granularidade: "Mês", offset: 0, departamento: "", secao: "", comprador: "", busca: "",
+};
+
 export default function Entradas() {
   const { versaoDados } = useAtualizacao();
   const [parametros, setParametros] = useState(null);
@@ -51,12 +60,18 @@ export default function Entradas() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const [granularidade, setGranularidade] = useState("Mês");
-  const [offset, setOffset] = useState(0);
-  const [departamento, setDepartamento] = useState("");
-  const [secao, setSecao] = useState("");
-  const [comprador, setComprador] = useState("");
-  const [busca, setBusca] = useState("");
+  const [filtros, setFiltros] = useEstadoPersistente(
+    "app_compras_filtros_entradas_v1", FILTROS_PADRAO);
+  const setCampo = (campo) => (v) => setFiltros((f) => ({
+    ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
+  }));
+  const { granularidade, offset, departamento, secao, comprador, busca } = filtros;
+  const setGranularidade = setCampo("granularidade");
+  const setOffset = setCampo("offset");
+  const setDepartamento = setCampo("departamento");
+  const setSecao = setCampo("secao");
+  const setComprador = setCampo("comprador");
+  const setBusca = setCampo("busca");
   // Etapa 13, ponto 4: lista sem paginação (teto de 200) — ordena NO CLIENTE
   // (§3.1), um único par ordenar/dir para os 4 grupos (Hoje/Ontem/…), cada um
   // ordenado por ele de forma independente. Ajuste 3 do revisor (13/09): o

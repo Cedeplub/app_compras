@@ -4,6 +4,7 @@ import { Check, ChevronDown, Filter, Loader2, X } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
 import { useCarrinho } from "../contexto/carrinho.jsx";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
@@ -65,6 +66,15 @@ const UNIDADES = [
   { id: "qtd", rotulo: "Qtd" },
 ];
 
+// Etapa 16: filtros sobrevivem a "voltar" da Decisão do SKU (que já usa
+// `navegar(-1)`) — mesmo mecanismo de `Precificacao.jsx`, mesmo motivo. O
+// carrinho ({codigo: quantidade}) já persiste sozinho, em `contexto/
+// carrinho.jsx` — não entra aqui.
+const FILTROS_PADRAO = {
+  departamento: "", comprador: "", status: "Ativo", estoque: "",
+  busca: "", pagina: 1, dtUltEntDe: "", dtUltEntAte: "",
+};
+
 export default function Pedidos() {
   const navegar = useNavigate();
   const { versaoDados } = useAtualizacao();
@@ -74,22 +84,29 @@ export default function Pedidos() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const [departamento, setDepartamento] = useState("");
-  const [comprador, setComprador] = useState("");
-  const [status, setStatus] = useState("Ativo");
-  // Etapa 15, ponto 4: "" (todos) | "com" | "sem" — mesmo padrão de
-  // `departamento`/`status`/`busca`: estado local, não na URL (só
-  // `ordenar`/`dir` vivem lá, por precisarem ser o mesmo estado do cabeçalho
-  // clicável — §3.3, que não se aplica aqui).
-  const [estoque, setEstoque] = useState("");
-  const [busca, setBusca] = useState("");
-  const [pagina, setPagina] = useState(1);
+  const [filtros, setFiltros] = useEstadoPersistente(
+    "app_compras_filtros_pedidos_v1", FILTROS_PADRAO);
+  // Aceita valor direto ou função de atualização — mesmo par de formas que
+  // `useState` aceita (molde: `Precificacao.jsx`).
+  const setCampo = (campo) => (v) => setFiltros((f) => ({
+    ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
+  }));
+  const { departamento, comprador, status, estoque, busca, pagina,
+          dtUltEntDe, dtUltEntAte } = filtros;
+  const setDepartamento = setCampo("departamento");
+  const setComprador = setCampo("comprador");
+  const setStatus = setCampo("status");
+  // Etapa 15, ponto 4: "" (todos) | "com" | "sem".
+  const setEstoque = setCampo("estoque");
+  const setBusca = setCampo("busca");
+  const setPagina = setCampo("pagina");
+  const setDtUltEntDe = setCampo("dtUltEntDe");
+  const setDtUltEntAte = setCampo("dtUltEntAte");
   // Etapa 13, ponto 4: mesmo par `ordenar`/`dir` na URL, escrito tanto pelo
-  // dropdown "Ordenar por" quanto pelo clique no cabeçalho da coluna (§3.3/§3.4).
+  // dropdown "Ordenar por" quanto pelo clique no cabeçalho da coluna (§3.3/§3.4)
+  // — já sobrevive a "voltar" por conta própria (é a própria URL).
   const { ordenar, dir, aoOrdenar } = useOrdenacaoUrl("cobertura", "asc", setPagina);
   const [unidadeTotal, setUnidadeTotal] = useState("valor");
-  const [dtUltEntDe, setDtUltEntDe] = useState("");
-  const [dtUltEntAte, setDtUltEntAte] = useState("");
 
   // O carrinho é {codigo: quantidade}. Etapa 13, §6.2: vive em
   // `contexto/carrinho.jsx` (sessionStorage por aba), não mais em

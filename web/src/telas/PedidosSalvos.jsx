@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Download, Filter, Loader2, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro, Vazio } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import { COR_STATUS, ROTULO_AVANCAR, ROTULO_VOLTAR, STATUS,
@@ -13,14 +14,25 @@ import { moeda, numero } from "../formato.js";
 const NAVY = "#375DA8";
 const RED = "#DE434B";
 
+// Etapa 16: filtros sobrevivem a "voltar" de `/pedidos-salvos/:id` (que já
+// usa `navegar(-1)`) — mesmo mecanismo de `Precificacao.jsx`. Nasce com os
+// dois status "em andamento" ligados, como no protótipo (§2.5): é o recorte
+// de quem abre a tela para trabalhar, não para consultar.
+const FILTROS_PADRAO = { statusAtivos: ["Rascunho", "Orçamento Enviado"], busca: "" };
+
 export default function PedidosSalvos() {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
-  // Nasce com os dois status "em andamento" ligados, como no protótipo (§2.5):
-  // é o recorte de quem abre a tela para trabalhar, não para consultar.
-  const [statusAtivos, setStatusAtivos] = useState(["Rascunho", "Orçamento Enviado"]);
-  const [busca, setBusca] = useState("");
+
+  const [filtros, setFiltros] = useEstadoPersistente(
+    "app_compras_filtros_pedidos_salvos_v1", FILTROS_PADRAO);
+  const setCampo = (campo) => (v) => setFiltros((f) => ({
+    ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
+  }));
+  const { statusAtivos, busca } = filtros;
+  const setStatusAtivos = setCampo("statusAtivos");
+  const setBusca = setCampo("busca");
   const [ocupado, setOcupado] = useState(null);       // id do pedido em ação
   const [aExcluir, setAExcluir] = useState(null);     // pedido aguardando confirmação
   // Etapa 13, ponto 4: lista PAGINADA no servidor (§3.1), mesmo componente
