@@ -772,10 +772,18 @@ function PainelItens({ id, carrinho, itens, cacheProdutos, aoDescartarItem, aoPe
                   <div className="num text-sm font-semibold text-gray-700">{qtd}</div>
                   {emCaixa && <div className="text-[9px] text-gray-400">caixas</div>}
                 </div>
+                {/* Lixeira vermelha contornada, no mesmo desenho do "Descartar
+                    todos" do rodapé — a ação é a mesma, só muda o alcance.
+                    Deixou de ser um "X" cinza de propósito: com o "X" aqui, o
+                    único outro "X" do painel (fechar, no cabeçalho) era lido
+                    como "descartar tudo" e a lista fechava sem descartar nada.
+                    Agora "X" significa fechar em todo o painel, e lixeira
+                    significa descartar — um símbolo, um sentido. */}
                 <button type="button" onClick={() => aoDescartarItem(codigo)}
                         aria-label={`Descartar o produto ${codigo} do carrinho`}
-                        className="rounded-md p-1 text-gray-400 hover:text-red-500">
-                  <X size={14} aria-hidden="true" />
+                        className="rounded-md border p-1.5"
+                        style={{ color: RED, borderColor: RED }}>
+                  <Trash2 size={14} aria-hidden="true" />
                 </button>
               </div>
             </li>
