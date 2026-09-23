@@ -73,7 +73,19 @@ sources:
   # aparece no modelo depois do proximo `dbt run`.
   # ─────────────────────────────────────────────────────────────────────────────
   - name: compras_app
-    schema: compras
+    # Segue o schema do TARGET, nao um nome chumbado: as tabelas APP_* moram,
+    # por desenho, no mesmo schema em que o dbt escreve (CONTEXTO.md §2 - "tudo
+    # que o sistema cria e registra mora no mesmo schema, prefixo APP_"). Em
+    # producao (target prod) isto resolve para `compras`, exatamente como antes;
+    # num ambiente isolado de desenvolvimento resolve para o schema dele, e o
+    # dbt de dev le as decisoes gravadas EM DEV, em vez de tentar - e falhar com
+    # ORA-00942, por falta de grant - ler as de producao.
+    # Erro medido em 22/09/2026 16:08: `dbt run` de dev falhou com ORA-00942 em
+    # `stg_decisao_pedido` e `stg_decisao_preco` porque schema: compras chumbado
+    # mandava usuario sem grant ler APP_* de outro schema.
+    # A source `cedep` acima continua chumbada de proposito: o ERP e o mesmo nos
+    # dois ambientes, e e so leitura.
+    schema: "{{ target.schema }}"
     description: "Tabelas escritas pela aplicacao (dashboard). O dbt so le."
     tables:
       - name: app_decisao_preco
