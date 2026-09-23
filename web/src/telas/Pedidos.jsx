@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Check, ChevronDown, Filter, Loader2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Filter, Loader2, Trash2, X } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
 import { useCarrinho } from "../contexto/carrinho.jsx";
@@ -241,8 +241,9 @@ export default function Pedidos() {
       )}
 
       {totais.linhas > 0 && (
-        <BarraCarrinho totais={totais} unidade={unidadeTotal} setUnidade={setUnidadeTotal}
-                       salvando={salvando} aoSalvar={salvar} />
+        <CarrinhoFlutuante totais={totais} unidade={unidadeTotal} setUnidade={setUnidadeTotal}
+                           salvando={salvando} aoSalvar={salvar}
+                           carrinho={carrinho} setCarrinho={setCarrinho} itens={itens} />
       )}
     </div>
   );
@@ -548,7 +549,111 @@ function LinhaPedido({ p, valor, aoTrocar, parametros }) {
 
 /* ---------------------------------------------------------- barra carrinho --- */
 
-function BarraCarrinho({ totais, unidade, setUnidade, salvando, aoSalvar }) {
+const ID_PAINEL_ITENS = "painel-itens-carrinho";
+
+/** Envelope fixo no rodapé que junta a barra de totais com o painel "Ver
+ *  itens" (pedido do Diretor, Etapa 16: "deve ter um botão que mostre os
+ *  pedidos que estão nele"). Painel e barra vivem no MESMO `fixed inset-x-0
+ *  bottom-0 z-30` — não dois elementos fixos separados tentando se alinhar —
+ *  porque a barra cresce (duas linhas no celular, uma na mesa) e calcular a
+ *  altura para "grudar" um painel por cima dela seria reinventar o que o
+ *  fluxo normal do flexbox já faz de graça: o painel entra ANTES da barra no
+ *  DOM, então "abrir para cima" é só a ordem natural da coluna.
+ *
+ *  Cache de produtos buscados sob demanda (Tarefa 2): vive aqui, não dentro
+ *  do painel, porque o painel é desmontado toda vez que fecha (`{aberto &&
+ *  <PainelItens/>}`) — um estado local dele se perderia a cada reabertura, e
+ *  a instrução era justamente NÃO repetir a busca. */
+function CarrinhoFlutuante({ totais, unidade, setUnidade, salvando, aoSalvar,
+                             carrinho, setCarrinho, itens }) {
+  const [aberto, setAberto] = useState(false);
+  const [confirmarTudo, setConfirmarTudo] = useState(false);
+  const [cacheProdutos, setCacheProdutos] = useState({}); // codigo -> produto | null (falhou)
+  const emAndamento = useRef(new Set());
+  const raiz = useRef(null);
+
+  // Fecha com Esc e ao clicar fora — mas só enquanto NÃO há diálogo de
+  // confirmação: o diálogo é modal (molde `ConfirmarExclusao` de
+  // PedidosSalvos.jsx) e vive DENTRO deste mesmo `raiz`, então um clique nos
+  // botões dele nunca conta como "fora".
+  useEffect(() => {
+    if (!aberto && !confirmarTudo) return;
+    function aoTeclar(e) {
+      if (e.key !== "Escape") return;
+      if (confirmarTudo) setConfirmarTudo(false);
+      else setAberto(false);
+    }
+    function aoClicarFora(e) {
+      if (confirmarTudo) return;
+      if (raiz.current && !raiz.current.contains(e.target)) setAberto(false);
+    }
+    document.addEventListener("keydown", aoTeclar);
+    document.addEventListener("mousedown", aoClicarFora);
+    return () => {
+      document.removeEventListener("keydown", aoTeclar);
+      document.removeEventListener("mousedown", aoClicarFora);
+    };
+  }, [aberto, confirmarTudo]);
+
+  // Busca sob demanda (Tarefa 2, ordem 2): só dispara com o painel ABERTO, e
+  // só para os códigos que estão no carrinho, faltando na página atual, e
+  // ainda não tentados. Falha de rede/404 grava `null` no cache — é o sinal
+  // para o painel cair para "mostrar só o código" sem travar nada.
+  useEffect(() => {
+    if (!aberto) return;
+    const naPagina = new Set(itens.map((p) => String(p.codigo)));
+    const faltantes = Object.entries(carrinho)
+      .filter(([, qtd]) => (Number(String(qtd).replace(",", ".")) || 0) > 0)
+      .map(([codigo]) => codigo)
+      .filter((codigo) => !naPagina.has(codigo)
+        && !(codigo in cacheProdutos) && !emAndamento.current.has(codigo));
+    for (const codigo of faltantes) {
+      emAndamento.current.add(codigo);
+      api.produto(codigo)
+        .then((p) => setCacheProdutos((c) => ({ ...c, [codigo]: p })))
+        .catch(() => setCacheProdutos((c) => ({ ...c, [codigo]: null })))
+        .finally(() => emAndamento.current.delete(codigo));
+    }
+  }, [aberto, carrinho, itens, cacheProdutos]);
+
+  // Descartar UM item: tira a CHAVE do objeto (não grava ""), porque é a
+  // chave que `Tabela`/`LinhaPedido` lê em `valor={carrinho[p.codigo]}` — sem
+  // ela o campo volta a ficar vazio, e `totais` para de contar a linha (o
+  // `if (n <= 0) continue` de cima nunca chega a rodar, porque a linha nem
+  // existe mais em `Object.entries`).
+  const descartarItem = useCallback((codigo) => {
+    setCarrinho((c) => {
+      const { [codigo]: _omitido, ...resto } = c;
+      return resto;
+    });
+  }, [setCarrinho]);
+
+  return (
+    <div ref={raiz} className="fixed inset-x-0 bottom-0 z-30">
+      {aberto && (
+        <PainelItens id={ID_PAINEL_ITENS} carrinho={carrinho} itens={itens}
+                     cacheProdutos={cacheProdutos}
+                     aoDescartarItem={descartarItem}
+                     aoPedirDescartarTudo={() => setConfirmarTudo(true)}
+                     aoFechar={() => setAberto(false)} />
+      )}
+      <BarraCarrinho totais={totais} unidade={unidade} setUnidade={setUnidade}
+                     salvando={salvando} aoSalvar={aoSalvar}
+                     aberto={aberto} aoAlternarAberto={() => setAberto((v) => !v)} />
+      {confirmarTudo && (
+        <ConfirmarDescartarTudo quantidade={totais.linhas}
+          aoCancelar={() => setConfirmarTudo(false)}
+          aoConfirmar={() => {
+            setCarrinho({});
+            setConfirmarTudo(false);
+            setAberto(false);
+          }} />
+      )}
+    </div>
+  );
+}
+
+function BarraCarrinho({ totais, unidade, setUnidade, salvando, aoSalvar, aberto, aoAlternarAberto }) {
   const valores = {
     valor: moeda(totais.valor),
     peso: `${numero(totais.peso, 0)} kg`,
@@ -556,7 +661,7 @@ function BarraCarrinho({ totais, unidade, setUnidade, salvando, aoSalvar }) {
     qtd: `${numero(totais.qtd, 0)} un`,
   };
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white px-4 py-3 shadow-lg md:px-6">
+    <div className="border-t border-gray-200 bg-white px-4 py-3 shadow-lg md:px-6">
       <div className="mx-auto flex max-w-app flex-wrap items-center gap-3">
         <div>
           <div className="text-2xs text-gray-500">
@@ -583,6 +688,13 @@ function BarraCarrinho({ totais, unidade, setUnidade, salvando, aoSalvar }) {
           ))}
         </div>
 
+        <button type="button" onClick={aoAlternarAberto}
+                aria-expanded={aberto} aria-controls={ID_PAINEL_ITENS}
+                className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-semibold text-gray-600">
+          {aberto ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronUp size={14} aria-hidden="true" />}
+          Ver itens ({numero(totais.linhas)})
+        </button>
+
         <button type="button" onClick={aoSalvar} disabled={salvando}
                 className="ml-auto flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 style={{ background: NAVY }}>
@@ -594,6 +706,118 @@ function BarraCarrinho({ totais, unidade, setUnidade, salvando, aoSalvar }) {
         Um pedido por departamento — é como o Winthor importa. O carrinho fica salvo nesta
         aba (mesmo ao recarregar); abrir em outra aba começa vazio.
       </p>
+    </div>
+  );
+}
+
+/** Lista do que está no carrinho, item a item (Tarefa 1/2).
+ *
+ *  Cada linha decide de onde tira nome/departamento, em ordem de preferência:
+ *  1. está na página atual (`itens`) — mesmo objeto que a tabela já usa;
+ *  2. veio da busca sob demanda (`cacheProdutos[codigo]`, um objeto);
+ *  3. a busca terminou e falhou (`cacheProdutos[codigo] === null`) — cai para
+ *     mostrar só o código, sem travar o painel nem o descarte;
+ *  4. ainda não terminou (`codigo` nem está em `cacheProdutos`) — spinner. */
+function PainelItens({ id, carrinho, itens, cacheProdutos, aoDescartarItem, aoPedirDescartarTudo, aoFechar }) {
+  const naPagina = new Map(itens.map((p) => [String(p.codigo), p]));
+  const linhas = Object.entries(carrinho)
+    .filter(([, qtd]) => (Number(String(qtd).replace(",", ".")) || 0) > 0);
+
+  return (
+    <div id={id} role="region" aria-label="Itens no carrinho"
+         className="mx-auto max-w-app border-x border-t border-gray-200 bg-white px-4 pt-3 md:px-6">
+      <div className="flex items-center justify-between pb-2">
+        <span className="text-xs font-semibold text-gray-500">Itens no carrinho</span>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={aoPedirDescartarTudo}
+                  className="flex items-center gap-1 text-xs font-semibold" style={{ color: RED }}>
+            <Trash2 size={12} aria-hidden="true" /> Descartar todos
+          </button>
+          <button type="button" onClick={aoFechar} aria-label="Fechar lista de itens"
+                  className="text-gray-400">
+            <X size={14} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <ul className="max-h-56 divide-y divide-gray-100 overflow-y-auto pb-2">
+        {linhas.map(([codigo, qtd]) => {
+          const doCache = cacheProdutos[codigo];
+          const info = naPagina.get(codigo) ?? (doCache || undefined);
+          const falhouBusca = !info && doCache === null;
+          const emCaixa = info && (info.fatorExibicao || 1) > 1;
+          return (
+            <li key={codigo} className="flex items-center justify-between gap-2 py-2">
+              <div className="min-w-0">
+                {info ? (
+                  <>
+                    <div className="truncate text-sm font-medium text-gray-800">{info.nome}</div>
+                    <div className="num text-2xs text-gray-400">
+                      {codigo} · {info.departamento ?? "—"}
+                    </div>
+                  </>
+                ) : falhouBusca ? (
+                  // A busca terminou e não achou o produto (rede, 404, saiu do
+                  // cadastro) — mostra só o código, e o descarte continua
+                  // funcionando normalmente: não é motivo para travar o painel.
+                  <div className="num text-sm text-gray-500">Produto {codigo}</div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-sm text-gray-400">
+                    <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                    <span className="num">Produto {codigo}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <div className="text-right">
+                  <div className="num text-sm font-semibold text-gray-700">{qtd}</div>
+                  {emCaixa && <div className="text-[9px] text-gray-400">caixas</div>}
+                </div>
+                <button type="button" onClick={() => aoDescartarItem(codigo)}
+                        aria-label={`Descartar o produto ${codigo} do carrinho`}
+                        className="rounded-md p-1 text-gray-400 hover:text-red-500">
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/* O molde é `ConfirmarExclusao` de PedidosSalvos.jsx — mesmo diálogo modal,
+ * mesmo texto de aviso sem desfazer. Descartar UM item não passa por aqui
+ * (é clique óbvio e refazível: basta digitar de novo); descartar TODOS
+ * apaga de uma vez o que várias pessoas podem ter levado minutos digitando. */
+function ConfirmarDescartarTudo({ quantidade, aoCancelar, aoConfirmar }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+         role="dialog" aria-modal="true" aria-labelledby="titulo-descartar-tudo">
+      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-lg">
+        <div className="flex items-start gap-2">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" style={{ color: RED }} aria-hidden="true" />
+          <div>
+            <h2 id="titulo-descartar-tudo" className="font-semibold text-gray-900">
+              Descartar {numero(quantidade)} item(ns) do carrinho?
+            </h2>
+            <p className="mt-2 text-xs text-gray-500">
+              O que foi digitado no campo Pedido de cada produto é apagado. Não há como desfazer.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={aoCancelar}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700">
+            Cancelar
+          </button>
+          <button type="button" onClick={aoConfirmar}
+                  className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
+                  style={{ background: RED }}>
+            Descartar todos
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
