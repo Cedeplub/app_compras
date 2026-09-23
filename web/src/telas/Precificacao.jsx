@@ -750,18 +750,24 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
 function Tributacao({ p }) {
   const cor = { ST_SUBSTITUTO: NAVY, ST_RECOLHIDO: "#7C3AED" }[p.modalidade] ?? CINZA;
   const rotulo = { ST_SUBSTITUTO: "ST Substituto", ST_RECOLHIDO: "ST Recolhido" }[p.modalidade] ?? "Normal";
+  // O texto do regime vem de COMPRAS_PRODUTO_CONTEXTO. Nulo nos 5 SKUs sem
+  // tributação encontrada — os mesmos do alerta TRIB; nesse caso o chip não
+  // ganha `title` nenhum (nem "—"), porque tooltip vazio no hover é pior que
+  // nenhum tooltip.
+  //
+  // O detalhe do regime mora só no `title` nativo do chip (pedido do
+  // Diretor: a coluna estava larga por causa da segunda linha de 9px que
+  // sempre aparecia). Sem lib nova, é o mesmo recurso que
+  // `lotePrecoStatus.js` já usa com `textoConferencia`.
+  // ⚠ Contrapartida real: `title` não aparece em toque — no celular, o
+  // regime fiscal deixa de ficar visível. Aceito de propósito: é informação
+  // secundária numa tabela de 15+ colunas que já rola de lado.
   return (
-    <>
-      <span className="whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-semibold"
-            style={{ background: `${cor}18`, color: cor }}>
-        {rotulo}{p.creditoPisCofins === 0 ? " · Mono" : ""}
-      </span>
-      {/* O texto do regime vem de COMPRAS_PRODUTO_CONTEXTO. Nulo nos 5 SKUs sem
-          tributação encontrada — os mesmos do alerta TRIB. */}
-      {p.regimeFiscal && (
-        <div className="mt-0.5 whitespace-nowrap text-[9px] text-gray-400">{p.regimeFiscal}</div>
-      )}
-    </>
+    <span className="whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-semibold"
+          style={{ background: `${cor}18`, color: cor }}
+          title={p.regimeFiscal || undefined}>
+      {rotulo}{p.creditoPisCofins === 0 ? " · Mono" : ""}
+    </span>
   );
 }
 
