@@ -28,7 +28,7 @@ import { useEffect, useState } from "react";
  * por tela desde a Etapa 12/13 (ver comentário de `carrinho.jsx`).
  */
 
-function lerStorage(chave, valorPadrao) {
+function lerStorage(chave, valorPadrao, mesclarCampos) {
   try {
     const bruto = window.sessionStorage.getItem(chave);
     if (!bruto) return valorPadrao;
@@ -41,6 +41,15 @@ function lerStorage(chave, valorPadrao) {
     // uma chave que sobra no storage (versão antiga da tela tinha um filtro
     // que esta não tem mais) é descartada — nunca vaza para o estado da tela.
     if (!json || typeof json !== "object" || Array.isArray(json)) return valorPadrao;
+    // ⚠ A mesclagem SÓ vale para estado de FORMA FIXA (um objeto de filtros,
+    // cujas chaves são conhecidas de antemão). Para um DICIONÁRIO — chaves
+    // dinâmicas, como {códigoDoProduto: preço digitado} — ela apagaria tudo:
+    // as chaves vêm de `valorPadrao`, que num dicionário é `{}`, então o laço
+    // não copiaria nada e o retorno seria `{}`. Foi exatamente esse o defeito
+    // relatado logo depois da Etapa 16: os filtros voltavam ao usar "Voltar",
+    // e os preços digitados não. Por isso a forma é EXPLÍCITA no chamador, e
+    // não inferida daqui — inferir foi o que criou o defeito.
+    if (!mesclarCampos) return json;
     if (valorPadrao && typeof valorPadrao === "object" && !Array.isArray(valorPadrao)) {
       const mesclado = { ...valorPadrao };
       for (const chaveCampo of Object.keys(valorPadrao)) {
@@ -78,9 +87,16 @@ function escreverStorage(chave, valor) {
  *   o padrão novo assume.
  * @param {*} valorPadrao valor de partida, e o que volta sempre que o
  *   storage estiver vazio, corrompido, ou não bater na forma esperada.
+ * @param {boolean} [mesclarCampos=true] `true` para estado de FORMA FIXA (um
+ *   objeto de filtros com chaves conhecidas): o que voltar do storage é
+ *   mesclado campo a campo com o padrão, então filtro novo nasce no padrão e
+ *   filtro que não existe mais é descartado. `false` para DICIONÁRIO de
+ *   chaves dinâmicas (ex.: {códigoDoProduto: valor digitado}), onde mesclar
+ *   com um padrão `{}` apagaria todo o conteúdo — ver o comentário em
+ *   `lerStorage`.
  */
-export function useEstadoPersistente(chave, valorPadrao) {
-  const [valor, setValor] = useState(() => lerStorage(chave, valorPadrao));
+export function useEstadoPersistente(chave, valorPadrao, mesclarCampos = true) {
+  const [valor, setValor] = useState(() => lerStorage(chave, valorPadrao, mesclarCampos));
   useEffect(() => { escreverStorage(chave, valor); }, [chave, valor]);
   return [valor, setValor];
 }

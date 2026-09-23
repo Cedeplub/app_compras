@@ -150,10 +150,16 @@ export default function Precificacao() {
   // (como sempre viveu) — só a projeção `{codigo: valor}` vai para o
   // storage, e o `decidido` volta a ser preenchido a partir do JSON fresco
   // assim que o produto aparece numa página carregada (efeito logo abaixo).
+  // ⚠ O `false` do terceiro argumento não é detalhe: estes dois são
+  // DICIONÁRIOS ({códigoDoProduto: valor digitado}), não objetos de forma
+  // fixa como os filtros acima. Com a mesclagem ligada, `lerStorage` percorre
+  // as chaves do padrão — que aqui é `{}` — e devolveria sempre um mapa
+  // vazio, descartando tudo o que foi digitado. Era esse o defeito: o filtro
+  // voltava ao usar "Voltar" e o preço digitado, não.
   const [precosATValor, setPrecosATValor] = useEstadoPersistente(
-    "app_compras_precos_at_precificacao_v1", {});
+    "app_compras_precos_at_precificacao_v1", {}, false);
   const [precosVARValor, setPrecosVARValor] = useEstadoPersistente(
-    "app_compras_precos_var_precificacao_v1", {});
+    "app_compras_precos_var_precificacao_v1", {}, false);
   const [precosAT, setPrecosAT] = useState(() => Object.fromEntries(
     Object.entries(precosATValor).map(([codigo, valor]) => [codigo, { valor }])));
   const [precosVAR, setPrecosVAR] = useState(() => Object.fromEntries(
