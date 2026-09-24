@@ -5,6 +5,11 @@ python-multipart>=0.0.9
 oracledb>=2.0
 bcrypt>=4.1
 openpyxl>=3.1
+# openpyxl só consegue inserir imagem (logo no Excel legível do pedido, ver
+# app/servicos/pedido.py) se Pillow estiver instalado; sem esta linha, uma
+# instalação limpa gera a planilha sem logo em vez de quebrar (o insert é
+# best-effort, dentro de try/except), mas é melhor já vir com a dependência.
+Pillow>=10.0
 # Lido por dbt/atualizar.py para conferir, ANTES de rodar o dbt, se o schema
 # que profile/target construiriam e o mesmo que esta instancia registra
 # (trava de schema, Etapa 16). Nao e' dependencia do dbt-core aqui: atualizar.py

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, FileSpreadsheet, Loader2, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
+import logoCedep from "../logo-cedep.png";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { ordenarLista } from "../componentes/CabecalhoOrdenavel.jsx";
 import { COR_STATUS, ROTULO_AVANCAR, ROTULO_VOLTAR,
@@ -480,7 +481,14 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
 /* §2.8: overlay de tela cheia com o documento formatado. `window.print()` é o
  * que gera o PDF — o navegador oferece "Salvar como PDF" no diálogo. O
  * protótipo faz igual, e vale dizer em voz alta: não geramos PDF, o navegador
- * gera. */
+ * gera.
+ *
+ * A logo entra aqui como `<img>`, nunca como `background-image`: por padrão o
+ * navegador NÃO imprime imagem de fundo (nem cor de fundo), só o que está no
+ * fluxo do documento — um `background-image` sumiria no PDF sem aviso nenhum.
+ * Altura fixa (`h-12`, 48px) para não competir com o timbrado — a arte
+ * original é 300×163, então em `w-auto` ela sai com ~88px de largura no
+ * papel, um retângulo pequeno ao lado do título, não meia página. */
 function Comprovante({ pedido, aoFechar }) {
   return (
     <div className="fixed inset-0 z-50 overflow-auto bg-white p-6 print:p-0">
@@ -497,10 +505,15 @@ function Comprovante({ pedido, aoFechar }) {
           </button>
         </div>
 
-        <h1 className="mt-6 text-xl font-bold" style={{ color: NAVY }}>Orçamento de compra</h1>
-        <p className="num mt-1 text-sm text-gray-600">
-          Pedido #{pedido.id} · {pedido.fornecedor} · {pedido.status}
-        </p>
+        <div className="mt-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold" style={{ color: NAVY }}>Orçamento de compra</h1>
+            <p className="num mt-1 text-sm text-gray-600">
+              Pedido #{pedido.id} · {pedido.fornecedor} · {pedido.status}
+            </p>
+          </div>
+          <img src={logoCedep} alt="CEDEP" className="h-12 w-auto shrink-0" />
+        </div>
 
         <table className="mt-4 w-full text-sm">
           <thead>

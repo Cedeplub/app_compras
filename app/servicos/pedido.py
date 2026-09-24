@@ -54,9 +54,11 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+from pathlib import Path
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
+from openpyxl.drawing.image import Image as XLImage
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.core import auditoria, database
@@ -530,27 +532,76 @@ def excluir_pedido(id_pedido: int, usuario_login: str, usuario_id: int, ip: str 
 
 # ──────────────────────────────────────────────────────────── exportações ──
 
+# Logo institucional no cabeçalho do Excel legível. Cópia própria do backend
+# em `app/recursos/` — não referencia `web/src/logo-cedep.png` direto: aquele
+# caminho é asset do FRONT (Vite), pode ser reorganizado por quem mexe em
+# `web/` sem saber que o backend depende dele, e o Excel quebraria em
+# silêncio. A inserção é sempre best-effort (ver _montar_xlsx_legivel): se o
+# arquivo sumir ou o Pillow não estiver instalado, a planilha sai sem logo,
+# nunca deixa de sair.
+_LOGO_PATH = Path(__file__).resolve().parent.parent / "recursos" / "logo-cedep.png"
+
+# Paleta do projeto (mesma do resto do sistema), para o Excel não destoar do
+# dashboard. O fill do cabeçalho da tabela (_HEADER_FILL = 1F3864) é
+# compartilhado com `lote_preco.py` e não muda aqui.
+_COR_NAVY = "375DA8"
+_COR_VERDE = "15803D"
+_COR_CINZA = "6B7280"
+_COR_ZEBRA = "F3F4F6"
+_COR_BORDA = "D9D9D9"
+
+_BORDA_FINA = Border(
+    left=Side(style="thin", color=_COR_BORDA),
+    right=Side(style="thin", color=_COR_BORDA),
+    top=Side(style="thin", color=_COR_BORDA),
+    bottom=Side(style="thin", color=_COR_BORDA),
+)
+
+# PREÇO UNITÁRIO mantém 4 casas (não 2): o valor nasce de VL_ENT_UNIT/decisão
+# do comprador e aparece com frequência como ex. 75,0720 — arredondar para 2
+# casas aqui perderia o centavo fracionário que, multiplicado pela
+# quantidade do pedido, pode significar reais de diferença no VALOR TOTAL.
+# VALOR TOTAL (já uma soma monetária "final") segue em 2 casas, como antes.
 _COLUNAS_PEDIDO = [
     ("CÓDIGO", "0"),
     ("CÓD. FABRICANTE", "@"),
     ("DESCRIÇÃO", "@"),
     ("EMBALAGEM", "@"),
-    ("QUANTIDADE", "#,##0.####"),
+    ("QUANTIDADE", None),        # formato calculado por linha, ver _fmt_quantidade
     ("UNIDADE", "@"),
-    ("QTD. EM UNIDADES", "#,##0.####"),
-    ("PREÇO UNITÁRIO", "#,##0.0000"),
-    ("VALOR TOTAL", "#,##0.00"),
+    ("QTD. EM UNIDADES", None),  # idem
+    ("PREÇO UNITÁRIO", '"R$" #,##0.0000'),
+    ("VALOR TOTAL", '"R$" #,##0.00'),
 ]
+
+_COLUNAS_TEXTO = {"CÓD. FABRICANTE", "DESCRIÇÃO", "EMBALAGEM", "UNIDADE"}
+
+
+def _fmt_quantidade(valor: float) -> str:
+    """Sem o separador decimal pendurado (ex. "12,"): só usa casas
+    fracionárias quando a quantidade realmente as tem. Formato calculado por
+    célula em vez de fixo por coluna porque QUANTIDADE mistura inteiros
+    (a maioria) com fracionários dependendo do fator_exibicao congelado."""
+    return "#,##0" if float(valor).is_integer() else "#,##0.####"
 
 
 def _montar_xlsx_legivel(cabecalho: dict, itens: list[dict]) -> bytes:
     """Excel do pedido — colunas legíveis, mesmo estilo visual de
     `exportacao.py` (reaproveitado daqui: _HEADER_FILL/_HEADER_FONT), mas
     documento INTERNO (mostra o preço decidido pelo comprador, não o
-    VL_ENT_UNIT do arquivo que sai para o fornecedor)."""
+    VL_ENT_UNIT do arquivo que sai para o fornecedor).
+
+    Toda linha usa `ws.cell(row=linha, column=...)` com um contador de linha
+    próprio (`linha`), NUNCA `ws.append` intercalado por linha vazia:
+    `ws.append([])` não avança `ws.max_row` no openpyxl, o que fazia o
+    cabeçalho pintado (fill/auto_filter/freeze_panes) cair uma linha acima
+    dos rótulos (CÓDIGO, CÓD. FABRICANTE, ...) — bug visto no export real."""
     wb = Workbook()
     ws = wb.active
     ws.title = "Pedido"
+
+    ncols = len(_COLUNAS_PEDIDO)
+    linha = 1
 
     linhas_cabecalho = [
         (f"PEDIDO #{cabecalho['id_pedido']} — {cabecalho['fornecedor']}", True),
@@ -566,27 +617,36 @@ def _montar_xlsx_legivel(cabecalho: dict, itens: list[dict]) -> bytes:
         ),
     ]
     for texto, destaque in linhas_cabecalho:
-        ws.append([texto])
-        cel = ws.cell(row=ws.max_row, column=1)
-        cel.font = Font(bold=destaque, size=13 if destaque else 10)
-    ws.append([])
+        cel = ws.cell(row=linha, column=1, value=texto)
+        cel.font = Font(
+            bold=destaque,
+            size=13 if destaque else 10,
+            color=_COR_NAVY if destaque else _COR_CINZA,
+        )
+        linha += 1
 
-    linha_titulo = ws.max_row + 1
-    ws.append([rotulo for rotulo, _ in _COLUNAS_PEDIDO])
-    for idx in range(1, len(_COLUNAS_PEDIDO) + 1):
-        cel = ws.cell(row=linha_titulo, column=idx)
+    linha += 1  # linha em branco separadora: só pula o contador, não escreve nada
+
+    linha_titulo = linha
+    for idx, (rotulo, _fmt) in enumerate(_COLUNAS_PEDIDO, start=1):
+        cel = ws.cell(row=linha_titulo, column=idx, value=rotulo)
         cel.fill = exportacao._HEADER_FILL
         cel.font = exportacao._HEADER_FONT
         cel.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cel.border = _BORDA_FINA
+    linha = linha_titulo + 1
+    primeira_linha_dados = linha
 
     larguras = [max(len(rotulo) + 2, 12) for rotulo, _ in _COLUNAS_PEDIDO]
 
-    for item in itens:
+    total_valor = 0.0
+    for pos, item in enumerate(itens):
         fator = float(item["fator_exibicao"] or 1)
         quantidade = float(item["quantidade"] or 0)
         preco = float(item["preco_unitario"] or 0)
         qtd_unidades = quantidade * fator
         valor_total = qtd_unidades * preco
+        total_valor += valor_total
         embal_compra = item.get("embal_compra")
         if fator > 1 and embal_compra is not None:
             n = float(embal_compra)
@@ -598,21 +658,59 @@ def _montar_xlsx_legivel(cabecalho: dict, itens: list[dict]) -> bytes:
             item["codigo"], item.get("cod_fab"), item.get("descricao"), item.get("embalagem"),
             quantidade, unidade, qtd_unidades, preco, valor_total,
         ]
-        ws.append(valores)
-        for i, valor in enumerate(valores):
+        zebra = pos % 2 == 1
+        for idx, (valor, (rotulo, fmt)) in enumerate(zip(valores, _COLUNAS_PEDIDO), start=1):
+            cel = ws.cell(row=linha, column=idx, value=valor)
+            cel.border = _BORDA_FINA
+            cel.alignment = Alignment(
+                horizontal="left" if rotulo in _COLUNAS_TEXTO else "right",
+                vertical="center",
+            )
+            if zebra:
+                cel.fill = PatternFill("solid", fgColor=_COR_ZEBRA)
+            if rotulo == "QUANTIDADE":
+                cel.number_format = _fmt_quantidade(quantidade)
+            elif rotulo == "QTD. EM UNIDADES":
+                cel.number_format = _fmt_quantidade(qtd_unidades)
+            elif fmt not in (None, "@"):
+                cel.number_format = fmt
             if valor is not None:
-                larguras[i] = min(max(larguras[i], len(str(valor)) + 2), 45)
+                larguras[idx - 1] = min(max(larguras[idx - 1], len(str(valor)) + 2), 45)
+        linha += 1
 
-    ultima = ws.max_row
-    for idx, (_, fmt) in enumerate(_COLUNAS_PEDIDO, start=1):
+    ultima_dados = linha - 1
+
+    # Linha de TOTAL — soma só VALOR TOTAL; nenhum outro número é inventado.
+    linha_total = linha
+    col_valor_total = ncols
+    ws.merge_cells(start_row=linha_total, start_column=1, end_row=linha_total, end_column=col_valor_total - 1)
+    for col in range(1, col_valor_total):
+        cel = ws.cell(row=linha_total, column=col)
+        cel.fill = PatternFill("solid", fgColor=_COR_NAVY)
+        cel.border = _BORDA_FINA
+    ws.cell(row=linha_total, column=1, value="TOTAL").font = Font(bold=True, color="FFFFFF")
+    ws.cell(row=linha_total, column=1).alignment = Alignment(horizontal="right", vertical="center")
+    cel_total = ws.cell(row=linha_total, column=col_valor_total, value=total_valor)
+    cel_total.font = Font(bold=True, color="FFFFFF")
+    cel_total.fill = PatternFill("solid", fgColor=_COR_NAVY)
+    cel_total.number_format = '"R$" #,##0.00'
+    cel_total.alignment = Alignment(horizontal="right", vertical="center")
+    cel_total.border = _BORDA_FINA
+
+    for idx in range(1, ncols + 1):
         ws.column_dimensions[get_column_letter(idx)].width = larguras[idx - 1]
-        if fmt == "@":
-            continue
-        for row in range(linha_titulo + 1, ultima + 1):
-            ws.cell(row=row, column=idx).number_format = fmt
 
-    ws.freeze_panes = f"A{linha_titulo + 1}"
-    ws.auto_filter.ref = f"A{linha_titulo}:{get_column_letter(len(_COLUNAS_PEDIDO))}{max(ultima, linha_titulo)}"
+    ws.freeze_panes = f"A{primeira_linha_dados}"
+    ws.auto_filter.ref = f"A{linha_titulo}:{get_column_letter(ncols)}{max(ultima_dados, linha_titulo)}"
+
+    try:
+        if _LOGO_PATH.exists():
+            img = XLImage(str(_LOGO_PATH))
+            img.width = 150
+            img.height = 82
+            ws.add_image(img, f"{get_column_letter(ncols - 1)}1")
+    except Exception:
+        pass  # melhor sem logo do que sem relatório
 
     buffer = io.BytesIO()
     wb.save(buffer)
