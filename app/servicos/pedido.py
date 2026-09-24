@@ -599,6 +599,10 @@ def _montar_xlsx_legivel(cabecalho: dict, itens: list[dict]) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Pedido"
+    # Sem as linhas de grade da planilha: a tabela já tem borda própria, e o
+    # que sobra da área impressa fica branco em vez de um quadriculado infinito
+    # atrás de nada. Afeta só a EXIBIÇÃO desta aba — não apaga borda nenhuma.
+    ws.sheet_view.showGridLines = False
 
     ncols = len(_COLUNAS_PEDIDO)
     linha = 1
