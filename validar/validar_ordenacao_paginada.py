@@ -356,7 +356,7 @@ FIELD_MAP_PRODUTOS: dict[str, tuple[str, str, object]] = {
     "valorEmRisco": ("p.media_janela * p.pv_atacado", _DE_SIMPLES, _extrator_valor_em_risco),
     "precoVarejo": ("p.pv_varejo", _DE_SIMPLES, lambda it: it["pvVarejo"]),
     "tributacao": ("p.modalidade", _DE_SIMPLES, lambda it: it["modalidade"]),
-    "valorNf": ("p.vl_ent_unit", _DE_SIMPLES, lambda it: it["valorNfUnitario"]),
+    "valorNf": ("p.vl_ent_unit", _DE_SIMPLES, lambda it: it["valorEntradaUnitario"]),
     "precoDecididoAtacado": ("d.alt_pv_at_av", _DE_DECISAO, lambda it: it["precoDecididoAtacadoAV"]),
     "margem": ("p.margem_st_s_valor", _DE_SIMPLES, _extrator_margem_st_valor_atacado),
 }

@@ -18,14 +18,21 @@ re-congelado a cada toque na linha (é o mesmo raciocínio de
 SKU solto).
 
 ── Origem do preço unitário quando não informado ───────────────────────────
-`sql/03_tabelas_pedido.sql` (comentário de APP_PEDIDO_ITEM.preco_unitario) e
-`PROTOTIPO.md §3.7` são explícitos: o preço nasce de `custoGerencial`
-(COMPRAS_PEDIDO.CUSTO_TOT_GERENCIAL) no momento em que o produto entra no
-pedido — não de VL_ENT_UNIT. VL_ENT_UNIT é a escolha da exportação para
-FORNECEDOR (`exportacao.py`, arquivo que sai da empresa, para não revelar
-custo carregado de imposto); aqui o preço é a decisão interna do comprador
-sobre o próprio custo gerencial, editável em tela depois. Duas perguntas
-diferentes, duas origens diferentes.
+O padrão passou a ser `VL_ENT_UNIT` (COMPRAS_PEDIDO.VL_ENT_UNIT) — o valor da
+ÚLTIMA ENTRADA na NOTA (bruto de imposto/crédito), não `CUSTO_TOT_GERENCIAL`
+(líquido). Pedido do usuário em 24/09/2026: o comprador negocia contra o
+preço que o fornecedor realmente cobrou na nota, não contra um custo
+gerencial que já embute crédito fiscal.
+⚠ Isto REVERTE a decisão anterior, que era deliberada e estava escrita no
+`comment on column` de `sql/04_tabelas_pedido.sql` e em `PROTOTIPO.md §3.7`
+("nasce de custoGerencial"). O comentário da DDL foi corrigido junto; se o
+schema de produção não for recriado, o comentário VIVO no banco segue com o
+texto antigo até alguém rodar o `comment on column` de novo. `VL_ENT_UNIT` já vem POR UNIDADE (REGRAS.md §regra
+8 — nunca dividido pela embalagem de compra), então é usado direto, sem
+multiplicar/dividir por `fator_exibicao`/`embal_compra` em nenhum ponto deste
+módulo — o mesmo raciocínio que já vale para `preco_unitario` em geral (ver
+`_AGG.valor_total` abaixo). Isto é só o PADRÃO de preenchimento: o comprador
+segue podendo informar um `preco_unitario` explícito, que sempre prevalece.
 
 ── Concorrência ─────────────────────────────────────────────────────────────
 Duas pessoas editando o mesmo pedido ao mesmo tempo: toda operação que muda
@@ -238,7 +245,7 @@ def salvar_carrinho(
     marcas = ", ".join(f":c{i}" for i in range(len(codigos)))
     binds = {f"c{i}": c for i, c in enumerate(codigos)}
     catalogo = database.consultar(
-        f"select codigo, fornecedor, fator_exibicao, custo_tot_gerencial"
+        f"select codigo, fornecedor, fator_exibicao, vl_ent_unit"
         f" from compras_pedido where codigo in ({marcas})",
         binds,
     )
@@ -258,11 +265,11 @@ def salvar_carrinho(
             raise ProdutoInvalido(f"Produto {it['codigo']} sem FATOR_EXIBICAO válido em COMPRAS_PEDIDO.")
         preco = it["preco_unitario"]
         if preco is None:
-            preco = prod["custo_tot_gerencial"]
+            preco = prod["vl_ent_unit"]
         if preco is None or float(preco) <= 0:
             raise ProdutoInvalido(
-                f"Produto {it['codigo']} sem custo gerencial calculado em COMPRAS_PEDIDO;"
-                " informe precoUnitario manualmente."
+                f"Produto {it['codigo']} sem valor de entrada (VL_ENT_UNIT) calculado em"
+                " COMPRAS_PEDIDO; informe precoUnitario manualmente."
             )
         grupos.setdefault(prod["fornecedor"], []).append({
             "codigo": it["codigo"],
@@ -364,14 +371,14 @@ def upsert_item(
         _exigir_editavel(info["status"])
 
         cur.execute(
-            "select fornecedor, fator_exibicao, custo_tot_gerencial"
+            "select fornecedor, fator_exibicao, vl_ent_unit"
             " from compras_pedido where codigo = :codigo",
             {"codigo": codigo},
         )
         prod = cur.fetchone()
         if prod is None:
             raise ProdutoInvalido(f"Produto {codigo} não encontrado em COMPRAS_PEDIDO.")
-        fornecedor_produto, fator_exibicao, custo_gerencial = prod
+        fornecedor_produto, fator_exibicao, valor_entrada = prod
         if fornecedor_produto != info["fornecedor"]:
             raise ProdutoInvalido(
                 f"Produto {codigo} é do departamento '{fornecedor_produto}', diferente do"
@@ -387,11 +394,11 @@ def upsert_item(
                 {"id": id_pedido, "codigo": codigo},
             )
             existente = cur.fetchone()
-            preco = float(existente[0]) if existente is not None else custo_gerencial
+            preco = float(existente[0]) if existente is not None else valor_entrada
         if preco is None or float(preco) <= 0:
             raise ProdutoInvalido(
-                f"Produto {codigo} sem custo gerencial calculado em COMPRAS_PEDIDO;"
-                " informe precoUnitario manualmente."
+                f"Produto {codigo} sem valor de entrada (VL_ENT_UNIT) calculado em"
+                " COMPRAS_PEDIDO; informe precoUnitario manualmente."
             )
 
         cur.execute(

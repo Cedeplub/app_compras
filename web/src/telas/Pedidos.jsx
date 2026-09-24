@@ -53,6 +53,7 @@ const ROTULO_COLUNA = {
   pendente: "Pend.",
   estPedido: "EST+PED",
   ultimaEntrada: "Últ. entrada",
+  valorNf: "Valor NF",
   vendaAtual: "Venda do mês",
   mediaVenda: "Média",
   ultimaSaida: "Últ. saída",
@@ -154,27 +155,66 @@ export default function Pedidos() {
 
   const itens = dados?.itens ?? [];
 
-  // O total do carrinho só sabe somar o que está na PÁGINA atual, porque é dela
-  // que vêm peso, litragem e custo de cada produto. Trocar de página mantém as
-  // quantidades digitadas, mas o total deixa de contá-las — e dizer isso é
-  // melhor que exibir um total que encolhe sozinho.
-  const totais = useMemo(() => {
-    const t = { valor: 0, peso: 0, litros: 0, qtd: 0, linhas: 0, foraDaPagina: 0 };
+  // Cache de produtos fora da PÁGINA atual (código → produto | null se a busca
+  // falhou), para o total do carrinho poder somar TODOS os produtos
+  // preenchidos, não só os da página. Mora aqui — não dentro de
+  // `CarrinhoFlutuante` como antes — porque agora é o `totais` deste
+  // componente-pai que depende dele; o painel "Ver itens" (que se desmonta ao
+  // fechar) só RECEBE o cache pronto, não busca mais por conta própria.
+  const [cacheProdutos, setCacheProdutos] = useState({});
+  const emAndamento = useRef(new Set());
+
+  // Busca sob demanda: todo código com quantidade digitada que não está na
+  // página atual, ainda não está no cache e não tem requisição em voo. Roda
+  // sempre — não só com o painel aberto — porque agora é a BARRA (sempre
+  // visível) que precisa do total fechado; o `Set` evita pedir o mesmo
+  // produto duas vezes, e falha de rede/404 grava `null`, o sinal de "este
+  // item nunca vai fechar o total".
+  useEffect(() => {
     const naPagina = new Set(itens.map((p) => String(p.codigo)));
+    const faltantes = Object.entries(carrinho)
+      .filter(([, qtd]) => (Number(String(qtd).replace(",", ".")) || 0) > 0)
+      .map(([codigo]) => codigo)
+      .filter((codigo) => !naPagina.has(codigo)
+        && !(codigo in cacheProdutos) && !emAndamento.current.has(codigo));
+    for (const codigo of faltantes) {
+      emAndamento.current.add(codigo);
+      api.produto(codigo)
+        .then((p) => setCacheProdutos((c) => ({ ...c, [codigo]: p })))
+        .catch(() => setCacheProdutos((c) => ({ ...c, [codigo]: null })))
+        .finally(() => emAndamento.current.delete(codigo));
+    }
+  }, [carrinho, itens, cacheProdutos]);
+
+  // O total soma TODOS os produtos preenchidos, não só os da página atual
+  // (pedido do Diretor) — usando a página quando o produto está nela, e o
+  // cache acima quando não está. `pendentes` conta o que ainda não voltou da
+  // busca (o total ainda não fechou, mas o número mostrado já soma o que se
+  // sabe); `falharam` conta o que a busca não achou (`cacheProdutos[c] ===
+  // null`) — para ESSE item o total nunca vai fechar, e a barra precisa
+  // dizer isso, não ficar tentando de novo silenciosamente.
+  const totais = useMemo(() => {
+    const t = { valor: 0, peso: 0, litros: 0, qtd: 0, linhas: 0, pendentes: 0, falharam: 0 };
+    const naPagina = new Map(itens.map((p) => [String(p.codigo), p]));
     for (const [codigo, qtd] of Object.entries(carrinho)) {
       const n = Number(String(qtd).replace(",", ".")) || 0;
       if (n <= 0) continue;
       t.linhas += 1;
-      if (!naPagina.has(codigo)) { t.foraDaPagina += 1; continue; }
-      const p = itens.find((x) => String(x.codigo) === codigo);
+      const p = naPagina.get(codigo) ?? cacheProdutos[codigo];
+      if (p === undefined) { t.pendentes += 1; continue; }
+      if (p === null) { t.falharam += 1; continue; }
       const unidades = n * (p.fatorExibicao || 1);
       t.qtd += unidades;
-      t.valor += unidades * (p.custoGerencial ?? 0);
+      // `valorEntradaUnitario` (o valor da NOTA, já por unidade) — não
+      // `custoGerencial` — é o preço que o Diretor confere linha a linha
+      // (Tarefa 2 do pedido: "o preço unitário deve refletir o valor da
+      // entrada/nota, não custo").
+      t.valor += unidades * (p.valorEntradaUnitario ?? 0);
       t.peso += unidades * (p.pesoUnidade ?? 0);
       t.litros += unidades * (p.litragemUnidade ?? 0);
     }
     return t;
-  }, [carrinho, itens]);
+  }, [carrinho, itens, cacheProdutos]);
 
   async function salvar() {
     setSalvando(true);
@@ -243,7 +283,8 @@ export default function Pedidos() {
       {totais.linhas > 0 && (
         <CarrinhoFlutuante totais={totais} unidade={unidadeTotal} setUnidade={setUnidadeTotal}
                            salvando={salvando} aoSalvar={salvar}
-                           carrinho={carrinho} setCarrinho={setCarrinho} itens={itens} />
+                           carrinho={carrinho} setCarrinho={setCarrinho} itens={itens}
+                           cacheProdutos={cacheProdutos} />
       )}
     </div>
   );
@@ -377,6 +418,12 @@ function Tabela({ itens, carrinho, setCarrinho, ordenar, dir, aoOrdenar, mesRefe
             <CabecalhoOrdenavel {...props} coluna="pendente" padrao="desc" align="center" style={{ background: F_EST }}>Pend.</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="estPedido" padrao="desc" align="center" style={{ background: F_ESTPED }}>EST+PED</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="ultimaEntrada" padrao="desc" align="center">Últ. entrada</CabecalhoOrdenavel>
+            {/* Preço unitário da MESMA última entrada da coluna vizinha — por
+                isso fica colada a ela na leitura (data/qtd da entrada, e o
+                preço daquela entrada). `p.vl_ent_unit` já está no whitelist do
+                servidor com este id (`produto.py:ORDENACOES`, usado também por
+                Precificacao.jsx), então fica clicável como as demais. */}
+            <CabecalhoOrdenavel {...props} coluna="valorNf" padrao="desc" align="center">Valor NF</CabecalhoOrdenavel>
             {/* As 4 colunas de venda mensal: só a primeira (mês corrente) tem
                 ordenação própria no servidor (`vendaAtual` → VD_MES_ATUAL);
                 M-1/M-2/M-3 não têm coluna equivalente no whitelist — ficam
@@ -475,6 +522,15 @@ function LinhaPedido({ p, valor, aoTrocar, parametros }) {
         {p.ultimaEntrada ? p.ultimaEntrada.split("-").reverse().slice(0, 2).join("/") : "—"}
         {p.qtdUltimaEntrada != null && <div className="text-gray-400">{numero(p.qtdUltimaEntrada, 0)}</div>}
       </td>
+      {/* Valor da NOTA por unidade (`valorEntradaUnitario`, REGRAS.md §regra 8:
+          já vem por unidade, nunca dividido/multiplicado pela embalagem de
+          compra aqui). Diferente de `custoGerencial` (líquido de imposto) —
+          é este o preço que `totais`/`PainelItens` usam para o total do
+          carrinho, porque é o mesmo preço que o Diretor confere linha a
+          linha antes de decidir a quantidade. */}
+      <td className="num px-2 py-2 text-center text-2xs text-gray-500">
+        {p.valorEntradaUnitario != null ? moeda(p.valorEntradaUnitario) : "—"}
+      </td>
       {/* Etapa 13, ponto 1: `vendaHistorico` virou objeto POR MÉTRICA
           (`app/api/contrato.py:_venda_historico`). Esta tabela não tem
           seletor de métrica — só QUANTIDADE (já em unidade de exibição,
@@ -560,16 +616,16 @@ const ID_PAINEL_ITENS = "painel-itens-carrinho";
  *  fluxo normal do flexbox já faz de graça: o painel entra ANTES da barra no
  *  DOM, então "abrir para cima" é só a ordem natural da coluna.
  *
- *  Cache de produtos buscados sob demanda (Tarefa 2): vive aqui, não dentro
- *  do painel, porque o painel é desmontado toda vez que fecha (`{aberto &&
- *  <PainelItens/>}`) — um estado local dele se perderia a cada reabertura, e
- *  a instrução era justamente NÃO repetir a busca. */
+ *  Cache de produtos buscados sob demanda (Tarefa 2): NÃO mora mais aqui —
+ *  subiu para `Pedidos` (o componente-pai) porque agora é o TOTAL da barra,
+ *  sempre visível, que precisa dele para fechar, não só este painel (que se
+ *  desmonta toda vez que fecha: `{aberto && <PainelItens/>}`, e um estado
+ *  local dele se perderia a cada reabertura). Aqui só se RECEBE
+ *  `cacheProdutos` pronto, já compartilhado com `totais`. */
 function CarrinhoFlutuante({ totais, unidade, setUnidade, salvando, aoSalvar,
-                             carrinho, setCarrinho, itens }) {
+                             carrinho, setCarrinho, itens, cacheProdutos }) {
   const [aberto, setAberto] = useState(false);
   const [confirmarTudo, setConfirmarTudo] = useState(false);
-  const [cacheProdutos, setCacheProdutos] = useState({}); // codigo -> produto | null (falhou)
-  const emAndamento = useRef(new Set());
   const raiz = useRef(null);
 
   // Fecha com Esc e ao clicar fora — mas só enquanto NÃO há diálogo de
@@ -594,27 +650,6 @@ function CarrinhoFlutuante({ totais, unidade, setUnidade, salvando, aoSalvar,
       document.removeEventListener("mousedown", aoClicarFora);
     };
   }, [aberto, confirmarTudo]);
-
-  // Busca sob demanda (Tarefa 2, ordem 2): só dispara com o painel ABERTO, e
-  // só para os códigos que estão no carrinho, faltando na página atual, e
-  // ainda não tentados. Falha de rede/404 grava `null` no cache — é o sinal
-  // para o painel cair para "mostrar só o código" sem travar nada.
-  useEffect(() => {
-    if (!aberto) return;
-    const naPagina = new Set(itens.map((p) => String(p.codigo)));
-    const faltantes = Object.entries(carrinho)
-      .filter(([, qtd]) => (Number(String(qtd).replace(",", ".")) || 0) > 0)
-      .map(([codigo]) => codigo)
-      .filter((codigo) => !naPagina.has(codigo)
-        && !(codigo in cacheProdutos) && !emAndamento.current.has(codigo));
-    for (const codigo of faltantes) {
-      emAndamento.current.add(codigo);
-      api.produto(codigo)
-        .then((p) => setCacheProdutos((c) => ({ ...c, [codigo]: p })))
-        .catch(() => setCacheProdutos((c) => ({ ...c, [codigo]: null })))
-        .finally(() => emAndamento.current.delete(codigo));
-    }
-  }, [aberto, carrinho, itens, cacheProdutos]);
 
   // Descartar UM item: tira a CHAVE do objeto (não grava ""), porque é a
   // chave que `Tabela`/`LinhaPedido` lê em `valor={carrinho[p.codigo]}` — sem
@@ -666,15 +701,27 @@ function BarraCarrinho({ totais, unidade, setUnidade, salvando, aoSalvar, aberto
         <div>
           <div className="text-2xs text-gray-500">
             {numero(totais.linhas)} produto(s) no carrinho
-            {totais.foraDaPagina > 0 && (
-              // Não deixo o total mentir em silêncio: ele só soma o que está na
-              // página, porque peso e custo vêm da linha carregada.
+            {totais.falharam > 0 && (
+              // A busca deste código terminou e não achou o produto — o
+              // total NUNCA vai fechar para ele sozinho (não há nova
+              // tentativa automática). Fica permanente, não é um "carregando"
+              // que passa: é um "isto ficou de fora".
               <span style={{ color: "#B98A2E" }}>
-                {" "}· {numero(totais.foraDaPagina)} em outra página, fora do total
+                {" "}· {numero(totais.falharam)} sem preço encontrado, fora do total
               </span>
             )}
           </div>
-          <div className="num text-lg font-bold" style={{ color: NAVY }}>{valores[unidade]}</div>
+          <div className="num text-lg font-bold" style={{ color: NAVY }}>
+            {valores[unidade]}
+            {totais.pendentes > 0 && (
+              // Ainda falta buscar produto(s) fora da página — o número acima
+              // já soma o que se sabe, mas não é o total fechado ainda; dizer
+              // isso aqui é melhor que deixar parecer definitivo (§ tarefa 2).
+              <span className="ml-1.5 inline-flex items-center gap-1 align-middle text-xs font-normal text-gray-400">
+                <Loader2 size={11} className="animate-spin" aria-hidden="true" /> calculando…
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
@@ -745,6 +792,13 @@ function PainelItens({ id, carrinho, itens, cacheProdutos, aoDescartarItem, aoPe
           const info = naPagina.get(codigo) ?? (doCache || undefined);
           const falhouBusca = !info && doCache === null;
           const emCaixa = info && (info.fatorExibicao || 1) > 1;
+          // Preço unitário = `valorEntradaUnitario` (o valor da NOTA, já por
+          // unidade — Tarefa 3 do pedido). Sem `info` (busca ainda não voltou
+          // ou falhou) ou sem o campo (produto sem última entrada), não dá
+          // para saber o preço: nunca mostra 0 no lugar, mostra "—".
+          const qtdNum = Number(String(qtd).replace(",", ".")) || 0;
+          const preco = info?.valorEntradaUnitario;
+          const totalItem = preco != null ? qtdNum * (info.fatorExibicao || 1) * preco : null;
           return (
             <li key={codigo} className="flex items-center justify-between gap-2 py-2">
               <div className="min-w-0">
@@ -771,6 +825,18 @@ function PainelItens({ id, carrinho, itens, cacheProdutos, aoDescartarItem, aoPe
                 <div className="text-right">
                   <div className="num text-sm font-semibold text-gray-700">{qtd}</div>
                   {emCaixa && <div className="text-[9px] text-gray-400">caixas</div>}
+                  {info ? (
+                    <div className="num text-2xs text-gray-500">
+                      {preco != null
+                        ? <>{moeda(preco)} un · <span className="font-semibold text-gray-700">{moeda(totalItem)}</span></>
+                        : "preço desconhecido"}
+                    </div>
+                  ) : (
+                    // Ainda buscando ou a busca falhou: sem `info` não há
+                    // `fatorExibicao` nem preço — nunca imprime "R$ 0,00"
+                    // como se fosse valor real (regra do pedido, Tarefa 3).
+                    <div className="text-2xs text-gray-400">preço desconhecido</div>
+                  )}
                 </div>
                 {/* Lixeira vermelha contornada, no mesmo desenho do "Descartar
                     todos" do rodapé — a ação é a mesma, só muda o alcance.

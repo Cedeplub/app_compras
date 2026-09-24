@@ -330,7 +330,13 @@ def produto(p: dict) -> dict:
         "regimeFiscal": p.get("regime_fiscal"),
 
         # -------------------------------------------------------------- custo
-        "valorNfUnitario": _f(p.get("vl_ent_unit")),
+        # Valor da NOTA (bruto de imposto/crédito) na última entrada, já POR
+        # UNIDADE (REGRAS.md §regra 8: VL_ULT_ENT nunca é dividido pela
+        # embalagem de compra — vem unitário do dbt). Distinto de
+        # `custoUltimaEntrada`, que é líquido de imposto/crédito. É esta
+        # coluna, e não `custoGerencial`, que passou a ser o padrão de PREÇO
+        # UNITÁRIO do item de pedido (24/09/2026 — ver app/servicos/pedido.py).
+        "valorEntradaUnitario": _f(p.get("vl_ent_unit")),
         "custoUltimaEntrada": _f(p.get("custo_ult_ent")),
         "custoStValor": _f(p.get("custo_tot_s_valor")),
         "custoOficial": _f(p.get("custo_tot_oficial")),
