@@ -177,7 +177,12 @@ function CartaoPedido({ p, ocupado, aoAvancar, aoVoltar, aoWinthor, aoExcluir })
   const cor = COR_STATUS[p.status] ?? "#6B7280";
   const soLeitura = p.status === "Fechado" || p.status === "Exportado";
   return (
-    <li className="rounded-xl border border-gray-200 px-3.5 py-3">
+    // `relative` porque o "Ver/editar" abaixo estica um pseudo-elemento sobre o
+    // cartão inteiro (padrão "stretched link"): o balão todo abre o pedido, sem
+    // que o cartão precise virar um `onClick` — o que quebraria ctrl+clique,
+    // clique do meio e navegação por teclado, além de exigir `stopPropagation`
+    // em cada botão de ação que vive aqui dentro.
+    <li className="relative rounded-xl border border-gray-200 px-3.5 py-3 hover:bg-gray-50">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -234,8 +239,11 @@ function CartaoPedido({ p, ocupado, aoAvancar, aoVoltar, aoWinthor, aoExcluir })
 
 function Acao({ children, onClick, icone: Icone, destaque, cor = NAVY, desabilitado }) {
   return (
+    // ⚠ `relative z-10`: estes botões vivem DENTRO da área que o "Ver/editar"
+    // estica sobre o cartão. Sem subir acima dela, um clique em "Excluir"
+    // acertaria o link e abriria o pedido em vez de excluir.
     <button type="button" onClick={onClick} disabled={desabilitado}
-            className="flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-semibold disabled:opacity-40"
+            className="relative z-10 flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-semibold disabled:opacity-40"
             style={destaque
               ? { background: cor, color: "white", borderColor: cor }
               : { color: cor, borderColor: `${cor}44` }}>
@@ -251,8 +259,19 @@ function Acao({ children, onClick, icone: Icone, destaque, cor = NAVY, desabilit
  * que também grava dispara a gravação duas vezes (aba original + aba nova). */
 function AcaoLink({ children, to }) {
   return (
+    // `after:absolute after:inset-0` estica a área clicável deste link sobre o
+    // cartão inteiro (o `<li>` é `relative`), atendendo ao pedido de "abrir
+    // clicando no balão todo" SEM abrir mão do que o ajuste 4 do revisor
+    // garantiu: continua um `<Link>` de verdade, então ctrl+clique e clique do
+    // meio seguem abrindo em aba nova, e o foco por teclado continua existindo.
+    // Contrapartida assumida: selecionar com o mouse o texto do cartão fica
+    // difícil, porque o arrasto começa sobre a área esticada.
     <Link to={to}
-          className="flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-semibold"
+          // ⚠ Este link fica ESTÁTICO de propósito (sem `relative`): o
+          // `after:absolute` precisa se posicionar contra o `<li>`, que é o
+          // ancestral posicionado. Se o link virasse `relative`, o
+          // pseudo-elemento se ancoraria NELE e cobriria só o botãozinho.
+          className="flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-semibold after:absolute after:inset-0 after:content-[''] after:rounded-xl"
           style={{ color: NAVY, borderColor: `${NAVY}44` }}>
       {children}
     </Link>
