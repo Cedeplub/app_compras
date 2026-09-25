@@ -18,21 +18,37 @@ re-congelado a cada toque na linha (é o mesmo raciocínio de
 SKU solto).
 
 ── Origem do preço unitário quando não informado ───────────────────────────
-O padrão passou a ser `VL_ENT_UNIT` (COMPRAS_PEDIDO.VL_ENT_UNIT) — o valor da
-ÚLTIMA ENTRADA na NOTA (bruto de imposto/crédito), não `CUSTO_TOT_GERENCIAL`
-(líquido). Pedido do usuário em 24/09/2026: o comprador negocia contra o
-preço que o fornecedor realmente cobrou na nota, não contra um custo
-gerencial que já embute crédito fiscal.
-⚠ Isto REVERTE a decisão anterior, que era deliberada e estava escrita no
-`comment on column` de `sql/04_tabelas_pedido.sql` e em `PROTOTIPO.md §3.7`
-("nasce de custoGerencial"). O comentário da DDL foi corrigido junto; se o
-schema de produção não for recriado, o comentário VIVO no banco segue com o
-texto antigo até alguém rodar o `comment on column` de novo. `VL_ENT_UNIT` já vem POR UNIDADE (REGRAS.md §regra
-8 — nunca dividido pela embalagem de compra), então é usado direto, sem
-multiplicar/dividir por `fator_exibicao`/`embal_compra` em nenhum ponto deste
-módulo — o mesmo raciocínio que já vale para `preco_unitario` em geral (ver
-`_AGG.valor_total` abaixo). Isto é só o PADRÃO de preenchimento: o comprador
-segue podendo informar um `preco_unitario` explícito, que sempre prevalece.
+O padrão passou a ser `COMPRAS_PRODUTO_CONTEXTO.PRECO_ULT_ENT_SEM_FRETE` (o
+preço da última entrada pela rotina 218, **sem frete**) — decisão do usuário
+em 25/09/2026: o preço gravado no item de pedido deve ser o PURO, sem o frete
+que `COMPRAS_PEDIDO.VL_ENT_UNIT` embute.
+⚠ Isto REVERTE a decisão anterior (24/09/2026), que preenchia com
+`VL_ENT_UNIT` (o valor da nota, COM frete) em vez de `CUSTO_TOT_GERENCIAL`
+(líquido). Essa parte permanece: preço de nota, não custo gerencial. O que
+muda agora é só a coluna dentro do preço de nota — sem frete em vez de com.
+
+**Queda para `VL_ENT_UNIT` (com frete), nesta ordem:**
+  1. `preco_unitario` explícito mandado pelo cliente (o comprador sempre pode
+     informar um valor manual, que prevalece sobre qualquer padrão);
+  2. senão `PRECO_ULT_ENT_SEM_FRETE` (o novo padrão, puro);
+  3. senão `VL_ENT_UNIT` (com frete) — **medido em 25/09/2026: 41 SKUs ATIVOS
+     têm `VL_ENT_UNIT` mas não têm valor da 218.** A tela de Pedidos manda só
+     `{codigo, quantidade}` (não deixa digitar preço), então sem esta queda
+     esses 41 produtos ficariam impossíveis de pedir. Quando a queda 3 é
+     usada, o preço gravado sai COM frete — quem conferir um pedido desses
+     não deve achar que o sistema ignorou a regra do preço puro: é a exceção
+     documentada aqui, não um bug.
+  4. senão erro: nem a 218 nem `VL_ENT_UNIT` existem para o produto.
+
+`VL_ENT_UNIT` e `PRECO_ULT_ENT_SEM_FRETE` já vêm POR UNIDADE (REGRAS.md §regra
+8 — nunca dividido pela embalagem de compra), então qualquer um dos dois é
+usado direto, sem multiplicar/dividir por `fator_exibicao`/`embal_compra` em
+nenhum ponto deste módulo — o mesmo raciocínio que já vale para
+`preco_unitario` em geral (ver `_AGG.valor_total` abaixo).
+
+⚠ Pedidos já gravados NÃO são migrados por esta mudança: mantêm o preço
+(com ou sem frete) que já tinham. Só gravações novas a partir de 25/09/2026
+nascem do sem-frete.
 
 ── Concorrência ─────────────────────────────────────────────────────────────
 Duas pessoas editando o mesmo pedido ao mesmo tempo: toda operação que muda
@@ -216,6 +232,20 @@ def obter_detalhe(id_pedido: int) -> dict | None:
     return cabecalho
 
 
+def _preco_padrao_ou_queda(preco_sem_frete, valor_entrada_com_frete) -> float | None:
+    """Resolve o preço-padrão do item quando o cliente não informou um valor
+    explícito: `PRECO_ULT_ENT_SEM_FRETE` (novo padrão, puro) e, na falta dele,
+    `VL_ENT_UNIT` (com frete) — ver docstring do módulo, "Origem do preço
+    unitário". A queda existe porque 41 SKUs ATIVOS (medido em 25/09/2026) têm
+    `VL_ENT_UNIT` mas não têm valor da 218; sem ela ficariam impossíveis de
+    pedir, já que a tela de Pedidos não deixa digitar preço."""
+    if preco_sem_frete is not None and float(preco_sem_frete) > 0:
+        return float(preco_sem_frete)
+    if valor_entrada_com_frete is not None and float(valor_entrada_com_frete) > 0:
+        return float(valor_entrada_com_frete)
+    return None
+
+
 # ─────────────────────────────────────────────────────── salvar carrinho ───
 
 def salvar_carrinho(
@@ -247,8 +277,11 @@ def salvar_carrinho(
     marcas = ", ".join(f":c{i}" for i in range(len(codigos)))
     binds = {f"c{i}": c for i, c in enumerate(codigos)}
     catalogo = database.consultar(
-        f"select codigo, fornecedor, fator_exibicao, vl_ent_unit"
-        f" from compras_pedido where codigo in ({marcas})",
+        f"select p.codigo, p.fornecedor, p.fator_exibicao, p.vl_ent_unit,"
+        f" ctx.preco_ult_ent_sem_frete"
+        f" from compras_pedido p"
+        f" left join compras_produto_contexto ctx on ctx.codigo = p.codigo"
+        f" where p.codigo in ({marcas})",
         binds,
     )
     por_produto = {int(r["codigo"]): r for r in catalogo}
@@ -267,11 +300,12 @@ def salvar_carrinho(
             raise ProdutoInvalido(f"Produto {it['codigo']} sem FATOR_EXIBICAO válido em COMPRAS_PEDIDO.")
         preco = it["preco_unitario"]
         if preco is None:
-            preco = prod["vl_ent_unit"]
+            preco = _preco_padrao_ou_queda(prod["preco_ult_ent_sem_frete"], prod["vl_ent_unit"])
         if preco is None or float(preco) <= 0:
             raise ProdutoInvalido(
-                f"Produto {it['codigo']} sem valor de entrada (VL_ENT_UNIT) calculado em"
-                " COMPRAS_PEDIDO; informe precoUnitario manualmente."
+                f"Produto {it['codigo']} sem preço de entrada calculado: nem"
+                " PRECO_ULT_ENT_SEM_FRETE (COMPRAS_PRODUTO_CONTEXTO, rotina 218) nem"
+                " VL_ENT_UNIT (COMPRAS_PEDIDO) existem; informe precoUnitario manualmente."
             )
         grupos.setdefault(prod["fornecedor"], []).append({
             "codigo": it["codigo"],
@@ -373,14 +407,17 @@ def upsert_item(
         _exigir_editavel(info["status"])
 
         cur.execute(
-            "select fornecedor, fator_exibicao, vl_ent_unit"
-            " from compras_pedido where codigo = :codigo",
+            "select p.fornecedor, p.fator_exibicao, p.vl_ent_unit,"
+            " ctx.preco_ult_ent_sem_frete"
+            " from compras_pedido p"
+            " left join compras_produto_contexto ctx on ctx.codigo = p.codigo"
+            " where p.codigo = :codigo",
             {"codigo": codigo},
         )
         prod = cur.fetchone()
         if prod is None:
             raise ProdutoInvalido(f"Produto {codigo} não encontrado em COMPRAS_PEDIDO.")
-        fornecedor_produto, fator_exibicao, valor_entrada = prod
+        fornecedor_produto, fator_exibicao, valor_entrada, preco_sem_frete = prod
         if fornecedor_produto != info["fornecedor"]:
             raise ProdutoInvalido(
                 f"Produto {codigo} é do departamento '{fornecedor_produto}', diferente do"
@@ -396,11 +433,13 @@ def upsert_item(
                 {"id": id_pedido, "codigo": codigo},
             )
             existente = cur.fetchone()
-            preco = float(existente[0]) if existente is not None else valor_entrada
+            preco = (float(existente[0]) if existente is not None
+                     else _preco_padrao_ou_queda(preco_sem_frete, valor_entrada))
         if preco is None or float(preco) <= 0:
             raise ProdutoInvalido(
-                f"Produto {codigo} sem valor de entrada (VL_ENT_UNIT) calculado em"
-                " COMPRAS_PEDIDO; informe precoUnitario manualmente."
+                f"Produto {codigo} sem preço de entrada calculado: nem"
+                " PRECO_ULT_ENT_SEM_FRETE (COMPRAS_PRODUTO_CONTEXTO, rotina 218) nem"
+                " VL_ENT_UNIT (COMPRAS_PEDIDO) existem; informe precoUnitario manualmente."
             )
 
         cur.execute(

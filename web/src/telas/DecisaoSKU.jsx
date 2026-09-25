@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronLeft, Layers, Loader2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useCarrinho } from "../contexto/carrinho.jsx";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
-import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL, valorAntesDoCredito } from "../precificacao.js";
+import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
 import {
   compacto, data as fmtData, mesCurto, mesesAntes, moeda, numero, paraCampoPreco, parseNumeroPreco,
 } from "../formato.js";
@@ -370,17 +370,23 @@ function Fiscal({ p, cenarioSel }) {
         {p.regimeFiscal && <span className="text-[9px] text-gray-400">{p.regimeFiscal}</span>}
       </span>
       {igual ? (
-        <>
-          <span>Custo <span className="num font-medium text-gray-700">{moeda(cen.custo)}</span></span>
-          <span>Valor NF <span className="num font-medium text-gray-700">
-            {moeda(valorAntesDoCredito(cen.custo, p.creditoICMS, p.creditoPisCofins))}</span></span>
-        </>
+        <span>Custo <span className="num font-medium text-gray-700">{moeda(cen.custo)}</span></span>
       ) : (
-        <span className="flex flex-col gap-0.5">
-          <span className="num">Custo — últ {moeda(p.custoUltimaEntrada)} / ger {moeda(cen?.custo)}</span>
-          <span className="num">Valor NF — últ {moeda(valorAntesDoCredito(p.custoUltimaEntrada, p.creditoICMS, p.creditoPisCofins))} / ger {moeda(valorAntesDoCredito(cen?.custo, p.creditoICMS, p.creditoPisCofins))}</span>
-        </span>
+        <span className="num">Custo — últ {moeda(p.custoUltimaEntrada)} / ger {moeda(cen?.custo)}</span>
       )}
+      {/* Valor NF (25/09) — mesma correção da Precificação (Precificacao.jsx,
+          coluna "Valor NF (c/ frete)"): mostra `valorEntradaUnitario`
+          (VL_ENT_UNIT/PCEST.VALORULTENT) direto, o valor REAL da última
+          entrada, e não mais uma reconstrução (`valorAntesDoCredito`) que
+          somava os créditos de volta ao custo e podia divergir do valor da
+          nota (74,97 contra 75,07 no SKU 8741 — foi o que motivou a troca).
+          Por isso só há UM valor aqui, ao contrário do "Custo" acima: não
+          existe um "Valor NF do lado 'ger'" — nenhuma coluna do banco
+          responde "qual seria o valor de nota se o custo fosse o do
+          cenário escolhido na tela", e projetar esse número e chamá-lo de
+          "Valor NF" é exatamente a confusão que este ajuste corrige. */}
+      <span>Valor NF <span className="num font-medium text-gray-700">
+        {p.valorEntradaUnitario != null ? moeda(p.valorEntradaUnitario) : "—"}</span></span>
     </div>
   );
 }

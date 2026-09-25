@@ -57,6 +57,7 @@ const ROTULO_COLUNA = {
   mediaVenda: "Média",
   ultimaSaida: "Últ. saída",
   tendencia: "Tend.",
+  valorNfSemFrete: "Valor NF (s/ frete)",
 };
 
 const UNIDADES = [
@@ -423,14 +424,17 @@ function Tabela({ itens, carrinho, setCarrinho, ordenar, dir, aoOrdenar, mesRefe
                 (COMPRAS_PRODUTO_CONTEXTO.PRECO_ULT_ENT_SEM_FRETE, rotina 218 do
                 WinThor): o valor do PRODUTO, sem o frete que `vl_ent_unit`
                 embute — é este o número que faz sentido negociar com o
-                fornecedor (pedido do Diretor, 25/09). O whitelist do servidor
-                (`produto.py:ORDENACOES`) só tem chave para `vl_ent_unit` (com
-                frete, usado por Precificacao.jsx); não existe `p.preco_ult_ent_
-                sem_frete` lá. Ordenar por uma coluna e exibir outra reproduziria
-                a MESMA incoerência que motivou esta mudança — por isso o
-                cabeçalho fica sem `CabecalhoOrdenavel` (sem seta, sem clique),
-                em vez de inventar uma chave que o servidor recusaria com 422. */}
-            <th className="px-2 py-2 text-center font-medium" title="Valor da nota, sem o custo do frete — o valor negociado com o fornecedor (rotina 218)">Valor NF (s/ frete)</th>
+                fornecedor (pedido do Diretor, 25/09). O servidor passou a ter
+                a chave `valorNfSemFrete` (`produto.py:ORDENACOES`, aponta para
+                `ctx.preco_ult_ent_sem_frete`) — cabeçalho volta a ser
+                `CabecalhoOrdenavel`. */}
+            <CabecalhoOrdenavel {...props} coluna="valorNfSemFrete" padrao="desc" align="center">
+              {/* `title` não é prop de `CabecalhoOrdenavel` (não está entre as
+                  desestruturadas do componente) — passá-lo direto seria
+                  silenciosamente ignorado. O `<span title>` por dentro do
+                  `children` é quem carrega o tooltip de verdade. */}
+              <span title="Valor da nota, sem o custo do frete — o valor negociado com o fornecedor (rotina 218)">Valor NF (s/ frete)</span>
+            </CabecalhoOrdenavel>
             {/* As 4 colunas de venda mensal: só a primeira (mês corrente) tem
                 ordenação própria no servidor (`vendaAtual` → VD_MES_ATUAL);
                 M-1/M-2/M-3 não têm coluna equivalente no whitelist — ficam

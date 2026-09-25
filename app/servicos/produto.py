@@ -134,6 +134,10 @@ ORDENACOES: dict[str, tuple[str, str]] = {
     "precoVarejo": ("p.pv_varejo", "desc"),
     "tributacao": ("p.modalidade", "asc"),
     "valorNf": ("p.vl_ent_unit", "desc"),
+    # Preço da última entrada pela 218, SEM frete (COMPRAS_PRODUTO_CONTEXTO) —
+    # mesmo padrão de "valorNf", mas na coluna que passou a ser o preço-base
+    # do pedido (ver app/servicos/pedido.py, "Origem do preço unitário").
+    "valorNfSemFrete": ("ctx.preco_ult_ent_sem_frete", "desc"),
     "precoDecididoAtacado": ("d.alt_pv_at_av", "desc"),
 }
 
