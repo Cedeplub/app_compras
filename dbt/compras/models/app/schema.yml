@@ -80,8 +80,8 @@ models:
     description: >
       Tabela física COMPRAS_PRODUTO_CONTEXTO. Grão: 1 linha por SKU (CODIGO),
       o mesmo de COMPRAS_PEDIDO. Existe porque as telas de Precificação e
-      Decisão do SKU (historico/PLANO_v2_20260901.md §2.2) precisam de três campos que NÃO estão
-      na aba `pedido` da planilha - e fat_pedido/compras_pedido reproduzem
+      Decisão do SKU (historico/PLANO_v2_20260901.md §2.2) e a de Pedidos
+      precisam de campos que NÃO estão na aba `pedido` da planilha - e fat_pedido/compras_pedido reproduzem
       aquelas 122 colunas e só elas. É juntada por LEFT JOIN em CODIGO no
       serviço da API, no mesmo molde de COMPRAS_IND_FORNECEDOR. Ver o
       cabeçalho do model para a decisão de zero x nulo em VENDA_ANO_PASSADO.
@@ -128,6 +128,30 @@ models:
           coisas diferentes: 0 é "vendeu zero, com evidência de que o SKU
           estava vivo naquele mês"; NULO é "não há dado". Justificativa e
           números medidos no cabeçalho do model.
+      - name: PRECO_ULT_ENT_SEM_FRETE
+        description: >
+          Preço unitário da ÚLTIMA ENTRADA pela lógica da ROTINA 218 do
+          WinThor, SEM FRETE - o preço do PRODUTO PURO. É o que a tela de
+          PEDIDOS mostra, porque frete não entra na negociação com o
+          fornecedor. Vem de int_produto_ultima_entrada (PCMOV/PCNFENT,
+          filial var compras_filial_estoque, valor =
+          decode(nvl(PUNIT,0), 0, nvl(PUNITCONT,0), PUNIT)).
+          ⚠ É DIFERENTE de VL_ENT_UNIT (coluna BH de COMPRAS_PEDIDO), que vem
+          de PCEST.VALORULTENT e EMBUTE o frete quando a nota tem frete
+          rateado. VL_ENT_UNIT continua sendo a fonte de custo, margem, preço
+          sugerido e da tela de PRECIFICAÇÃO - as duas colunas convivem de
+          propósito. Medido no build de 25/09/2026 sobre os 6.562 SKUs com
+          valor nos dois lados: 4.884 iguais (tolerância 0,01), 1.286 com a
+          218 menor (é ali que o frete está embutido) e 392 com a 218 maior.
+          ⚠ DESVIO DELIBERADO da 218, porque PCCONSUM não tem GRANT
+          (ORA-00942): a condição de ajuste de estoque
+          (CODCONT = PCCONSUM.CODCONTAJUSTEEST com TIPODESCARGA='4') ficou de
+          fora. Medido: 119 de 6.609 produtos têm como última entrada um
+          ajuste de estoque e passam a mostrar o valor da última entrada que é
+          COMPRA de verdade - ajuste de estoque não é preço de fornecedor.
+          ⚠ NULO para SKU sem nenhuma entrada qualificada na filial de
+          estoque; é ausência de entrada, não preço zero.
+          Não é dividido por FATOR_EXIBICAO (REGRAS.md regra 8).
 
   - name: compras_ind_fornecedor
     description: >

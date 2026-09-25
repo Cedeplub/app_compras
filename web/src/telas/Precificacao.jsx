@@ -8,7 +8,7 @@ import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
-import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL, valorAntesDoCredito } from "../precificacao.js";
+import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
 import { data as fmtData, moeda, numero, paraCampoPreco, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
 import { textoConfirmacaoLote } from "../lotePrecoStatus.js";
 
@@ -73,7 +73,7 @@ const ROTULO_COLUNA = {
   codigo: "Código",
   tributacao: "Tributação",
   custo: "Custo",
-  valorNf: "Valor NF",
+  valorNf: "Valor NF (c/ frete)",
   ultimaEntrada: "Últ. entrada",
   estoque: "Estoque",
   precoVarejo: "Varejo atual",
@@ -687,8 +687,15 @@ function Tabela({ itens, cenarioSel, parametros, ordenar, dir, aoOrdenar, precos
                 Pedidos já recebe (`ultimaEntrada`/`qtdUltimaEntrada` de
                 `contrato.produto()`), só que aqui a Precificação não desenhava
                 (item 2 do Diretor, 08/09). Zero mudança de API: o JSON já
-                trazia os dois campos. */}
-            <CabecalhoOrdenavel {...props} coluna="valorNf" padrao="desc" align="center">Valor NF</CabecalhoOrdenavel>
+                trazia os dois campos.
+                Mostra `valorEntradaUnitario` (VL_ENT_UNIT/PCEST.VALORULTENT),
+                COM o frete embutido quando há — pedido do Diretor (25/09): na
+                Precificação o custo do frete faz parte da decisão de preço.
+                Continua ordenando por `p.vl_ent_unit` (`produto.py:ORDENACOES`),
+                agora o MESMO número que a coluna exibe — antes a coluna
+                reconstruía uma estimativa (`valorAntesDoCredito` sobre o
+                custo) que podia divergir do que o clique ordenava. */}
+            <CabecalhoOrdenavel {...props} coluna="valorNf" padrao="desc" align="center">Valor NF (c/ frete)</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="ultimaEntrada" padrao="desc" align="center">Últ. entrada</CabecalhoOrdenavel>
             {/* Etapa 15, ponto 3: EST_DISP já viaja no JSON desde a Etapa 7 —
                 zero mudança de API, só a tela que não desenhava. Laranja
@@ -764,13 +771,15 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
                        precoAtual: p.pvVarejo, precoDigitado: precoVAR,
                        fatorPrazo: parametros.fator_prazo_varejo, parametros });
 
-  // Custo e Valor NF ocupam UMA linha quando a última entrada e o custo do
-  // cenário coincidem, e DUAS quando divergem. É do protótipo, e é bom: a
-  // segunda linha aparece só quando há de fato duas coisas a dizer.
+  // Custo ocupa UMA linha quando a última entrada e o custo do cenário
+  // coincidem, e DUAS quando divergem. É do protótipo, e é bom: a segunda
+  // linha aparece só quando há de fato duas coisas a dizer.
+  // Valor NF NÃO segue mais essa divisão (25/09): passou a mostrar
+  // `valorEntradaUnitario` direto — um valor só, que não depende do cenário
+  // fiscal escolhido na tela — em vez de reconstruir uma estimativa
+  // (`valorAntesDoCredito`) a partir de dois custos diferentes.
   const custoIgual = p.custoUltimaEntrada != null && at.custo != null
     && Math.abs(p.custoUltimaEntrada - at.custo) < 0.01;
-  const valorUlt = valorAntesDoCredito(p.custoUltimaEntrada, p.creditoICMS, p.creditoPisCofins);
-  const valorCen = valorAntesDoCredito(at.custo, p.creditoICMS, p.creditoPisCofins);
 
   return (
     <tr className="border-t border-gray-100 hover:bg-gray-50">
@@ -793,13 +802,11 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
           </>
         )}
       </td>
+      {/* `valorEntradaUnitario` direto (VL_ENT_UNIT, com frete embutido quando
+          há) — não depende de `cenarioSel`, então é sempre UMA linha, ao
+          contrário da coluna Custo à esquerda. */}
       <td className="num px-2 py-1.5 text-center text-2xs text-gray-600" style={{ minWidth: 96 }}>
-        {custoIgual ? moeda(valorCen) : (
-          <>
-            <div>últ {moeda(valorUlt)}</div>
-            <div className="text-gray-400">ger {moeda(valorCen)}</div>
-          </>
-        )}
+        {p.valorEntradaUnitario != null ? moeda(p.valorEntradaUnitario) : "—"}
       </td>
 
       {/* Formatação idêntica a `Pedidos.jsx` (dd/mm em cima, quantidade embaixo

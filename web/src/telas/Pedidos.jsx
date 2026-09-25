@@ -53,7 +53,6 @@ const ROTULO_COLUNA = {
   pendente: "Pend.",
   estPedido: "EST+PED",
   ultimaEntrada: "Últ. entrada",
-  valorNf: "Valor NF",
   vendaAtual: "Venda do mês",
   mediaVenda: "Média",
   ultimaSaida: "Últ. saída",
@@ -420,10 +419,18 @@ function Tabela({ itens, carrinho, setCarrinho, ordenar, dir, aoOrdenar, mesRefe
             <CabecalhoOrdenavel {...props} coluna="ultimaEntrada" padrao="desc" align="center">Últ. entrada</CabecalhoOrdenavel>
             {/* Preço unitário da MESMA última entrada da coluna vizinha — por
                 isso fica colada a ela na leitura (data/qtd da entrada, e o
-                preço daquela entrada). `p.vl_ent_unit` já está no whitelist do
-                servidor com este id (`produto.py:ORDENACOES`, usado também por
-                Precificacao.jsx), então fica clicável como as demais. */}
-            <CabecalhoOrdenavel {...props} coluna="valorNf" padrao="desc" align="center">Valor NF</CabecalhoOrdenavel>
+                preço daquela entrada). Mostra `precoEntradaSemFrete`
+                (COMPRAS_PRODUTO_CONTEXTO.PRECO_ULT_ENT_SEM_FRETE, rotina 218 do
+                WinThor): o valor do PRODUTO, sem o frete que `vl_ent_unit`
+                embute — é este o número que faz sentido negociar com o
+                fornecedor (pedido do Diretor, 25/09). O whitelist do servidor
+                (`produto.py:ORDENACOES`) só tem chave para `vl_ent_unit` (com
+                frete, usado por Precificacao.jsx); não existe `p.preco_ult_ent_
+                sem_frete` lá. Ordenar por uma coluna e exibir outra reproduziria
+                a MESMA incoerência que motivou esta mudança — por isso o
+                cabeçalho fica sem `CabecalhoOrdenavel` (sem seta, sem clique),
+                em vez de inventar uma chave que o servidor recusaria com 422. */}
+            <th className="px-2 py-2 text-center font-medium" title="Valor da nota, sem o custo do frete — o valor negociado com o fornecedor (rotina 218)">Valor NF (s/ frete)</th>
             {/* As 4 colunas de venda mensal: só a primeira (mês corrente) tem
                 ordenação própria no servidor (`vendaAtual` → VD_MES_ATUAL);
                 M-1/M-2/M-3 não têm coluna equivalente no whitelist — ficam
@@ -522,14 +529,16 @@ function LinhaPedido({ p, valor, aoTrocar, parametros }) {
         {p.ultimaEntrada ? p.ultimaEntrada.split("-").reverse().slice(0, 2).join("/") : "—"}
         {p.qtdUltimaEntrada != null && <div className="text-gray-400">{numero(p.qtdUltimaEntrada, 0)}</div>}
       </td>
-      {/* Valor da NOTA por unidade (`valorEntradaUnitario`, REGRAS.md §regra 8:
-          já vem por unidade, nunca dividido/multiplicado pela embalagem de
-          compra aqui). Diferente de `custoGerencial` (líquido de imposto) —
-          é este o preço que `totais`/`PainelItens` usam para o total do
-          carrinho, porque é o mesmo preço que o Diretor confere linha a
-          linha antes de decidir a quantidade. */}
+      {/* `precoEntradaSemFrete` (COMPRAS_PRODUTO_CONTEXTO.PRECO_ULT_ENT_SEM_FRETE,
+          rotina 218 do WinThor) — o valor do PRODUTO na última entrada, SEM o
+          frete que `valorEntradaUnitario` embute quando há. Pedido do Diretor
+          (25/09): esta COLUNA passa a mostrar o valor sem frete, porque é o
+          que se negocia com o fornecedor; o TOTAL do carrinho (`totais`,
+          abaixo, e `PainelItens`) continua em `valorEntradaUnitario` — não foi
+          pedido para mudar, e mudar o total junto seria decisão de outro
+          escopo (reportado, não feito). */}
       <td className="num px-2 py-2 text-center text-2xs text-gray-500">
-        {p.valorEntradaUnitario != null ? moeda(p.valorEntradaUnitario) : "—"}
+        {p.precoEntradaSemFrete != null ? moeda(p.precoEntradaSemFrete) : "—"}
       </td>
       {/* Etapa 13, ponto 1: `vendaHistorico` virou objeto POR MÉTRICA
           (`app/api/contrato.py:_venda_historico`). Esta tabela não tem

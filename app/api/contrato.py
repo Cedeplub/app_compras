@@ -337,6 +337,14 @@ def produto(p: dict) -> dict:
         # coluna, e não `custoGerencial`, que passou a ser o padrão de PREÇO
         # UNITÁRIO do item de pedido (24/09/2026 — ver app/servicos/pedido.py).
         "valorEntradaUnitario": _f(p.get("vl_ent_unit")),
+        # `valorEntradaUnitario` (VL_ENT_UNIT/PCEST.VALORULTENT) embute o
+        # frete quando há — é o valor da nota, usado na Precificação, onde o
+        # custo do frete faz parte da decisão de preço. `precoEntradaSemFrete`
+        # (COMPRAS_PRODUTO_CONTEXTO.PRECO_ULT_ENT_SEM_FRETE) é o produto puro
+        # pela lógica da rotina 218 do WinThor, sem frete — usado em Pedidos,
+        # onde se negocia com o fornecedor e o frete não entra. Não trocar um
+        # pelo outro.
+        "precoEntradaSemFrete": _f(p.get("preco_ult_ent_sem_frete")),
         "custoUltimaEntrada": _f(p.get("custo_ult_ent")),
         "custoStValor": _f(p.get("custo_tot_s_valor")),
         "custoOficial": _f(p.get("custo_tot_oficial")),

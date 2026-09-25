@@ -21,7 +21,11 @@ renamed as (
         TIPODESCARGA        as tipo_descarga,
         CODFISCAL           as codigo_fiscal,
         TIPOMOVGARANTIA     as tipo_movimento_garantia,
-        OBS                 as observacao
+        OBS                 as observacao,
+        CODCONT             as id_conta_contabil,
+        CODCONTFOR          as id_conta_contabil_fornecedor,
+        DTEMISSAO           as data_emissao,
+        ESPECIE             as especie
     from source
 )
 

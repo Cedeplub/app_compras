@@ -1579,3 +1579,48 @@ models:
         data_tests: [not_null]
       - name: codigo_produto
         data_tests: [not_null]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Preço da última entrada SEM FRETE (rotina 218) - contexto de PEDIDO, não
+  # de precificação. Não entra em fat_pedido: ver o cabeçalho do model.
+  # ───────────────────────────────────────────────────────────────────────────
+
+  - name: int_produto_ultima_entrada
+    description: >
+      Preço unitário da ÚLTIMA ENTRADA de cada produto pela lógica da ROTINA
+      218 do WinThor - o preço do PRODUTO PURO, SEM FRETE, que é o que a tela
+      de Pedidos usa para negociar com o fornecedor.
+      ⚠ É DIFERENTE de VL_ENT_UNIT (coluna BH do gabarito), que vem de
+      PCEST.VALORULTENT e EMBUTE o frete quando a nota tem frete rateado -
+      aquela continua alimentando custo, margem, preço sugerido e a tela de
+      Precificação. Medido no build de 25/09/2026, filial 2: dos 6.562 SKUs
+      com valor nos dois lados, 4.884 iguais (tolerância 0,01), 1.286 com a
+      218 menor (frete embutido no VALORULTENT) e 392 com a 218 maior.
+      Origem: PCMOV x PCNFENT (stg_movimentacao x stg_nota_entrada), filial
+      var compras_filial_estoque. Valor =
+      decode(nvl(PUNIT,0), 0, nvl(PUNITCONT,0), PUNIT). Sem janela de data:
+      a última entrada, seja quando for (a mais antiga que vira "última" de
+      algum SKU é de 03/07/2013).
+      ⚠ DESVIO DELIBERADO da 218: PCCONSUM não tem GRANT (ORA-00942), então a
+      condição CODCONT = PCCONSUM.CODCONTAJUSTEEST com TIPODESCARGA='4' ficou
+      de fora. Medido: 119 de 6.609 produtos têm como última entrada um ajuste
+      de estoque e passam a receber o valor da última entrada que é COMPRA de
+      verdade - coerente com o uso, já que ajuste de estoque não é preço de
+      fornecedor. O NVL com PCCONSUM.CODCONTFOR é irrelevante: CODCONTFOR é
+      nulo em 1 nota de 498.441.
+      Grão: 1 linha por produto (id_produto), com desempate determinístico em
+      data_movimento / id_transacao_entrada / id_transacao_item.
+    columns:
+      - name: id_produto
+        description: "Grão do model: 1 linha por produto."
+        data_tests: [unique, not_null]
+      - name: preco_ult_ent_sem_frete
+        description: >
+          PUNIT da 218 (ou PUNITCONT quando PUNIT é zero/nulo). Unitário - NÃO
+          é dividido pela embalagem de compra (REGRAS.md regra 8).
+        data_tests: [not_null]
+      - name: dt_ult_ent_sem_frete
+        description: >
+          DTMOV do movimento escolhido. Serve para auditar de qual nota veio o
+          preço; NÃO é exposta em compras_produto_contexto.
+        data_tests: [not_null]

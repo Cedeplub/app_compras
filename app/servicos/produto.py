@@ -70,6 +70,7 @@ _COLUNAS = """
 
     ctx.regime_fiscal, ctx.qt_ult_saida, ctx.venda_ano_passado,
     ctx.dt_ult_alt_pv_atacado, ctx.dt_ult_alt_pv_varejo,
+    ctx.preco_ult_ent_sem_frete,
     d.atualizado_em                                    as decisao_atualizado_em
 """
 

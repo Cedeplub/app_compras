@@ -115,6 +115,25 @@
 -- contra Q11 (o mesmo mês-alvo, pelo caminho da sucessão) e QUEBRA no dia em
 -- que alguém ativar uma sucessão, forçando a decisão em vez de deixar a barra
 -- amarela ficar silenciosamente incomparável com as outras quatro.
+--
+-- ── PRECO_ULT_ENT_SEM_FRETE ───────────────────────────────────────────────
+-- Preço unitário da última entrada pela lógica da ROTINA 218 do WinThor, SEM
+-- FRETE — o preço do produto puro, que é o que a tela de PEDIDOS precisa para
+-- negociar com o fornecedor. Vem pronto de int_produto_ultima_entrada; a
+-- regra, as condições da 218 e o desvio deliberado dos 119 produtos de ajuste
+-- de estoque estão no cabeçalho daquele model, e não são repetidos aqui.
+--
+-- ⚠ NÃO é VL_ENT_UNIT (coluna BH). Aquela vem de PCEST.VALORULTENT e EMBUTE
+-- o frete quando a nota tem frete rateado; é ela que alimenta custo, margem e
+-- preço sugerido, e é ela que a tela de PRECIFICAÇÃO continua usando. Os dois
+-- divergem em 1.678 dos 6.562 SKUs com valor nos dois lados (medido no build
+-- de 25/09/2026, tolerância 0,01: 1.286 com a 218 menor, 392 com a 218
+-- maior). Trocar um pelo outro em qualquer direção mexe em preço de venda
+-- real.
+--
+-- ⚠ NULO para SKU que nunca teve entrada qualificada na filial de estoque.
+-- É ausência de entrada, não preço zero: nvl(...,0) faria a tela de Pedidos
+-- oferecer "R$ 0,00" como último preço pago ao fornecedor.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 with pedido as (
@@ -131,6 +150,10 @@ cadastro as (
 
 venda_mensal as (
     select * from {{ ref('int_venda_mensal') }}
+),
+
+ultima_entrada as (
+    select * from {{ ref('int_produto_ultima_entrada') }}
 ),
 
 -- Mesmo mes de referencia do pivot (int_venda_mensal_pivot.mes_ref): o mes
@@ -185,7 +208,12 @@ final as (
             when va.codigo_produto is not null
                  then va.quantidade_liquida / nullif(p.fator_exibicao, 0)
             when ex.codigo_produto is not null then 0
-        end                                             as VENDA_ANO_PASSADO
+        end                                             as VENDA_ANO_PASSADO,
+        -- Preço do produto PURO, sem frete (rotina 218) - ver cabeçalho.
+        -- ⚠ NÃO é dividido por FATOR_EXIBICAO: é preço UNITÁRIO de um
+        -- movimento de entrada, pela mesma razão de REGRAS.md regra 8
+        -- ("VL_ULT_ENT nunca é dividido pela embalagem de compra").
+        ue.preco_ult_ent_sem_frete                      as PRECO_ULT_ENT_SEM_FRETE
       from pedido p
       left join tributacao t
         on t.cod_tributacao = p.cod_icms
@@ -195,6 +223,8 @@ final as (
         on va.codigo_produto = p.codigo
       left join existia_no_alvo ex
         on ex.codigo_produto = p.codigo
+      left join ultima_entrada ue
+        on ue.id_produto = p.codigo
 )
 
 select * from final

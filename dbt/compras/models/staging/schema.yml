@@ -407,6 +407,14 @@ models:
         description: "Tipo de movimento de garantia"
       - name: observacao
         description: "Campo livre de observações"
+      - name: id_conta_contabil
+        description: "Conta contábil lançada na nota; a rotina 218 só considera a nota quando ela bate com a conta do fornecedor"
+      - name: id_conta_contabil_fornecedor
+        description: "Conta contábil do fornecedor na nota; preenchida em 498.440 de 498.441 notas (o NVL da query original da rotina 218 praticamente nunca precisa do fallback)"
+      - name: data_emissao
+        description: "Data de emissão da nota (utilizada na rotina 218 como janela, separada de DTMOV)"
+      - name: especie
+        description: "Espécie do documento (ex.: NF, NE); utilizada na rotina 218 junto de TIPODESCARGA='S'"
 
   # ───────────────────────────────────────────────────────────────────────────
   # Decisões humanas — tabelas de aplicação (APP_*)
