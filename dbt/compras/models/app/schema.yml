@@ -143,12 +143,15 @@ models:
           propósito. Medido no build de 25/09/2026 sobre os 6.562 SKUs com
           valor nos dois lados: 4.884 iguais (tolerância 0,01), 1.286 com a
           218 menor (é ali que o frete está embutido) e 392 com a 218 maior.
-          ⚠ DESVIO DELIBERADO da 218, porque PCCONSUM não tem GRANT
-          (ORA-00942): a condição de ajuste de estoque
+          ⚠ DESVIO DELIBERADO da 218, por DECISÃO de 25/09/2026 e NÃO por
+          falta de acesso (o GRANT em PCCONSUM foi concedido nessa data): a
+          condição de ajuste de estoque
           (CODCONT = PCCONSUM.CODCONTAJUSTEEST com TIPODESCARGA='4') ficou de
-          fora. Medido: 119 de 6.609 produtos têm como última entrada um
-          ajuste de estoque e passam a mostrar o valor da última entrada que é
-          COMPRA de verdade - ajuste de estoque não é preço de fornecedor.
+          fora. Medido com o GRANT ativo: incluí-la mudaria o preço de 75
+          produtos, que passariam a usar o valor do ajuste de estoque -
+          sistematicamente mais barato, até -22% - por UM produto a mais de
+          cobertura. Ajuste de estoque é reavaliação contábil interna, não o
+          que o fornecedor cobrou.
           ⚠ NULO para SKU sem nenhuma entrada qualificada na filial de
           estoque; é ausência de entrada, não preço zero.
           Não é dividido por FATOR_EXIBICAO (REGRAS.md regra 8).

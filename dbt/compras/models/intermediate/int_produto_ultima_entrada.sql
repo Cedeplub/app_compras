@@ -48,20 +48,28 @@
 --   (a) CODCONT = NVL(CODCONTFOR, PCCONSUM.CODCONTFOR)
 --   (b) CODCONT = PCCONSUM.CODCONTAJUSTEEST  AND  TIPODESCARGA = '4'
 --   (c) TIPODESCARGA = 'S' AND ESPECIE IN ('NF','NE')
--- **PCCONSUM não tem GRANT para este usuário** — testado, devolve ORA-00942.
--- Não é source deste projeto e não pode virar uma. Então:
---   • (a) entra SEM o NVL de PCCONSUM. Impacto medido: CODCONTFOR é nulo em
---     1 nota de 498.441 — o NVL é irrelevante na prática.
+-- ⚠ O GRANT em PCCONSUM FOI CONCEDIDO em 25/09/2026, a pedido. Ou seja: o
+-- desvio abaixo NÃO é mais falta de acesso — é ESCOLHA, tomada com o número
+-- na mão. Quem ler isto no futuro não deve "consertar" achando que faltava
+-- permissão.
+--   • (b) FICA DE FORA, por DECISÃO DO USUÁRIO em 25/09/2026. Medido com o
+--     GRANT já ativo: incluí-la mudaria o preço de 75 produtos, que passariam
+--     a usar o valor do AJUSTE DE ESTOQUE em vez o da última compra — e o
+--     ajuste é sistematicamente MAIS BARATO (ex.: SKU 2021 JVC SOLUPAN
+--     236,90 → 191,63, −19%; SKU 3393 JVC SHAMPOO 26,32 → 20,65, −22%).
+--     O ganho seria de UM único produto em cobertura.
+--     Ajuste de estoque é reavaliação contábil interna, não o que o
+--     fornecedor cobrou — e este número serve para negociar com o fornecedor
+--     E para gravar o preço do item de pedido. Por isso fica fora.
+--   • (a) entra SEM o NVL de PCCONSUM, e isso agora é MEDIDO como inócuo, não
+--     suposto: a única nota com CODCONTFOR nulo (numtransent 1118284, filial
+--     2, emitida em 17/09/2026) tem ZERO movimentos de entrada em PCMOV —
+--     nenhum preço de produto sai dela.
 --   • (c) entra literal.
---   • (b) FICA DE FORA. Medido: 119 de 6.609 produtos têm como ÚLTIMA entrada
---     um ajuste de estoque (TIPODESCARGA='4'), que essa condição incluiria.
---     Para esses 119 o valor passa a ser o da última entrada que é COMPRA de
---     verdade — o que é COERENTE COM O USO: o número existe para negociar
---     preço com fornecedor, e ajuste de estoque não é preço de fornecedor.
--- Isto é desvio DELIBERADO e medido, não esquecimento. Se algum dia o GRANT
--- em PCCONSUM aparecer, a decisão de reincluir (b) é do Diretor de Compras
--- (PDF §14: regra fiscal/de compra se valida antes de codificar), não de quem
--- mexe neste arquivo.
+-- Por (a) e (b) acima, PCCONSUM NÃO é source deste projeto de propósito:
+-- acrescentar uma dependência que comprovadamente não muda nenhum número é
+-- pior que não acrescentá-la. O GRANT existe e permanece disponível se a
+-- decisão sobre (b) mudar.
 --
 -- ── SEM JANELA DE DATA, de propósito ──────────────────────────────────────
 -- A 218 recebe :DTP1..:DTP4 porque é consulta de TELA, onde o usuário escolhe
@@ -106,7 +114,8 @@ nota as (
       from nota_bruta
      where id_filial = '{{ var("compras_filial_estoque", "2") }}'
        and tipo_descarga not in ('6', '7', '8', 'N', 'F')
-       -- (a) sem o NVL de PCCONSUM e (c) literal; (b) fora - ver cabeçalho.
+       -- (a) sem o NVL de PCCONSUM (medido inocuo) e (c) literal; (b) fora
+       -- por DECISAO de 25/09/2026, nao por falta de GRANT - ver cabecalho.
        and (id_conta_contabil = id_conta_contabil_fornecedor
             or (tipo_descarga = 'S' and especie in ('NF', 'NE')))
      group by id_transacao_entrada

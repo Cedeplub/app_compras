@@ -1601,13 +1601,16 @@ models:
       decode(nvl(PUNIT,0), 0, nvl(PUNITCONT,0), PUNIT). Sem janela de data:
       a última entrada, seja quando for (a mais antiga que vira "última" de
       algum SKU é de 03/07/2013).
-      ⚠ DESVIO DELIBERADO da 218: PCCONSUM não tem GRANT (ORA-00942), então a
-      condição CODCONT = PCCONSUM.CODCONTAJUSTEEST com TIPODESCARGA='4' ficou
-      de fora. Medido: 119 de 6.609 produtos têm como última entrada um ajuste
-      de estoque e passam a receber o valor da última entrada que é COMPRA de
-      verdade - coerente com o uso, já que ajuste de estoque não é preço de
-      fornecedor. O NVL com PCCONSUM.CODCONTFOR é irrelevante: CODCONTFOR é
-      nulo em 1 nota de 498.441.
+      ⚠ DESVIO DELIBERADO da 218, e por DECISÃO, não por falta de acesso: o
+      GRANT em PCCONSUM foi concedido em 25/09/2026, e ainda assim a condição
+      CODCONT = PCCONSUM.CODCONTAJUSTEEST com TIPODESCARGA='4' ficou de fora.
+      Medido com o GRANT ativo: incluí-la mudaria o preço de 75 produtos, que
+      passariam a usar o valor do AJUSTE DE ESTOQUE - sistematicamente mais
+      barato (até -22%) - em troca de UM produto a mais de cobertura. Ajuste
+      de estoque é reavaliação contábil interna, não o que o fornecedor
+      cobrou, e este número negocia com fornecedor e grava o preço do item de
+      pedido. O NVL com PCCONSUM.CODCONTFOR também ficou fora, e é inócuo: a
+      única nota com CODCONTFOR nulo não tem movimento de entrada nenhum.
       Grão: 1 linha por produto (id_produto), com desempate determinístico em
       data_movimento / id_transacao_entrada / id_transacao_item.
     columns:
