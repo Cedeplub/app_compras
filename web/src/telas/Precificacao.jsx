@@ -9,7 +9,7 @@ import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrd
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
-import { data as fmtData, moeda, numero, paraCampoPreco, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
+import { data as fmtData, dataCompleta, moeda, numero, paraCampoPreco, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
 import { textoConfirmacaoLote } from "../lotePrecoStatus.js";
 
 /* Tela — Precificação (PROTOTIPO.md §2.9, .jsx linha 3265).
@@ -812,7 +812,7 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
       {/* Formatação idêntica a `Pedidos.jsx` (dd/mm em cima, quantidade embaixo
           em cinza mais claro) — mesmo contrato, mesma leitura nas duas telas. */}
       <td className="num px-2 py-2 text-center text-2xs text-gray-500">
-        {p.ultimaEntrada ? p.ultimaEntrada.split("-").reverse().slice(0, 2).join("/") : "—"}
+        {dataCompleta(p.ultimaEntrada)}
         {p.qtdUltimaEntrada != null && <div className="text-gray-400">{numero(p.qtdUltimaEntrada, 0)}</div>}
       </td>
 

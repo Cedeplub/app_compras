@@ -9,7 +9,7 @@ import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
-import { mesCurto, mesesAntes, moeda, numero, quantidadeEstoque } from "../formato.js";
+import { dataCompleta, mesCurto, mesesAntes, moeda, numero, quantidadeEstoque } from "../formato.js";
 
 /* Tela — Pedidos (PROTOTIPO.md §2.4, .jsx linha 2735).
  *
@@ -530,7 +530,7 @@ function LinhaPedido({ p, valor, aoTrocar, parametros }) {
       <td className="num px-2 py-2 text-center font-semibold"
           style={{ background: F_ESTPED, color: "#1D4ED8" }}>{numero(p.estPend, 0)}</td>
       <td className="num px-2 py-2 text-center text-2xs text-gray-500">
-        {p.ultimaEntrada ? p.ultimaEntrada.split("-").reverse().slice(0, 2).join("/") : "—"}
+        {dataCompleta(p.ultimaEntrada)}
         {p.qtdUltimaEntrada != null && <div className="text-gray-400">{numero(p.qtdUltimaEntrada, 0)}</div>}
       </td>
       {/* `precoEntradaSemFrete` (COMPRAS_PRODUTO_CONTEXTO.PRECO_ULT_ENT_SEM_FRETE,

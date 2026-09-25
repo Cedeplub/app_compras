@@ -119,6 +119,21 @@ export const data = (iso) => {
   return `${dia}/${mes}/${ano.slice(2)}`;
 };
 
+/** Data com ANO DE QUATRO DÍGITOS — `dd/mm/aaaa`.
+ *
+ *  Existe separada de `data()` (que abrevia o ano em dois dígitos) porque há
+ *  lugares onde o ano precisa estar inteiro na tela: a coluna "Últ. entrada"
+ *  de Pedidos e de Precificação ORDENA pela data real no servidor
+ *  (`p.dt_ult_ent`), e até 25/09/2026 ela exibia só dia/mês — a ordenação
+ *  estava certa e PARECIA errada, porque não dava para distinguir uma entrada
+ *  de 2024 de uma de 2026 olhando "17/09". Onde a data serve para conferir
+ *  ordem ou idade, o ano inteiro não é enfeite. */
+export const dataCompleta = (iso) => {
+  if (!iso) return "—";
+  const [ano, mes, dia] = iso.split("-");
+  return `${dia}/${mes}/${ano}`;
+};
+
 /** "set/26" a partir de uma data ISO. Usado para rotular as barras do gráfico
  *  de venda com o nome do mês em vez de "M-1", "M-2", "M-3".
  *
