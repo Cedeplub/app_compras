@@ -66,19 +66,27 @@ export function calcMargem(preco, custo, { pisCofins, comissao, icmsEf }) {
 export const aPrazo = (avista, fator) =>
   nulo(avista) || nulo(fator) ? null : avista * fator;
 
-/** Valor da NF reconstruído a partir do custo, desfazendo os créditos.
+/* `valorAntesDoCredito` VIVIA AQUI e foi REMOVIDA em 29/09/2026.
  *
+ * Reconstruía o valor da NF a partir do custo, desfazendo os créditos:
  *   valor = custo / ((1 − crédito ICMS) × (1 − crédito PIS/COFINS))
  *
- * A tela nunca lê um "valor NF" de campo próprio: reconstrói de trás para
- * frente, como o protótipo (§5). Vale saber por quê — o custo é que é o número
- * validado contra a planilha; o valor bruto é leitura de apoio.
+ * Em 25/09/2026 as telas que a usavam (Precificação, Decisão do SKU e a coluna
+ * "Valor NF") passaram a mostrar `valorEntradaUnitario` — VL_ENT_UNIT /
+ * PCEST.VALORULTENT, o valor REAL da última entrada — porque a reconstrução
+ * divergia da nota: 74,97 contra 75,07 no SKU 8741, e 435,15 contra 325,42 no
+ * SKU 1654 (34%), já que CUSTO_TOT_GERENCIAL embute ST e outros ajustes que
+ * não são daquela entrada. Desde então a função não tinha um único chamador.
+ *
+ * Fica este bloco, e não a função, porque os comentários de Precificacao.jsx e
+ * DecisaoSKU.jsx continuam citando o nome ao explicar o que mudou: quem
+ * procurar por ele chega aqui e entende, em vez de achar código que ninguém
+ * chama — ou nada.
+ *
+ * Se o Diretor decidir que o número projetado deve voltar (com outro rótulo,
+ * já que não é "Valor NF"), o histórico está no git. Não reintroduzir sem essa
+ * decisão. Ver docs/VALOR_NF_PROJETADO.md.
  */
-export function valorAntesDoCredito(custo, creditoICMS, creditoPisCofins) {
-  if (nulo(custo)) return null;
-  const den = (1 - (creditoICMS ?? 0)) * (1 - (creditoPisCofins ?? 0));
-  return den > 0 ? custo / den : null;
-}
 
 /** O cenário escolhido, ou — quando ele não existe nesta praça — o cenário REAL
  *  do produto. Varejo não tem "Oficial" (a redução é exclusiva das filiais

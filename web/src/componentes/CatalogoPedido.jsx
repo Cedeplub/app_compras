@@ -43,7 +43,9 @@ const F_COB = "#FAF5FF";
 // `dir` espelha a direção padrão de cada coluna em `app/servicos/produto.py`
 // (`ORDENACOES`) — mesmo motivo de Precificacao.jsx: o dropdown e o clique no
 // cabeçalho da coluna escrevem o mesmo estado (§3.3), nunca direções diferentes.
-export const ORDENACOES = [
+// Não exportada: só o `<select>` "Ordenar por" daqui de dentro a consome.
+// `Alertas.jsx` e `Precificacao.jsx` têm listas próprias, com outras opções.
+const ORDENACOES = [
   { id: "cobertura", rotulo: "Cobertura — menor primeiro", dir: "asc" },
   { id: "giro", rotulo: "Mais dias sem venda", dir: "desc" },
   { id: "valor", rotulo: "Maior valor de estoque", dir: "desc" },
