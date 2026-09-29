@@ -120,8 +120,9 @@
 -- Preço unitário da última entrada pela lógica da ROTINA 218 do WinThor, SEM
 -- FRETE — o preço do produto puro, que é o que a tela de PEDIDOS precisa para
 -- negociar com o fornecedor. Vem pronto de int_produto_ultima_entrada; a
--- regra, as condições da 218 e o desvio deliberado dos 119 produtos de ajuste
--- de estoque estão no cabeçalho daquele model, e não são repetidos aqui.
+-- regra, as condições da 218 e os DOIS desvios deliberados (só CODOPER = 'E',
+-- desde 29/09/2026, e os produtos de ajuste de estoque) estão no cabeçalho
+-- daquele model, e não são repetidos aqui.
 --
 -- ⚠ NÃO é VL_ENT_UNIT (coluna BH). Aquela vem de PCEST.VALORULTENT e EMBUTE
 -- o frete quando a nota tem frete rateado; é ela que alimenta custo, margem e

@@ -1620,7 +1620,9 @@ models:
       - name: preco_ult_ent_sem_frete
         description: >
           PUNIT da 218 (ou PUNITCONT quando PUNIT é zero/nulo). Unitário - NÃO
-          é dividido pela embalagem de compra (REGRAS.md regra 8).
+          é dividido pela embalagem de compra (REGRAS.md regra 8). Só de
+          movimento CODOPER = 'E' (compra de fornecedor): ER/ET/EB ficaram de
+          fora por decisão de 29/09/2026 - ver o cabeçalho do model.
         data_tests: [not_null]
       - name: dt_ult_ent_sem_frete
         description: >

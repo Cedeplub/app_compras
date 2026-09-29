@@ -34,14 +34,51 @@
 --   DECODE(NVL(PUNIT,0), 0, NVL(PUNITCONT,0), PUNIT)  -> o case abaixo: usa
 --     PUNIT; se for zero OU nulo, cai em PUNITCONT (venda/compra futura, onde
 --     o valor mora no campo "contratado").
---   CODOPER LIKE 'E%' AND CODOPER NOT IN ('ED','EA')  -> entrada de verdade,
---     fora devolução de cliente ('ED') e acerto ('EA').
+--   CODOPER LIKE 'E%' AND CODOPER NOT IN ('ED','EA')  -> ⚠ NÃO reproduzido.
+--     Aqui é CODOPER = 'E' — ver o bloco de desvio logo abaixo.
 --   DTCANCEL IS NULL                                  -> movimento não cancelado.
 --   QT > 0 OR (QTCONT > 0 AND TIPODESCARGA = '4')     -> reproduzido literal.
 --   TIPODESCARGA NOT IN ('6','7','8','N','F')         -> fora devolução e
 --     descargas que não são compra.
 --   CODFILIAL                                         -> var compras_filial_estoque
 --     (hoje '2', sem zero à esquerda — REGRAS.md regra 3). Nunca chumbado.
+--
+-- ── ⚠ DESVIO DELIBERADO DA 218: só CODOPER = 'E' ─────────────────────────
+-- Registro: pedido do usuário em 29/09/2026 ("vamos utilizar apenas o codoper
+-- para entrada normal"), com os números abaixo medidos ANTES da decisão.
+--
+-- A 218 aceita `CODOPER LIKE 'E%' AND CODOPER NOT IN ('ED','EA')`, que é uma
+-- EXCLUSÃO, não uma lista: qualquer E* novo entra sozinho. Medido no CEDEP em
+-- 29/09/2026, quatro códigos sobreviviam a todos os filtros e definiam o preço
+-- de 6.604 produtos:
+--
+--   E    4.647 produtos   compra de fornecedor          <- o único que fica
+--   ER   1.373 produtos   retorno de remessa (descarga 'R')
+--   ET     454 produtos   transferência entre filiais (descarga '1')
+--   EB     130 produtos   bonificação (descarga '5')
+--
+-- POR QUE OS TRÊS SAEM: este número serve para NEGOCIAR COM O FORNECEDOR e é
+-- o preço gravado no item de pedido. Transferência é preço interno entre
+-- filiais; bonificação é mercadoria que veio de graça ou com valor simbólico;
+-- retorno de remessa não é compra. Preço médio de EB: R$ 24,33, contra
+-- R$ 272,03 de 'E' — não são a mesma grandeza. Exemplos reais que a restrição
+-- conserta: SKU 7826 TECBRIL LONG LIFE saía a R$ 0,63 (bonificação) e passa a
+-- R$ 8,99 (compra); SKU 3715 YPF ELAION MOTO saía a R$ 1,47 e passa a R$ 14,14.
+--
+-- O QUE ISSO CUSTA, medido, não suposto:
+--   • 1.245 produtos perdem o preço da 218 (só tinham ET/ER/EB). Destes, 296
+--     estão ATIVOS. 1.209 caem no fallback VL_ENT_UNIT de pedido.py e
+--     continuam pedíveis — com o valor COM frete, que é pior, mas existe.
+--     Sobram 36 sem valor nenhum: todos INATIVOS, estoque zero, e são brindes
+--     e material de marketing (cartaz, display, jaleco, bolsa de praia) —
+--     não se compra nenhum deles de fornecedor.
+--   • 445 produtos mudam de preço (249 ativos: 92 sobem, 157 descem).
+--   • O preço fica em média 41 dias MAIS VELHO nos ativos (273 -> 314 dias),
+--     porque a entrada mais recente deixa de contar quando não é compra. É o
+--     preço de compra de verdade, ainda que mais antigo — foi a escolha.
+--
+-- ⚠ Só afeta PEDIDOS. A tela de PRECIFICAÇÃO lê VL_ENT_UNIT
+-- (PCEST.VALORULTENT, outra fonte) e não muda nem um número com isto.
 --
 -- ── ⚠ DESVIO DELIBERADO DA 218: a condição que depende de PCCONSUM ────────
 -- A 218 aceita a nota por TRÊS caminhos alternativos:
@@ -147,8 +184,10 @@ entrada as (
       from movimentacao m
       join nota n
         on n.id_transacao_entrada = m.id_transacao_entrada
-     where m.codigo_operacao like 'E%'
-       and m.codigo_operacao not in ('ED', 'EA')
+     -- SÓ 'E' (compra de fornecedor). Desvio DELIBERADO da 218, que aceitaria
+     -- também ER/ET/EB - ver o bloco "só CODOPER = 'E'" no cabeçalho. Não
+     -- "conserte" isto de volta para LIKE 'E%' sem ler aquele bloco.
+     where m.codigo_operacao = 'E'
        and m.data_cancelamento is null
        and (m.quantidade > 0
             or (m.quantidade_contratada > 0 and n.tem_descarga_ajuste = 1))
