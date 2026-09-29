@@ -236,9 +236,16 @@ def _preco_padrao_ou_queda(preco_sem_frete, valor_entrada_com_frete) -> float | 
     """Resolve o preço-padrão do item quando o cliente não informou um valor
     explícito: `PRECO_ULT_ENT_SEM_FRETE` (novo padrão, puro) e, na falta dele,
     `VL_ENT_UNIT` (com frete) — ver docstring do módulo, "Origem do preço
-    unitário". A queda existe porque 41 SKUs ATIVOS (medido em 25/09/2026) têm
-    `VL_ENT_UNIT` mas não têm valor da 218; sem ela ficariam impossíveis de
-    pedir, já que a tela de Pedidos não deixa digitar preço."""
+    unitário". A queda existe porque SKUs ATIVOS têm `VL_ENT_UNIT` mas não têm
+    valor da 218; sem ela ficariam impossíveis de pedir, já que a tela de
+    Pedidos não deixa digitar preço. Eram 41 em 25/09/2026 e passaram a 337 em
+    29/09/2026, quando a 218 foi restrita a CODOPER = 'E'.
+
+    ⚠ "com frete" é o que `VL_ENT_UNIT` PODE ter, não o que ele tem sempre: o
+    frete só entra quando a nota tem frete rateado. Medido em 29/09/2026 nos
+    337 ativos que caem aqui, ZERO têm frete na última entrada — para eles esta
+    queda devolve o produto puro, igual ao caminho principal. Não é um degrau
+    de qualidade, é a mesma informação vinda de outra coluna."""
     if preco_sem_frete is not None and float(preco_sem_frete) > 0:
         return float(preco_sem_frete)
     if valor_entrada_com_frete is not None and float(valor_entrada_com_frete) > 0:

@@ -67,11 +67,24 @@
 --
 -- O QUE ISSO CUSTA, medido, não suposto:
 --   • 1.245 produtos perdem o preço da 218 (só tinham ET/ER/EB). Destes, 296
---     estão ATIVOS. 1.209 caem no fallback VL_ENT_UNIT de pedido.py e
---     continuam pedíveis — com o valor COM frete, que é pior, mas existe.
---     Sobram 36 sem valor nenhum: todos INATIVOS, estoque zero, e são brindes
---     e material de marketing (cartaz, display, jaleco, bolsa de praia) —
---     não se compra nenhum deles de fornecedor.
+--     estão ATIVOS, e caem no fallback VL_ENT_UNIT de pedido.py.
+--
+--     ⚠ ISSO NÃO FAZ O PEDIDO PASSAR A INCLUIR FRETE, e a distinção importa:
+--     VL_ENT_UNIT é a coluna que PODE embutir frete, mas só embute QUANDO A
+--     NOTA TEM FRETE RATEADO. Medido em 29/09/2026 nos 337 ativos que hoje
+--     usam o fallback: ZERO têm frete na última entrada — 337 de 337 sem
+--     frete. Para eles VL_ENT_UNIT já É o produto puro, e o pedido continua
+--     com o valor certo. É o mesmo fato dos 74% de SKUs idênticos nos dois
+--     lados, medido no topo deste arquivo.
+--
+--     Faz sentido pelo que esses produtos SÃO: etiqueta, caixa, copo,
+--     expositor, catálogo — embalagem e material de marketing. Não têm valor
+--     da 218 porque não se compram de fornecedor (chegam por remessa ou
+--     transferência), e pela mesma razão não têm frete de compra.
+--
+--     Sobram 36 sem valor nenhum: 35 INATIVOS, estoque zero, brindes e
+--     material de marketing (cartaz, display, jaleco, bolsa de praia). O
+--     único ATIVO tem estoque zero. Esses precisam de preço digitado.
 --   • 445 produtos mudam de preço (249 ativos: 92 sobem, 157 descem).
 --   • O preço fica em média 41 dias MAIS VELHO nos ativos (273 -> 314 dias),
 --     porque a entrada mais recente deixa de contar quando não é compra. É o
