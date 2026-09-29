@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, FileSpreadsheet, Loader2, Plus, Printer, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, FileSpreadsheet, Loader2, Plus, Printer, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import logoCedep from "../logo-cedep.png";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { ordenarLista } from "../componentes/CabecalhoOrdenavel.jsx";
+import { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
+import { FiltrosCatalogo, TabelaCatalogo, Paginacao, FILTROS_PADRAO,
+         POR_PAGINA } from "../componentes/CatalogoPedido.jsx";
+import { useEstadoPersistente } from "../estadoTela.js";
 import { COR_STATUS, ROTULO_AVANCAR, ROTULO_VOLTAR,
          avancarEhExportar, editavel, podeAvancar, podeVoltar } from "../pedidoStatus.js";
 import { moeda, numero } from "../formato.js";
@@ -323,30 +327,94 @@ function LinhaItem({ it, idPedido, podeEditar, aoMudar }) {
 
 /* §2.7: mostra só produtos do MESMO departamento do pedido — um pedido salvo é
  * sempre de um departamento só, exigência do formato do Winthor. */
+/** Sub-tela §2.7 — o catálogo do departamento do pedido.
+ *
+ *  Etapa 17 (pedido do Diretor, 29/09/2026): "na tela de edição de um pedido
+ *  salvo ele precisa ver os detalhes que vê na tela de pedido". Por isso aqui
+ *  entra a MESMA tabela e os MESMOS filtros de `/pedidos` —
+ *  `componentes/CatalogoPedido.jsx`, um componente só para as duas telas — e
+ *  não uma tabela reduzida que fatalmente divergiria daquela.
+ *
+ *  Como todo produto do departamento aparece na lista, os que JÁ estão no
+ *  pedido também aparecem: é assim que o Diretor vê estoque, cobertura, venda
+ *  e tendência do que já pediu, sem que esta sub-tela precise duplicar a lista
+ *  de itens que fica na tela de trás.
+ *
+ *  ⚠ O departamento fica TRAVADO em `pedido.fornecedor`, não pré-selecionado:
+ *  um pedido é de um departamento só (rotina 220 do Winthor) e
+ *  `pedido.py:upsert_item` recusa produto de outro. O filtro travado não é a
+ *  trava — a trava é do servidor; aqui ele só evita oferecer um caminho que
+ *  termina em erro.
+ */
 function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
-  const [busca, setBusca] = useState("");
-  const [lista, setLista] = useState(null);
+  const [opcoes, setOpcoes] = useState(null);
+  const [parametros, setParametros] = useState(null);
+  const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [quantidades, setQuantidades] = useState({});
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
 
-  const jaNoPedido = new Set(pedido.itens.map((i) => i.codigo));
+  // Chave PRÓPRIA, por pedido. Filtrar o catálogo aqui dentro não pode mexer no
+  // que a pessoa deixou montado em `/pedidos` (chave
+  // `app_compras_filtros_pedidos_v1`), nem um pedido herdar o filtro do outro.
+  const [filtros, setFiltros] = useEstadoPersistente(
+    `app_compras_filtros_pedido_${pedido.id}_v1`, FILTROS_PADRAO);
+  const setCampo = (campo) => (v) => setFiltros((f) => ({
+    ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
+  }));
+  const { comprador, status, estoque, busca, pagina, dtUltEntDe, dtUltEntAte } = filtros;
+  const setComprador = setCampo("comprador");
+  const setStatus = setCampo("status");
+  const setEstoque = setCampo("estoque");
+  const setBusca = setCampo("busca");
+  const setPagina = setCampo("pagina");
+  const setDtUltEntDe = setCampo("dtUltEntDe");
+  const setDtUltEntAte = setCampo("dtUltEntAte");
+
+  // Ordenação em estado LOCAL, não em `useOrdenacaoUrl` como `/pedidos`: o
+  // "Voltar" desta tela é `navegar(-1)` (ver o comentário lá em cima), e cada
+  // clique de coluna escrevendo search param empilharia entradas no histórico
+  // — voltar passaria a desfazer ordenações em vez de sair do pedido.
+  const [ordenar, setOrdenar] = useState("cobertura");
+  const [dir, setDir] = useState("asc");
+  const aoOrdenar = useCallback((coluna, direcao) => {
+    setOrdenar(coluna);
+    setDir(direcao);
+    setPagina(1);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const jaNoPedido = new Map(pedido.itens.map((i) => [i.codigo, i.quantidade]));
+
+  useEffect(() => {
+    api.opcoes().then(setOpcoes).catch(() => setOpcoes(null));
+    api.parametros().then(setParametros).catch(() => setParametros(null));
+  }, []);
 
   const buscar = useCallback(async () => {
     setCarregando(true);
+    setErro(null);
     try {
-      const d = await api.produtos({
-        departamento: pedido.fornecedor, status: "Ativo",
-        busca: busca || null, ordenar: "cobertura", porPagina: 50,
-      });
-      setLista(d.itens);
+      setDados(await api.produtos({
+        // Sempre o departamento do pedido — nunca o que estiver guardado no
+        // filtro: é a trava, não uma preferência da pessoa.
+        departamento: pedido.fornecedor,
+        comprador: comprador || null,
+        status: status === "Todos" ? null : status,
+        estoque: estoque || null,
+        busca: busca || null,
+        ordenar, dir, pagina, porPagina: POR_PAGINA,
+        dtUltEntDe: dtUltEntDe || null,
+        dtUltEntAte: dtUltEntAte || null,
+      }));
     } catch (e) {
       setErro(e.detalhe);
+      setDados(null);
     } finally {
       setCarregando(false);
     }
-  }, [pedido.fornecedor, busca]);
+  }, [pedido.fornecedor, comprador, status, estoque, busca, ordenar, dir, pagina,
+      dtUltEntDe, dtUltEntAte]);
 
   useEffect(() => {
     const t = setTimeout(buscar, busca ? 350 : 0);
@@ -371,6 +439,7 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
     }
   }
 
+  const itens = dados?.itens ?? [];
   const escolhidos = Object.values(quantidades).filter((q) => Number(String(q).replace(",", ".")) > 0).length;
 
   return (
@@ -385,80 +454,47 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
       </h2>
       <p className="mt-0.5 text-xs text-gray-500">
         Só produtos deste departamento: um pedido é sempre de um só, porque é assim que o
-        Winthor importa.
+        Winthor importa. Os que já estão no pedido aparecem marcados na lista.
       </p>
 
-      <div className="relative mt-3 max-w-sm">
-        <input type="search" value={busca} onChange={(e) => setBusca(e.target.value)}
-               aria-label="Buscar produto" placeholder="Nome ou código…"
-               className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-3 text-sm" />
-        <Search size={13} aria-hidden="true" className="absolute left-2.5 top-2.5 text-gray-400" />
-      </div>
-
-      {erro && <div className="mt-3"><Erro mensagem={erro} /></div>}
-
       <div className="mt-3">
+        <FiltrosCatalogo {...{ opcoes, comprador, setComprador, status, setStatus,
+                               estoque, setEstoque, ordenar, dir, aoOrdenar,
+                               busca, setBusca, setPagina,
+                               referencia: parametros?.data_referencia,
+                               dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte }}
+                         departamentoTravado={pedido.fornecedor}
+                         total={dados?.total} />
+      </div>
+      {(dtUltEntDe || dtUltEntAte) && <AvisoSemEntrada />}
+
+      {erro && <div className="mt-3"><Erro mensagem={erro} aoTentarDeNovo={buscar} /></div>}
+
+      <div className="mt-4">
         {carregando && <Carregando />}
-        {!carregando && lista?.length === 0 && (
+        {!carregando && !erro && itens.length === 0 && (
           <div className="py-8 text-center text-sm text-gray-400">Nenhum produto nesse filtro.</div>
         )}
-        {!carregando && lista?.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-2xs uppercase tracking-wide text-gray-500">
-                  <th className="px-2 py-2 text-left font-medium">Código</th>
-                  <th className="min-w-[240px] px-3 py-2 text-left font-medium">Produto</th>
-                  <th className="px-2 py-2 text-center font-medium">EST+PED</th>
-                  <th className="px-2 py-2 text-center font-medium">Cob./Alvo</th>
-                  <th className="px-2 py-2 text-center font-medium">Sugestão</th>
-                  <th className="px-3 py-2 text-center font-medium">Qtd.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lista.map((p) => (
-                  <tr key={p.codigo} className="border-t border-gray-100">
-                    <td className="num px-2 py-2 text-gray-500">{p.codigo}</td>
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-gray-800">{p.nome}</div>
-                      {jaNoPedido.has(p.codigo) && (
-                        // Sem este aviso a pessoa digitaria de novo achando que
-                        // soma, quando o servidor SUBSTITUI (a chave é
-                        // pedido+produto).
-                        <div className="text-2xs" style={{ color: "#B98A2E" }}>
-                          já está no pedido — digitar aqui substitui a quantidade
-                        </div>
-                      )}
-                    </td>
-                    <td className="num px-2 py-2 text-center">{numero(p.estPend, 0)}</td>
-                    <td className="num px-2 py-2 text-center">
-                      {numero(p.mesesCobertura, 1)}
-                      <span className="text-gray-400"> / {numero(p.coberturaAlvo, 1)}</span>
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {p.sugCobertura > 0 ? (
-                        <button type="button"
-                                onClick={() => setQuantidades((q) => ({ ...q, [p.codigo]: String(p.sugCobertura) }))}
-                                className="num rounded-md px-2 py-1 text-2xs font-semibold"
-                                style={{ background: `${NAVY}12`, color: NAVY }}>
-                          {numero(p.sugCobertura, 0)}
-                        </button>
-                      ) : <span className="text-2xs text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-1.5 text-center">
-                      <input type="text" inputMode="decimal"
-                             value={quantidades[p.codigo] ?? ""}
-                             aria-label={`Quantidade do produto ${p.codigo}`}
-                             onChange={(e) => setQuantidades((q) => ({ ...q, [p.codigo]: e.target.value }))}
-                             className="num w-[72px] rounded-md border border-gray-300 px-1 py-1 text-center text-sm" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {!carregando && !erro && itens.length > 0 && (
+          <TabelaCatalogo itens={itens}
+                          valorDe={(codigo) => quantidades[codigo]}
+                          aoTrocar={(codigo, v) => setQuantidades((q) => ({ ...q, [codigo]: v }))}
+                          ordenar={ordenar} dir={dir} aoOrdenar={aoOrdenar}
+                          mesReferencia={parametros?.mes_referencia} parametros={parametros}
+                          avisoLinha={(p) => (jaNoPedido.has(p.codigo) ? (
+                            // Sem este aviso a pessoa digitaria de novo achando
+                            // que soma, quando o servidor SUBSTITUI (a chave é
+                            // pedido+produto).
+                            <div className="text-2xs" style={{ color: "#B98A2E" }}>
+                              já no pedido: {numero(jaNoPedido.get(p.codigo), 0)} — digitar aqui substitui
+                            </div>
+                          ) : null)} />
         )}
       </div>
+
+      {dados && dados.totalPaginas > 1 && (
+        <Paginacao pagina={dados.pagina} total={dados.totalPaginas} aoTrocar={setPagina} />
+      )}
 
       <div className="mt-4 flex items-center gap-3">
         <button type="button" onClick={confirmar} disabled={salvando || escolhidos === 0}
