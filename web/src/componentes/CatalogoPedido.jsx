@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { ChevronDown, Filter, Lock } from "lucide-react";
-import CabecalhoOrdenavel from "./CabecalhoOrdenavel.jsx";
+import CabecalhoOrdenavel, { ordenarLista } from "./CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "./FiltroEstoque.jsx";
 import FiltroUltimaEntrada from "./FiltroUltimaEntrada.jsx";
 import { ClasseChip } from "./Basicos.jsx";
@@ -80,6 +80,38 @@ export const FILTROS_PADRAO = {
 };
 
 export const POR_PAGINA = 50;
+
+/* ------------------------------------------------- ordenação no cliente --- */
+
+/** Mesma chave de coluna que o servidor usa (`produto.py:ORDENACOES`), mapeada
+ *  para o campo do produto no contrato. Serve à lista que NÃO é paginada pelo
+ *  servidor — os itens de um pedido, na visão "só os do pedido" da edição.
+ *
+ *  ⚠ Só existe para essa lista curta. Lista paginada continua ordenando no
+ *  SERVIDOR: ordenar no cliente ordenaria apenas a página atual, e a pior
+ *  cobertura do catálogo continuaria na página 7 enquanto a coluna diz
+ *  "ordenado por cobertura" (o defeito que `CabecalhoOrdenavel` documenta). */
+const CAMPO_DA_COLUNA = {
+  codigo: (p) => p.codigo,
+  descricao: (p) => p.nome,
+  estoque: (p) => p.estDisp,
+  pendente: (p) => p.pendente,
+  estPedido: (p) => p.estPend,
+  ultimaEntrada: (p) => p.ultimaEntrada,
+  valorNfSemFrete: (p) => p.precoEntradaSemFrete,
+  vendaAtual: (p) => p.vendaHistorico?.quantidade?.[0],
+  mediaVenda: (p) => p.mediaJanela,
+  ultimaSaida: (p) => p.ultimaSaida,
+  cobertura: (p) => p.mesesCobertura,
+  tendencia: (p) => p.tendPct,
+  giro: (p) => p.diasSemVenda,
+  valor: (p) => p.valorEstoque,
+};
+
+export function ordenarCatalogo(itens, ordenar, dir) {
+  const extrator = CAMPO_DA_COLUNA[ordenar] ?? CAMPO_DA_COLUNA.codigo;
+  return ordenarLista(itens, extrator, dir);
+}
 
 /* -------------------------------------------------------------- paginação --- */
 

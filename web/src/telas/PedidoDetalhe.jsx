@@ -6,8 +6,8 @@ import logoCedep from "../logo-cedep.png";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { ordenarLista } from "../componentes/CabecalhoOrdenavel.jsx";
 import { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
-import { FiltrosCatalogo, TabelaCatalogo, Paginacao, FILTROS_PADRAO,
-         POR_PAGINA } from "../componentes/CatalogoPedido.jsx";
+import { FiltrosCatalogo, TabelaCatalogo, Paginacao, ordenarCatalogo,
+         FILTROS_PADRAO, POR_PAGINA } from "../componentes/CatalogoPedido.jsx";
 import { useEstadoPersistente } from "../estadoTela.js";
 import { COR_STATUS, ROTULO_AVANCAR, ROTULO_VOLTAR,
          avancarEhExportar, editavel, podeAvancar, podeVoltar } from "../pedidoStatus.js";
@@ -198,7 +198,7 @@ export default function PedidoDetalhe() {
         <button type="button" onClick={() => setAdicionando(true)}
                 className="mt-3 flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold"
                 style={{ color: NAVY, borderColor: `${NAVY}44` }}>
-          <Plus size={14} aria-hidden="true" /> Adicionar produtos ao pedido
+          <Plus size={14} aria-hidden="true" /> Ver e adicionar produtos
         </button>
       )}
 
@@ -355,6 +355,15 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
 
+  // Duas visões. Abre em "só os do pedido" quando há itens, porque o pedido do
+  // Diretor era VER o que já está lá com o contexto todo; no catálogo inteiro
+  // (297 produtos em 6 páginas no departamento PETROBRAS, medido) os itens do
+  // pedido caem numa página qualquer e na prática não se acham — foi o defeito
+  // relatado em 29/09/2026 ("não vejo os produtos que já estão no pedido").
+  const [soDoPedido, setSoDoPedido] = useState(pedido.itens.length > 0);
+  const [itensDoPedido, setItensDoPedido] = useState(null);
+  const [carregandoPedido, setCarregandoPedido] = useState(false);
+
   // Chave PRÓPRIA, por pedido. Filtrar o catálogo aqui dentro não pode mexer no
   // que a pessoa deixou montado em `/pedidos` (chave
   // `app_compras_filtros_pedidos_v1`), nem um pedido herdar o filtro do outro.
@@ -385,13 +394,34 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const jaNoPedido = new Map(pedido.itens.map((i) => [i.codigo, i.quantidade]));
+  const codigosDoPedido = pedido.itens.map((i) => i.codigo).join(",");
 
   useEffect(() => {
     api.opcoes().then(setOpcoes).catch(() => setOpcoes(null));
     api.parametros().then(setParametros).catch(() => setParametros(null));
   }, []);
 
+  // Os produtos COMPLETOS dos itens do pedido, para a visão "só os do pedido"
+  // usar a mesma tabela larga. Um GET por item — `/api/produtos/{codigo}`
+  // devolve exatamente o mesmo contrato da lista (conferido), e um pedido tem
+  // poucos itens, então não vale inventar uma rota nova para isso. Item que
+  // falhar sai da lista em vez de derrubar a tela inteira.
+  useEffect(() => {
+    if (!soDoPedido) return undefined;
+    const codigos = codigosDoPedido ? codigosDoPedido.split(",").map(Number) : [];
+    if (codigos.length === 0) { setItensDoPedido([]); return undefined; }
+    let cancelado = false;
+    setCarregandoPedido(true);
+    Promise.all(codigos.map((c) => api.produto(c).catch(() => null)))
+      .then((lista) => { if (!cancelado) setItensDoPedido(lista.filter(Boolean)); })
+      .finally(() => { if (!cancelado) setCarregandoPedido(false); });
+    return () => { cancelado = true; };
+  }, [soDoPedido, codigosDoPedido]);
+
   const buscar = useCallback(async () => {
+    // Na visão "só os do pedido" o catálogo paginado não é consultado: a lista
+    // vem do efeito acima, e buscar aqui seria uma requisição jogada fora.
+    if (soDoPedido) { setCarregando(false); return; }
     setCarregando(true);
     setErro(null);
     try {
@@ -413,8 +443,8 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
     } finally {
       setCarregando(false);
     }
-  }, [pedido.fornecedor, comprador, status, estoque, busca, ordenar, dir, pagina,
-      dtUltEntDe, dtUltEntAte]);
+  }, [soDoPedido, pedido.fornecedor, comprador, status, estoque, busca, ordenar, dir,
+      pagina, dtUltEntDe, dtUltEntAte]);
 
   useEffect(() => {
     const t = setTimeout(buscar, busca ? 350 : 0);
@@ -439,7 +469,13 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
     }
   }
 
-  const itens = dados?.itens ?? [];
+  // Na visão "só os do pedido" a lista não é paginada pelo servidor, então a
+  // ordenação por clique no cabeçalho acontece no cliente — senão o cabeçalho
+  // ficaria clicável sem fazer nada, que é pior que não ser clicável.
+  const itens = soDoPedido
+    ? ordenarCatalogo(itensDoPedido ?? [], ordenar, dir)
+    : (dados?.itens ?? []);
+  const carregandoLista = soDoPedido ? carregandoPedido : carregando;
   const escolhidos = Object.values(quantidades).filter((q) => Number(String(q).replace(",", ".")) > 0).length;
 
   return (
@@ -450,32 +486,58 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
       </button>
 
       <h2 className="text-lg font-semibold text-gray-900">
-        Adicionar produtos — {pedido.fornecedor}
+        Produtos — {pedido.fornecedor}
       </h2>
       <p className="mt-0.5 text-xs text-gray-500">
         Só produtos deste departamento: um pedido é sempre de um só, porque é assim que o
-        Winthor importa. Os que já estão no pedido aparecem marcados na lista.
+        Winthor importa.
       </p>
 
-      <div className="mt-3">
-        <FiltrosCatalogo {...{ opcoes, comprador, setComprador, status, setStatus,
-                               estoque, setEstoque, ordenar, dir, aoOrdenar,
-                               busca, setBusca, setPagina,
-                               referencia: parametros?.data_referencia,
-                               dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte }}
-                         departamentoTravado={pedido.fornecedor}
-                         total={dados?.total} />
+      {/* As duas visões. Sem isto, os itens do pedido ficam perdidos numa
+          página qualquer do catálogo e não se acham — o defeito relatado. */}
+      <div className="mt-3 flex w-fit gap-1 rounded-lg bg-gray-100 p-0.5">
+        {[
+          { id: true, rotulo: `No pedido (${numero(pedido.itens.length)})` },
+          { id: false, rotulo: "Todo o departamento" },
+        ].map((v) => (
+          <button key={String(v.id)} type="button" aria-pressed={soDoPedido === v.id}
+                  onClick={() => { setSoDoPedido(v.id); setPagina(1); }}
+                  disabled={v.id === true && pedido.itens.length === 0}
+                  style={soDoPedido === v.id ? { background: NAVY, color: "white" } : {}}
+                  className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-500 disabled:opacity-40">
+            {v.rotulo}
+          </button>
+        ))}
       </div>
-      {(dtUltEntDe || dtUltEntAte) && <AvisoSemEntrada />}
+
+      {/* Filtros só na visão do catálogo: em "No pedido" a lista é fixa (os
+          itens daquele pedido), e um filtro que não filtra nada seria pior que
+          filtro nenhum. */}
+      {!soDoPedido && (
+        <>
+          <div className="mt-3">
+            <FiltrosCatalogo {...{ opcoes, comprador, setComprador, status, setStatus,
+                                   estoque, setEstoque, ordenar, dir, aoOrdenar,
+                                   busca, setBusca, setPagina,
+                                   referencia: parametros?.data_referencia,
+                                   dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte }}
+                             departamentoTravado={pedido.fornecedor}
+                             total={dados?.total} />
+          </div>
+          {(dtUltEntDe || dtUltEntAte) && <AvisoSemEntrada />}
+        </>
+      )}
 
       {erro && <div className="mt-3"><Erro mensagem={erro} aoTentarDeNovo={buscar} /></div>}
 
       <div className="mt-4">
-        {carregando && <Carregando />}
-        {!carregando && !erro && itens.length === 0 && (
-          <div className="py-8 text-center text-sm text-gray-400">Nenhum produto nesse filtro.</div>
+        {carregandoLista && <Carregando />}
+        {!carregandoLista && !erro && itens.length === 0 && (
+          <div className="py-8 text-center text-sm text-gray-400">
+            {soDoPedido ? "Este pedido ainda não tem itens." : "Nenhum produto nesse filtro."}
+          </div>
         )}
-        {!carregando && !erro && itens.length > 0 && (
+        {!carregandoLista && !erro && itens.length > 0 && (
           <TabelaCatalogo itens={itens}
                           valorDe={(codigo) => quantidades[codigo]}
                           aoTrocar={(codigo, v) => setQuantidades((q) => ({ ...q, [codigo]: v }))}
@@ -492,7 +554,7 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
         )}
       </div>
 
-      {dados && dados.totalPaginas > 1 && (
+      {!soDoPedido && dados && dados.totalPaginas > 1 && (
         <Paginacao pagina={dados.pagina} total={dados.totalPaginas} aoTrocar={setPagina} />
       )}
 
