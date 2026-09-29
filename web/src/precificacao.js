@@ -85,7 +85,7 @@ export const aPrazo = (avista, fator) =>
  *
  * Se o Diretor decidir que o número projetado deve voltar (com outro rótulo,
  * já que não é "Valor NF"), o histórico está no git. Não reintroduzir sem essa
- * decisão. Ver docs/VALOR_NF_PROJETADO.md.
+ * decisão — ela estava pendente quando isto foi escrito.
  */
 
 /** O cenário escolhido, ou — quando ele não existe nesta praça — o cenário REAL
