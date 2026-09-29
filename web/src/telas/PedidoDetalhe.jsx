@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, FileSpreadsheet, Loader2, Plus, Printer, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Loader2, Plus,
+         Printer, Trash2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import logoCedep from "../logo-cedep.png";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
@@ -26,6 +27,16 @@ import { moeda, numero } from "../formato.js";
 
 const NAVY = "#375DA8";
 const RED = "#DE434B";
+
+// Acima disto, a lista "No pedido" abre FECHADA na sub-tela de produtos. Oito
+// linhas é o que cabe numa tela de notebook sem empurrar os filtros do
+// catálogo para fora — acima disso a pessoa rola para chegar ao que veio
+// fazer, que foi a queixa que originou o colapso.
+const LIMITE_AUTO_COLAPSO = 8;
+
+// `aria-controls` do botão que abre/fecha a lista "No pedido" — é o que faz o
+// leitor de tela saber QUE região aquele botão comanda.
+const ID_SECAO_PEDIDO = "secao-itens-do-pedido";
 
 export default function PedidoDetalhe() {
   const { id } = useParams();
@@ -365,6 +376,21 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
   const [itensDoPedido, setItensDoPedido] = useState(null);
   const [carregandoPedido, setCarregandoPedido] = useState(false);
 
+  // A tabela de cima COLAPSA (pedido do usuário em 29/09/2026: "alguns pedidos
+  // estão muito grandes e o usuário tem que rolar muito para baixo para chegar
+  // na tabela com produtos para adicionar").
+  //
+  // Nasce fechada quando o pedido é grande — é justamente aí que o problema
+  // aparece; num pedido de 3 itens fechar por padrão só esconderia o que a
+  // pessoa quer ver. Depois disso vale a escolha dela, guardada por pedido.
+  //
+  // ⚠ Objeto, não booleano: `lerStorage` (estadoTela.js) descarta primitivo e
+  // devolve o padrão, então um `true`/`false` gravado NUNCA voltaria.
+  const [secao, setSecao] = useEstadoPersistente(
+    `app_compras_pedido_${pedido.id}_secao_v1`,
+    { aberto: pedido.itens.length <= LIMITE_AUTO_COLAPSO });
+  const abertoPedido = secao.aberto;
+
   // Chave PRÓPRIA, por pedido. Filtrar o catálogo aqui dentro não pode mexer no
   // que a pessoa deixou montado em `/pedidos` (chave
   // `app_compras_filtros_pedidos_v1`), nem um pedido herdar o filtro do outro.
@@ -493,6 +519,11 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
 
   const aoTrocarQtd = (codigo, v) => setQuantidades((q) => ({ ...q, [codigo]: v }));
 
+  // Quantos itens DO PEDIDO têm quantidade digitada — o que o resumo da seção
+  // fechada precisa dizer, para digitação pendente não sumir junto com a tabela.
+  const digitadosNoPedido = pedido.itens.filter(
+    (i) => Number(String(quantidades[i.codigo] ?? "").replace(",", ".")) > 0).length;
+
   return (
     <div className="px-4 pb-8 pt-3 md:px-6 md:pt-4">
       <button type="button" onClick={aoCancelar}
@@ -508,29 +539,55 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
         Winthor importa.
       </p>
 
-      {/* ── Tabela 1: o que JÁ está no pedido ───────────────────────────── */}
+      {/* ── Tabela 1: o que JÁ está no pedido (colapsável) ──────────────── */}
       {pedido.itens.length > 0 && (
         <section className="mt-5">
-          <h3 className="text-sm font-semibold text-gray-800">
-            No pedido <span className="num font-normal text-gray-400">({numero(pedido.itens.length)})</span>
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-500">
-            Digitar aqui SUBSTITUI a quantidade — o servidor grava por produto, não soma.
-          </p>
-          <div className="mt-2">
-            {carregandoPedido && <Carregando />}
-            {!carregandoPedido && itensPedido.length > 0 && (
-              <TabelaCatalogo itens={itensPedido}
-                              valorDe={(codigo) => quantidades[codigo]}
-                              aoTrocar={aoTrocarQtd}
-                              ordenar={ordenarPed} dir={dirPed} aoOrdenar={aoOrdenarPed}
-                              mesReferencia={parametros?.mes_referencia} parametros={parametros}
-                              avisoLinha={(p) => (
-                                <div className="text-2xs" style={{ color: "#B98A2E" }}>
-                                  no pedido: {numero(jaNoPedido.get(p.codigo), 0)}
-                                </div>
-                              )} />
+          <button type="button" aria-expanded={abertoPedido} aria-controls={ID_SECAO_PEDIDO}
+                  onClick={() => setSecao((s) => ({ aberto: !s.aberto }))}
+                  className="flex w-full items-center gap-1.5 rounded-md py-1 text-left hover:bg-gray-50">
+            {abertoPedido
+              ? <ChevronDown size={15} aria-hidden="true" style={{ color: NAVY }} />
+              : <ChevronRight size={15} aria-hidden="true" style={{ color: NAVY }} />}
+            <span className="text-sm font-semibold text-gray-800">
+              No pedido <span className="num font-normal text-gray-400">({numero(pedido.itens.length)})</span>
+            </span>
+            {!abertoPedido && (
+              <span className="num text-xs text-gray-400">
+                · {moeda(pedido.valorTotal)}
+                {/* Quantidade digitada aqui dentro e ainda não confirmada não
+                    pode sumir sem aviso junto com a tabela: ela continua
+                    contando no "Confirmar N produto(s)" lá embaixo. */}
+                {digitadosNoPedido > 0 && (
+                  <span style={{ color: "#B98A2E" }}>
+                    {" "}· {numero(digitadosNoPedido)} com quantidade digitada
+                  </span>
+                )}
+              </span>
             )}
+            <span className="ml-auto text-xs font-medium" style={{ color: NAVY }}>
+              {abertoPedido ? "Recolher" : "Mostrar"}
+            </span>
+          </button>
+
+          <div id={ID_SECAO_PEDIDO} hidden={!abertoPedido}>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Digitar aqui SUBSTITUI a quantidade — o servidor grava por produto, não soma.
+            </p>
+            <div className="mt-2">
+              {carregandoPedido && <Carregando />}
+              {!carregandoPedido && itensPedido.length > 0 && (
+                <TabelaCatalogo itens={itensPedido}
+                                valorDe={(codigo) => quantidades[codigo]}
+                                aoTrocar={aoTrocarQtd}
+                                ordenar={ordenarPed} dir={dirPed} aoOrdenar={aoOrdenarPed}
+                                mesReferencia={parametros?.mes_referencia} parametros={parametros}
+                                avisoLinha={(p) => (
+                                  <div className="text-2xs" style={{ color: "#B98A2E" }}>
+                                    no pedido: {numero(jaNoPedido.get(p.codigo), 0)}
+                                  </div>
+                                )} />
+              )}
+            </div>
           </div>
         </section>
       )}
