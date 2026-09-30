@@ -33,6 +33,9 @@ const NAVY = "#375DA8";
 const RED = "#DE434B";
 const VERDE = "#15803D";
 const CINZA = "#6B7280";
+// Âmbar = "você mexeu nisto e ainda não confirmou". Mesmo tom que a tela já
+// usava no aviso "já está no pedido", para alteração pendente ter UMA cor só.
+const AMBAR = "#B98A2E";
 
 const F_EST = "#EFF6FF";
 const F_ESTPED = "#DBEAFE";
@@ -271,7 +274,7 @@ function SelectVazio() {
  *  precise saber o que é um pedido: o servidor faz UPSERT por (pedido,
  *  produto), e sem o aviso a pessoa digitaria de novo achando que soma. */
 export function TabelaCatalogo({ itens, valorDe, aoTrocar, ordenar, dir, aoOrdenar,
-                                 mesReferencia, parametros, avisoLinha }) {
+                                 mesReferencia, parametros, avisoLinha, originalDe }) {
   // Rótulos dos meses, como no gráfico do SKU: nome do mês em vez de M-1/M-2/M-3.
   const rot = (i) => (mesReferencia ? mesCurto(mesesAntes(mesReferencia, i)) : ["Atual", "M-1", "M-2", "M-3"][i]);
   const props = { ordenar, dir, aoOrdenar };
@@ -330,6 +333,7 @@ export function TabelaCatalogo({ itens, valorDe, aoTrocar, ordenar, dir, aoOrden
           {itens.map((p) => (
             <LinhaCatalogo key={p.codigo} p={p} parametros={parametros}
                            valor={valorDe(p.codigo)}
+                           original={originalDe?.(p.codigo) ?? null}
                            aviso={avisoLinha?.(p) ?? null}
                            aoTrocar={(v) => aoTrocar(p.codigo, v)} />
           ))}
@@ -365,7 +369,18 @@ function calcMesesCoberturaComPedido(p, valorDigitado) {
   return (Number(p.estPend || 0) + pedidoUnidades) / p.mediaJanela;
 }
 
-function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso }) {
+/** `original`: a quantidade que JÁ está gravada para este produto (null quando
+ *  não há nenhuma). Quando vem preenchida, o campo da coluna PEDIDO nasce com
+ *  ela — pedido do usuário em 30/09/2026: "colocar as unidades pedidas no
+ *  mesmo lugar de adicionar" —, e passa a destacar-se em âmbar assim que o
+ *  valor digitado difere, com o número anterior logo abaixo ("era 36"). Sem
+ *  esse par o campo mentiria: mostraria vazio para um item que tem 36
+ *  gravadas, e confirmar sobrescreveria sem a pessoa ver o que mudou. */
+function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original }) {
+  const digitado = String(valor ?? "").trim();
+  const alterado = original != null && digitado !== ""
+    && Number(digitado.replace(",", ".")) !== Number(original);
+  const limpou = original != null && digitado === "";
   // Mesmo parâmetro de DecisaoSKU.jsx:72 — `cobertura_critica_fracao` vem de
   // GET /api/parametros para não duplicar o literal em duas telas com risco
   // de uma mudar e a outra não (rotas.py:87 documenta por que o limiar não
@@ -477,8 +492,25 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso }) {
         <input type="text" inputMode="decimal" value={valor ?? ""}
                onChange={(e) => aoTrocar(e.target.value)}
                aria-label={`Quantidade a pedir do produto ${p.codigo}`}
-               className="num w-[72px] rounded-md border border-gray-300 px-1 py-1 text-center text-sm" />
+               style={alterado || limpou
+                 ? { borderColor: AMBAR, background: `${AMBAR}14`, color: AMBAR, fontWeight: 700 }
+                 : undefined}
+               className={`num w-[72px] rounded-md border px-1 py-1 text-center text-sm${
+                 alterado || limpou ? "" : " border-gray-300"}`} />
         <div className="text-[9px] text-gray-400">{emCaixa ? "caixas" : "unidades"}</div>
+        {/* O valor anterior só aparece quando há o que comparar — é a
+            "mensagem de observação com a quantidade anterior" pedida em
+            30/09/2026, para dar para conferir o que mudou antes de confirmar. */}
+        {alterado && (
+          <div className="text-[10px] font-semibold" style={{ color: AMBAR }}>
+            era {numero(original, 0)}
+          </div>
+        )}
+        {limpou && (
+          <div className="text-[10px] font-semibold" style={{ color: RED }}>
+            vazio remove ({numero(original, 0)})
+          </div>
+        )}
       </td>
     </tr>
   );

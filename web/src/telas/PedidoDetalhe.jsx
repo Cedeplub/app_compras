@@ -38,6 +38,21 @@ const LIMITE_AUTO_COLAPSO = 8;
 // leitor de tela saber QUE região aquele botão comanda.
 const ID_SECAO_PEDIDO = "secao-itens-do-pedido";
 
+// Mesmo âmbar de `CatalogoPedido.jsx`: "mexido, ainda não confirmado".
+const AMBAR = "#B98A2E";
+
+const comoNumero = (v) => Number(String(v ?? "").replace(",", "."));
+
+/** Um item do pedido foi MEXIDO? Campo vazio conta como mexido porque
+ *  confirmar com ele vazio manda quantidade 0, e `upsert_item` remove a linha
+ *  — é ação, não ausência de ação. */
+function mudou(item, digitado) {
+  const texto = String(digitado ?? "").trim();
+  if (texto === "") return true;
+  const n = comoNumero(texto);
+  return Number.isFinite(n) && n !== Number(item.quantidade);
+}
+
 export default function PedidoDetalhe() {
   const { id } = useParams();
   const navegar = useNavigate();
@@ -362,7 +377,11 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
   const [parametros, setParametros] = useState(null);
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
-  const [quantidades, setQuantidades] = useState({});
+  // Nasce com a quantidade JÁ gravada de cada item do pedido, para o campo da
+  // coluna PEDIDO mostrá-la no mesmo lugar onde se digita (pedido do usuário
+  // em 30/09/2026). Os produtos do catálogo continuam nascendo vazios.
+  const [quantidades, setQuantidades] = useState(
+    () => Object.fromEntries(pedido.itens.map((i) => [i.codigo, paraCampo(i.quantidade, 4)])));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
 
@@ -489,12 +508,20 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
     setSalvando(true);
     setErro(null);
     try {
-      const novos = Object.entries(quantidades)
-        .map(([codigo, q]) => ({ codigo: Number(codigo), quantidade: Number(String(q).replace(",", ".")) || 0 }))
-        .filter((i) => i.quantidade > 0);
+      // ⚠ Só o que MUDOU. Desde que o campo nasce preenchido com a quantidade
+      // gravada, mandar "tudo que tem valor" reescreveria os 42 itens do
+      // pedido a cada confirmação — 42 PUTs para nenhuma mudança, e 42 linhas
+      // de auditoria mentindo que houve alteração.
+      const aGravar = [
+        ...alterados.map((i) => ({ codigo: i.codigo, quantidade: comoNumero(quantidades[i.codigo]) || 0 })),
+        ...Object.entries(quantidades)
+          .filter(([codigo]) => !jaNoPedido.has(Number(codigo)))
+          .map(([codigo, q]) => ({ codigo: Number(codigo), quantidade: comoNumero(q) || 0 }))
+          .filter((i) => i.quantidade > 0),
+      ];
       // Um PUT por item: a rota de item é a mesma que a edição usa, e assim não
       // existe um segundo caminho de escrita que possa divergir dela.
-      for (const i of novos) await api.gravarItemPedido(pedido.id, i.codigo, { quantidade: i.quantidade });
+      for (const i of aGravar) await api.gravarItemPedido(pedido.id, i.codigo, { quantidade: i.quantidade });
       await aoConcluir();
     } catch (e) {
       setErro(e.detalhe);
@@ -515,14 +542,23 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
   // páginas vêm do servidor e ainda incluem os itens do pedido, então uma
   // página pode exibir menos linhas que as 50 do tamanho nominal.
   const itensCatalogo = (dados?.itens ?? []).filter((p) => !jaNoPedido.has(p.codigo));
-  const escolhidos = Object.values(quantidades).filter((q) => Number(String(q).replace(",", ".")) > 0).length;
-
   const aoTrocarQtd = (codigo, v) => setQuantidades((q) => ({ ...q, [codigo]: v }));
 
-  // Quantos itens DO PEDIDO têm quantidade digitada — o que o resumo da seção
-  // fechada precisa dizer, para digitação pendente não sumir junto com a tabela.
-  const digitadosNoPedido = pedido.itens.filter(
-    (i) => Number(String(quantidades[i.codigo] ?? "").replace(",", ".")) > 0).length;
+  // Itens do pedido cujo campo foi MEXIDO — não "preenchido". Desde que o
+  // campo nasce com a quantidade gravada, "tem valor" deixou de significar
+  // "tem coisa a gravar": só conta quem difere do que já está no banco.
+  const alterados = pedido.itens.filter((i) => mudou(i, quantidades[i.codigo]));
+  const alteradosNoPedido = alterados.length;
+
+  // O botão conta ALTERAÇÕES, não campos preenchidos: item do pedido só entra
+  // se mudou, produto do catálogo só entra se ganhou quantidade.
+  // ⚠ Depois de `alterados` de propósito — `const` tem zona morta temporal, e
+  // ler `alteradosNoPedido` acima da linha que o declara derruba a tela em
+  // tempo de EXECUÇÃO, não de build (foi o que aconteceu em 30/09/2026).
+  const novosDoCatalogo = Object.entries(quantidades)
+    .filter(([codigo]) => !jaNoPedido.has(Number(codigo)))
+    .filter(([, q]) => comoNumero(q) > 0).length;
+  const escolhidos = alteradosNoPedido + novosDoCatalogo;
 
   return (
     <div className="px-4 pb-8 pt-3 md:px-6 md:pt-4">
@@ -542,50 +578,56 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
       {/* ── Tabela 1: o que JÁ está no pedido (colapsável) ──────────────── */}
       {pedido.itens.length > 0 && (
         <section className="mt-5">
+          {/* Barra com peso visual de verdade — borda, fundo e o "Mostrar"
+              como pastilha sólida (pedido do usuário em 30/09/2026: "dar um
+              pouco mais de destaque no cabeçalho 'no pedido' e na tag
+              'mostrar'"). Antes era texto cinza solto e passava despercebido
+              na altura em que o catálogo começa. */}
           <button type="button" aria-expanded={abertoPedido} aria-controls={ID_SECAO_PEDIDO}
                   onClick={() => setSecao((s) => ({ aberto: !s.aberto }))}
-                  className="flex w-full items-center gap-1.5 rounded-md py-1 text-left hover:bg-gray-50">
+                  className="flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors"
+                  style={{ borderColor: `${NAVY}40`, background: `${NAVY}0D` }}>
             {abertoPedido
-              ? <ChevronDown size={15} aria-hidden="true" style={{ color: NAVY }} />
-              : <ChevronRight size={15} aria-hidden="true" style={{ color: NAVY }} />}
-            <span className="text-sm font-semibold text-gray-800">
-              No pedido <span className="num font-normal text-gray-400">({numero(pedido.itens.length)})</span>
+              ? <ChevronDown size={17} aria-hidden="true" style={{ color: NAVY }} />
+              : <ChevronRight size={17} aria-hidden="true" style={{ color: NAVY }} />}
+            <span className="text-sm font-bold" style={{ color: NAVY }}>
+              No pedido
+              <span className="num ml-1 font-semibold">({numero(pedido.itens.length)})</span>
             </span>
-            {!abertoPedido && (
-              <span className="num text-xs text-gray-400">
-                · {moeda(pedido.valorTotal)}
-                {/* Quantidade digitada aqui dentro e ainda não confirmada não
-                    pode sumir sem aviso junto com a tabela: ela continua
-                    contando no "Confirmar N produto(s)" lá embaixo. */}
-                {digitadosNoPedido > 0 && (
-                  <span style={{ color: "#B98A2E" }}>
-                    {" "}· {numero(digitadosNoPedido)} com quantidade digitada
-                  </span>
-                )}
+            <span className="num text-xs text-gray-500">· {moeda(pedido.valorTotal)}</span>
+            {/* Alteração pendente não pode sumir sem aviso junto com a tabela:
+                ela continua contando no "Confirmar" lá embaixo. */}
+            {alteradosNoPedido > 0 && (
+              <span className="num rounded-full px-2 py-0.5 text-2xs font-bold"
+                    style={{ background: `${AMBAR}1F`, color: AMBAR }}>
+                {numero(alteradosNoPedido)} alterado(s)
               </span>
             )}
-            <span className="ml-auto text-xs font-medium" style={{ color: NAVY }}>
+            <span className="ml-auto rounded-md px-3 py-1.5 text-xs font-bold"
+                  style={abertoPedido
+                    ? { border: `1px solid ${NAVY}`, color: NAVY }
+                    : { background: NAVY, color: "white" }}>
               {abertoPedido ? "Recolher" : "Mostrar"}
             </span>
           </button>
 
           <div id={ID_SECAO_PEDIDO} hidden={!abertoPedido}>
             <p className="mt-0.5 text-xs text-gray-500">
-              Digitar aqui SUBSTITUI a quantidade — o servidor grava por produto, não soma.
+              O campo “Pedido” já vem com a quantidade gravada. O que você mudar fica em
+              âmbar, com o valor anterior embaixo, até confirmar. Campo vazio remove o item.
             </p>
             <div className="mt-2">
               {carregandoPedido && <Carregando />}
               {!carregandoPedido && itensPedido.length > 0 && (
+                /* Sem `avisoLinha`: a quantidade já pedida deixou de ser texto
+                   embaixo do nome e virou o VALOR do campo da coluna PEDIDO
+                   (`originalDe`), que é onde se digita. */
                 <TabelaCatalogo itens={itensPedido}
                                 valorDe={(codigo) => quantidades[codigo]}
+                                originalDe={(codigo) => jaNoPedido.get(codigo) ?? null}
                                 aoTrocar={aoTrocarQtd}
                                 ordenar={ordenarPed} dir={dirPed} aoOrdenar={aoOrdenarPed}
-                                mesReferencia={parametros?.mes_referencia} parametros={parametros}
-                                avisoLinha={(p) => (
-                                  <div className="text-2xs" style={{ color: "#B98A2E" }}>
-                                    no pedido: {numero(jaNoPedido.get(p.codigo), 0)}
-                                  </div>
-                                )} />
+                                mesReferencia={parametros?.mes_referencia} parametros={parametros} />
               )}
             </div>
           </div>
@@ -640,7 +682,10 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
                 className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
                 style={{ background: NAVY }}>
           {salvando && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-          {salvando ? "Adicionando…" : `Confirmar ${numero(escolhidos)} produto(s)`}
+          {/* "alteração", não "produto": o campo nasce preenchido, então o que
+              o botão grava é o que MUDOU — item novo, quantidade trocada ou
+              item esvaziado (que o servidor remove). */}
+          {salvando ? "Gravando…" : `Confirmar ${numero(escolhidos)} alteração(ões)`}
         </button>
         <button type="button" onClick={aoCancelar}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700">
