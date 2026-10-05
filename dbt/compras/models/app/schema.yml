@@ -190,7 +190,8 @@ models:
     description: >
       Tabela física COMPRAS_MONITORAMENTO (v2 Etapa 10, tela Monitoramento).
       Projeção PURA de int_venda_diaria, alias em MAIÚSCULA. Grão: DIA x
-      CODIGO_PRODUTO, cobrindo compras_monitoramento_dias_historico dias.
+      CODIGO_PRODUTO, cobrindo compras_monitoramento_meses_historico meses
+      (eram 400 dias corridos até 05/10/2026).
       Não tem período pré-agregado - ver o cabeçalho do model para as três
       decisões que a API precisa conhecer (semana ISO/segunda, comparação
       parcial-contra-parcial via DATA_REFERENCIA, peso/litros aproximados).

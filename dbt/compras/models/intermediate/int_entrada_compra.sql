@@ -43,7 +43,7 @@
 -- direto, sem CTE de complemento.
 --
 -- Histórico: {{ var('compras_entrada_dias_historico', 180) }} dias corridos
--- (~6 meses) - deliberadamente MENOR que os 24 meses de compras_meses_historico.
+-- (~6 meses) - deliberadamente MENOR que os 96 meses de compras_meses_historico.
 -- A tela (PROTOTIPO.md §2.3) agrupa só em Hoje/Ontem/Essa semana/Esse mês, com
 -- navegação Dia/Semana/Mês (sem "Ano" - diferente de Monitoramento). 180 dias
 -- dá margem generosa para navegar alguns meses para trás sem carregar uma

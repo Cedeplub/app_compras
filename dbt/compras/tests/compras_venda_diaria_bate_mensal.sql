@@ -10,10 +10,16 @@
 -- Só compara MESES FECHADOS dos dois lados (mesmo motivo do critério de
 -- int_venda_mensal contra query_mensal.py, CONTEXTO.md §6.3): o mês corrente
 -- está em andamento nas duas cadeias e diverge por sincronia, não por defeito.
--- Também só compara onde a janela DIÁRIA (mais curta,
--- compras_monitoramento_dias_historico) cobre o mês INTEIRO - mês em que a
--- janela diária começa no meio fica com soma diária menor por CONSTRUÇÃO
--- (faltam dias antes do início da janela), não por erro.
+-- Também só compara onde a janela DIÁRIA cobre o mês INTEIRO - mês em que ela
+-- começa no meio fica com soma diária menor por CONSTRUÇÃO (faltam dias antes
+-- do início da janela), não por erro.
+--
+-- ⚠ Desde 05/10/2026 as duas janelas têm o MESMO tamanho (96 meses) e começam
+-- no mesmo mês, então este filtro deixou de descartar quase nada: o teste passou
+-- de ~12 meses comparados para ~95. Isso é cobertura nova, não defeito - mas
+-- significa que ele agora reconcilia meses que NUNCA foram validados contra a
+-- rotina 1464. Se reprovar em mês antigo, investigue o mês antes de mexer na
+-- tolerância: divergência velha e real é achado, não ruído.
 
 with diaria as (
     select

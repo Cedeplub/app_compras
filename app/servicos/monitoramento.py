@@ -1,12 +1,27 @@
 """Monitoramento e Entradas — as duas telas de acompanhamento (Etapa 10).
 
-Lê COMPRAS_MONITORAMENTO (grão dia × produto, 400 dias) e COMPRAS_ENTRADA
+Lê COMPRAS_MONITORAMENTO (grão dia × produto, 96 meses) e COMPRAS_ENTRADA
 (grão item de nota, 180 dias). Nenhuma delas escreve.
 
 ── Por que a agregação é feita no BANCO ─────────────────────────────────────
-São 338 mil linhas de venda diária. Trazer isso para o Python e somar em
+São ~2,0 milhões de linhas de venda diária (eram 338 mil até 05/10/2026, quando
+a janela passou de 400 dias para 96 meses). Trazer isso para o Python e somar em
 memória seria transferir megabytes por clique para produzir um número. O SQL
 soma onde o dado está e devolve dezenas de linhas.
+
+── ⚠ DIAS_LISTA_FILTROS: a janela das LISTAS é separada da janela da TABELA ──
+As três consultas que montam listas de filtro (`_secao_util`, e os dois
+`distinct` de `opcoes_monitoramento`) não têm como usar índice: elas perguntam
+"quais departamentos/seções existem", sem recorte de data. Enquanto a tabela
+tinha 400 dias isso era inofensivo, porque varrer a tabela ERA varrer 400 dias.
+Com 96 meses, as mesmas consultas passariam a varrer ~6x mais linhas a cada
+carregamento da tela — para produzir a MESMA lista.
+
+Por isso elas ganharam `dia >= trunc(sysdate) - DIAS_LISTA_FILTROS`: é o
+comportamento de hoje, agora dito em voz alta em vez de depender do tamanho da
+tabela. Lista de filtro é "o que existe AGORA no catálogo em movimento", não
+inventário histórico — um departamento que sumiu em 2019 não deve voltar ao
+dropdown porque a janela do dbt cresceu.
 
 ── O comparativo com o ano anterior ─────────────────────────────────────────
 O protótipo mostra "+6,4%" fixo, que não reage a filtro, período ou métrica
@@ -60,6 +75,12 @@ METRICAS = {
 # Departamento → Seção → Linha → Categoria. Linha e Categoria ainda não existem
 # no modelo (dependem de cadastro no Winthor), então a cadeia hoje para na Seção.
 DIMENSOES = ["departamento", "secao"]
+
+# Janela das LISTAS DE FILTRO (não a da tabela) — ver o bloco no topo do módulo.
+# 400 dias é exatamente o que essas listas enxergavam antes de 05/10/2026, quando
+# a tabela inteira tinha esse tamanho; o número só saiu de implícito para
+# explícito. Mexer aqui muda o conteúdo dos dropdowns, não o dado dos relatórios.
+DIAS_LISTA_FILTROS = 400
 
 
 def _filtros(f: dict, alias: str = "m") -> tuple[str, dict]:
@@ -124,7 +145,8 @@ def _secao_util(filtros: dict) -> bool:
     onde, binds = _filtros(filtros)
     linha = database.consultar_um(
         f"select count(distinct m.secao) as n from compras_monitoramento m"
-        f" where m.secao is not null {onde}",
+        f" where m.secao is not null"
+        f"   and m.dia >= trunc(sysdate) - {DIAS_LISTA_FILTROS} {onde}",
         binds,
     )
     return int(linha["n"] or 0) > 1
@@ -279,17 +301,20 @@ def opcoes_monitoramento() -> dict:
     return {
         "departamentos": [r["departamento"] for r in database.consultar(
             "select distinct departamento from compras_monitoramento"
-            " where departamento is not null order by 1")],
+            " where departamento is not null"
+            f"   and dia >= trunc(sysdate) - {DIAS_LISTA_FILTROS} order by 1")],
         # Mesma lista de `produto.opcoes()` — uma fonte só para "quem são os
         # compradores", em vez de uma segunda consulta que pode divergir.
         "compradores": produto.opcoes()["compradores"],
         "secoes": [r["secao"] for r in database.consultar(
-            """
+            f"""
             select distinct m.secao
               from compras_monitoramento m
              where m.secao is not null
+               and m.dia >= trunc(sysdate) - {DIAS_LISTA_FILTROS}
                and m.departamento in (
                      select departamento from compras_monitoramento
+                      where dia >= trunc(sysdate) - {DIAS_LISTA_FILTROS}
                       group by departamento having count(distinct secao) > 1)
              order by 1
             """)],

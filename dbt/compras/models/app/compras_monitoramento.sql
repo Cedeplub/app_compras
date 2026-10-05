@@ -15,9 +15,11 @@
 -- int_venda_diaria: mesmas colunas, alias em MAIÚSCULA, sem cálculo novo.
 --
 -- Grão: DIA × PRODUTO. Cobre os últimos
--- {{ var('compras_monitoramento_dias_historico', 400) }} dias corridos - ver
--- o cabeçalho de int_periodo_diario.sql para o porquê desse número (não são
--- os 24 meses de COMPRAS_VENDA_MENSAL).
+-- {{ var('compras_monitoramento_meses_historico', 96) }} meses, alinhados pelo
+-- mês - a MESMA janela de COMPRAS_VENDA_MENSAL desde 05/10/2026 (eram 400 dias
+-- corridos). Ver o cabeçalho de int_periodo_diario.sql para por que a janela
+-- curta era um defeito: a tela soma ESTA tabela para Dia/Semana/Mês/Ano, e com
+-- 400 dias o período "Ano" voltava um ano e mostrava tela vazia.
 --
 -- ⚠ NÃO É AGREGADO POR PERÍODO. Não existe coluna "período" nem bucket
 -- pré-calculado: Dia/Semana/Mês/Ano (PROTOTIPO.md §2.2) e a navegação

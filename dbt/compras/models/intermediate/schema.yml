@@ -142,7 +142,11 @@ models:
         data_tests:
           - not_null
       - name: qtd_meses
-        description: "N configurado em var('compras_meses_historico', 24)"
+        description: >
+          N configurado em var('compras_meses_historico'). NÃO é informativo:
+          int_venda_mensal_pivot e int_venda_mensal_sucessao derivam dele
+          n_fechados = qtd_meses - 1, a guarda de MED02..MED12. Tem de sair da
+          MESMA var que data_inicio - ver o cabeçalho do model.
       - name: mes_corrente
         description: "TRUNC(SYSDATE,'MM') - o mês em andamento no instante do build"
 
@@ -1553,8 +1557,10 @@ models:
   - name: int_periodo_diario
     description: >
       Janela compartilhada (1 linha) de int_faturamento_diario,
-      int_devolucao_diaria e int_venda_diaria - compras_monitoramento_dias_historico
-      dias corridos, terminando em TRUNC(SYSDATE)+1 (semiaberto).
+      int_devolucao_diaria e int_venda_diaria - compras_monitoramento_meses_historico
+      meses, alinhados pelo mês (add_months sobre TRUNC(SYSDATE,'MM')) e
+      terminando em TRUNC(SYSDATE)+1 (semiaberto). Eram 400 dias corridos até
+      05/10/2026 - ver o cabeçalho do model.
 
   - name: int_faturamento_diario
     description: >

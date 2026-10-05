@@ -36,8 +36,33 @@ models:
       +tags: ['app']
 
 # Janela de historico da venda mensal, em meses contados para tras a partir do
-# mes corrente. 24 cobre o que o modelo precisa: ano anterior completo + ano
-# corrente ate o mes em andamento (documentacao tecnica v10, secao 4.2).
+# mes corrente.
+#
+# 96 desde 05/10/2026 (era 24, que cobria "ano anterior completo + ano corrente",
+# documentacao tecnica v10 secao 4.2). Pedido do usuario: a tela Monitoramento
+# oferece Dia/Semana/Mes/Ano (web/src/periodo.js) e "Ano" nao conseguia voltar
+# mais de um ano - nao por falta de dado no ERP (o CEDEP tem historico desde
+# 06/2013), mas porque o dbt nao o trazia. 96 meses alcancam 11/2018 hoje.
+#
+# Por que JANELA MOVEL, e nao o piso fixo em 01/01/2019 que foi o pedido literal:
+#   1. mantem a doutrina deste bloco (logo abaixo) - "os N meses que terminam no
+#      mes corrente" - em vez de uma janela que cresce sozinha para sempre;
+#   2. volume e custo ficam estaveis no tempo;
+#   3. e o que mantem data_inicio e qtd_meses saindo da MESMA var. Com piso
+#      fixo, qtd_meses viraria um literal desacoplado, e n_fechados
+#      (= qtd_meses - 1, em int_venda_mensal_pivot.sql e _sucessao.sql) poderia
+#      cair abaixo de 12 sem ninguem perceber: MED12 vira NULL, MEDIA_JANELA
+#      vira 0 (int_produto_demanda.sql) e a sugestao de compra passa a pedir a
+#      menos, em silencio.
+# Consequencia aceita: em 2028 a janela alcanca 01/2021, nao mais 2019.
+#
+# Custo MEDIDO antes de decidir (nucleo dos dois models mais pesados, 24 -> 96):
+#   int_faturamento_mensal       34,1s -> 39,1s  (+15%)
+#   int_dias_sem_estoque_mensal  32,6s -> 33,9s  (+4%)
+# O peso esta na varredura do PCMOV/PCHISTEST, que acontece com qualquer janela;
+# o filtro de data quase nao muda o plano de execucao. Tambem foi medido que nao
+# existe um unico mes sem faturamento valido nos 96 - o teste
+# compras_janela_mensal_coerente, que exige cobertura COMPLETA, continua passando.
 #
 # Sobre depender do dia: a janela DESTE projeto e' "os N meses que terminam no mes
 # corrente" - e' o contrato do relatorio, entao depender da data e' correto e a macro
@@ -45,7 +70,7 @@ models:
 # powerbi_dbt e' outra coisa: "hoje" como DEFAULT SILENCIOSO de um parametro que
 # deveria ser explicito. A diferenca e' intencao declarada versus efeito colateral.
 vars:
-  compras_meses_historico: 24
+  compras_meses_historico: 96
 
   # Filial de estoque usada pelo relatorio de posicao (query.py) e pela coluna
   # de dias sem estoque do relatorio mensal (query_mensal.py). ATENCAO: o codigo
@@ -65,13 +90,24 @@ vars:
   # dimensionada para comparacao anual, que esta tela nao faz.
   compras_entrada_dias_historico: 180
 
-  # v2 Etapa 10 (tela Monitoramento). Dias corridos para tras a partir de
-  # TRUNC(SYSDATE), para o grao DIARIO (int_venda_diaria/COMPRAS_MONITORAMENTO).
-  # 400 dias (~13 meses) cobre um ano-anterior completo em grao Dia/Semana, com
-  # folga de alinhamento de semana (400 > 371 = 53 semanas). Comparacao de
-  # Mes/Ano usa COMPRAS_VENDA_MENSAL (24 meses, ja existente) - grao diario nao
-  # precisa alcancar a mesma janela. Ver int_periodo_diario.sql.
-  compras_monitoramento_dias_historico: 400
+  # v2 Etapa 10 (tela Monitoramento), grao DIARIO
+  # (int_venda_diaria/COMPRAS_MONITORAMENTO). Em MESES, alinhado ao mes corrente,
+  # igual a compras_meses_historico - ver int_periodo_diario.sql.
+  #
+  # Era `compras_monitoramento_dias_historico: 400` ate 05/10/2026, com a
+  # justificativa de que "comparacao de Mes/Ano usa COMPRAS_VENDA_MENSAL, grao
+  # diario nao precisa alcancar a mesma janela". Isso estava ERRADO na pratica:
+  # o backend (app/servicos/monitoramento.py) recebe `de`/`ate` da tela e soma
+  # COMPRAS_MONITORAMENTO para TODAS as granularidades, Ano inclusive - nunca
+  # houve caminho que lesse COMPRAS_VENDA_MENSAL (que, alias, nao tem leitor
+  # nenhum e nem tem as colunas de peso/litragem que a tela usa). Resultado: com
+  # 400 dias, "Ano" voltava um ano e mostrava tela vazia.
+  #
+  # Mesmo valor que compras_meses_historico de proposito: as duas janelas
+  # comecam no mesmo mes, que e o que o teste compras_venda_diaria_bate_mensal
+  # ja assume ao reconciliar diario x mensal so em meses completos. Medido:
+  # COMPRAS_MONITORAMENTO passa de ~339 mil para ~2,0 milhoes de linhas.
+  compras_monitoramento_meses_historico: 96
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Seeds - as tabelas de apoio, extraidas das abas da planilha v10.

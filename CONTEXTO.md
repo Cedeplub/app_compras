@@ -155,10 +155,14 @@ ainda é útil para quem precisar entender a transição, mas não descreve o es
 ### 0.7 O que fazer primeiro
 
 1. **Banco:** a partir de `dbt/`, rode `rodar_dbt.bat` (chama `atualizar.py --origem
-   manual`, que faz `dbt seed` + `dbt run` + `dbt test` nessa ordem). Leva **entre 158 e
-   577 segundos, mediana ≈ 7 minutos** — não os "~70 s" que documentação antiga
-   menciona; esse número envelheceu. Confira ao final: `FAT_PEDIDO` e `DIM_PRODUTO` com
-   **8.841** linhas.
+   manual`, que faz `dbt seed` + `dbt run` + `dbt test` nessa ordem). Leva **cerca de 10
+   a 11 minutos** desde 05/10/2026 — antes eram 158 a 577 s (mediana ≈ 7 min), e antes
+   disso a documentação dizia "~70 s", número que já tinha envelhecido duas vezes.
+   O que mudou: a janela de histórico passou de 24 meses (mensal) e 400 dias (diário)
+   para **96 meses nas duas** (ver `dbt/compras/dbt_project.yml`). Medido em dev: o
+   `dbt run` foi de **308 s para 1.321 s**; com `threads: 4` em `~/.dbt/profiles.yml`
+   (era 1) caiu para **599 s**. É por isso que o paralelismo deixou de ser opcional
+   aqui. Confira ao final: `FAT_PEDIDO` e `DIM_PRODUTO` com **8.841** linhas.
 2. **`.env`:** se ainda não existir na raiz, copie de `.env.exemplo` e preencha
    `ORA_PASSWORD` (e confira `ORA_CLIENT_DIR`). Sem isso `config.validar()` recusa subir,
    de propósito.
