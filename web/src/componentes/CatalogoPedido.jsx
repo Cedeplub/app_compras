@@ -5,6 +5,7 @@ import FiltroEstoque from "./FiltroEstoque.jsx";
 import FiltroUltimaEntrada from "./FiltroUltimaEntrada.jsx";
 import { ClasseChip } from "./Basicos.jsx";
 import { dataCompleta, mesCurto, mesesAntes, moeda, numero, quantidadeEstoque } from "../formato.js";
+import { coberturaComPedido } from "../cobertura.js";
 
 /* Catálogo de produtos para montar pedido — os filtros e a tabela larga que
  * eram locais de `telas/Pedidos.jsx` (§2.4 do protótipo).
@@ -343,32 +344,6 @@ export function TabelaCatalogo({ itens, valorDe, aoTrocar, ordenar, dir, aoOrden
   );
 }
 
-/** Cobertura projetada com o pedido digitado (item 5 do Diretor, 08/09).
- *
- *  Fiel à coluna BF da planilha (`int_produto_pedido.sql:196-198`):
- *    meses_est_ped = (est_pend + pedido_unidades) / media_janela   (media_janela != 0)
- *  onde `pedido_unidades = pedido × fator_exibicao` — a mesma conversão que o
- *  carrinho já faz para somar peso/valor/litros.
- *
- *  ⚠ Ressalva que a API já tenta cobrir com `mesesCoberturaComPedido`, mas que
- *  não dá para "consertar" aqui: a coluna BF soma `est_pend + pedido_unidades`
- *  tratando EST_PEND como UNIDADES, enquanto a vizinha BG (`valor_estoque`)
- *  faz `est_pend × fator_exibicao × custo`, tratando EST_PEND como CAIXAS. As
- *  duas só coincidem quando `fator_exibicao = 1` — nos departamentos com
- *  PEDIDO_EM = 'MASTER' esta conta pode divergir do `mesesCoberturaComPedido`
- *  que o servidor manda (que reflete a MESMA fórmula BF, sobre o pedido já
- *  DECIDIDO e gravado — não o que está sendo digitado agora, que é o número
- *  que faz sentido mostrar aqui). Não é bug para corrigir no front: é regra de
- *  negócio do modelo, relatada para o Diretor decidir.
- */
-function calcMesesCoberturaComPedido(p, valorDigitado) {
-  const qtd = Number(String(valorDigitado ?? "").replace(",", ".")) || 0;
-  if (qtd <= 0) return null;
-  if (!p.mediaJanela) return null;
-  const pedidoUnidades = qtd * (p.fatorExibicao || 1);
-  return (Number(p.estPend || 0) + pedidoUnidades) / p.mediaJanela;
-}
-
 /** `original`: a quantidade que JÁ está gravada para este produto (null quando
  *  não há nenhuma). Quando vem preenchida, o campo da coluna PEDIDO nasce com
  *  ela — pedido do usuário em 30/09/2026: "colocar as unidades pedidas no
@@ -393,7 +368,7 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original }) {
   const seta = p.tendPct == null ? "→" : p.tendPct > 0.03 ? "↑" : p.tendPct < -0.03 ? "↓" : "→";
   const corSeta = p.tendPct == null ? CINZA : p.tendPct > 0.03 ? NAVY : p.tendPct < -0.03 ? RED : CINZA;
 
-  const mesesComPedido = calcMesesCoberturaComPedido(p, valor);
+  const mesesComPedido = coberturaComPedido(p, valor);
   const criticaProjetada = mesesComPedido != null && p.coberturaAlvo != null
     && mesesComPedido < p.coberturaAlvo * fracaoCritica;
   const atingiuAlvo = mesesComPedido != null && p.coberturaAlvo != null

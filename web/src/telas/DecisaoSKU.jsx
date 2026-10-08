@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Check, ChevronDown, ChevronLeft, Layers, Loader2 } from "lucide-react";
 import { api } from "../api/cliente.js";
 import { useCarrinho } from "../contexto/carrinho.jsx";
+import { coberturaComPedido } from "../cobertura.js";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
 import {
@@ -85,11 +86,9 @@ export default function DecisaoSKU() {
   const pedidoValor = carrinho[p.codigo] ?? "";
   const pedidoNum = Number(String(pedidoValor).replace(",", ".")) || 0;
   const pedidoUnidades = pedidoNum * fator;
-  const coberturaAtual = p.mediaJanela > 0 ? p.estDisp / p.mediaJanela : null;
-  const coberturaAposPedido = p.mediaJanela > 0
-    ? (p.estDisp + (p.estPend ?? 0) + pedidoUnidades) / p.mediaJanela : null;
-  const critica = coberturaAtual != null && p.coberturaAlvo != null
-    && coberturaAtual < p.coberturaAlvo * (parametros?.cobertura_critica_fracao ?? 0.6);
+  const coberturaAposPedido = coberturaComPedido(p, pedidoValor);
+  const critica = p.mesesCobertura != null && p.coberturaAlvo != null
+    && p.mesesCobertura < p.coberturaAlvo * (parametros?.cobertura_critica_fracao ?? 0.6);
 
   return (
     <div className="mx-auto max-w-sku pb-8">
@@ -111,7 +110,7 @@ export default function DecisaoSKU() {
       </div>
 
       <div className="px-4 pt-4 md:px-6">
-        <Contexto p={p} coberturaAtual={coberturaAtual} critica={critica} />
+        <Contexto p={p} critica={critica} />
         <Avisos p={p} />
         <Grafico p={p} mesReferencia={parametros?.mes_referencia} />
         <Fiscal p={p} cenarioSel={cenarioSel} />
@@ -162,15 +161,15 @@ export default function DecisaoSKU() {
 
 /* ---------------------------------------------------------------- contexto --- */
 
-function Contexto({ p, coberturaAtual, critica }) {
+function Contexto({ p, critica }) {
   return (
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
       <Cartao rotulo="Estoque disponível" valor={numero(p.estDisp, 0)}
-              nota={p.estPend != null ? `+ pendente ${numero(p.estPend, 0)}` : null} />
+              nota={p.pendente != null ? `+ pendente ${numero(p.pendente, 0)}` : null} />
       <Cartao rotulo="Média mensal" valor={numero(p.mediaJanela, 0)}
               nota={p.nMeses ? `janela de ${numero(p.nMeses, 0)} meses` : null} />
       <Cartao rotulo="Cobertura" cor={critica ? RED : undefined}
-              valor={coberturaAtual != null ? `${numero(coberturaAtual, 2)} m` : "—"}
+              valor={p.mesesCobertura != null ? `${numero(p.mesesCobertura, 2)} m` : "—"}
               nota={p.coberturaAlvo != null ? `alvo ${numero(p.coberturaAlvo, 1)} m` : null} />
       <Cartao rotulo="Última saída" valor={fmtData(p.ultimaSaida)}
               nota={p.qtdUltimaSaida != null ? `${numero(p.qtdUltimaSaida, 0)} un` : null} />
