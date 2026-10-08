@@ -266,6 +266,19 @@ def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
     elif filtros.get("estoque") == "sem":
         condicoes.append("nvl(p.est_disp, 0) <= 0")
 
+    # "com"/"sem" preço na Precificação (Etapa 19 §5). Medido em 08/10/2026,
+    # COMPRAS_PEDIDO: PV_ATACADO nunca é nulo (0 de 8.944) — a ausência de
+    # preço é gravada como zero; o `nvl` fica por cautela, para a partição
+    # continuar exata se um dia houver nulo, mesmo cuidado do filtro de
+    # estoque acima. 205 ativos sem preço de atacado, 4.347 com — partição
+    # exata (com + sem = total). Corte só pelo atacado: entre os ativos,
+    # "sem atacado" e "sem varejo" são o MESMO conjunto de 205 linhas, então
+    # um critério composto por canal mudaria zero linhas.
+    if filtros.get("preco") == "com":
+        condicoes.append("nvl(p.pv_atacado, 0) > 0")
+    elif filtros.get("preco") == "sem":
+        condicoes.append("nvl(p.pv_atacado, 0) <= 0")
+
     if not incluir_alerta:
         return (f"where {' and '.join(condicoes)}" if condicoes else ""), binds
 

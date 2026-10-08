@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, Filter, Lock } from "lucide-react";
 import CabecalhoOrdenavel, { ordenarLista } from "./CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "./FiltroEstoque.jsx";
 import FiltroUltimaEntrada from "./FiltroUltimaEntrada.jsx";
 import { ClasseChip } from "./Basicos.jsx";
-import { dataCompleta, mesCurto, mesesAntes, moeda, numero, quantidadeEstoque } from "../formato.js";
+import { dataCompleta, mesCurto, mesesAntes, moeda, numero, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
 import { coberturaComPedido } from "../cobertura.js";
 
 /* Catálogo de produtos para montar pedido — os filtros e a tabela larga que
@@ -119,6 +120,100 @@ export function ordenarCatalogo(itens, ordenar, dir) {
   return ordenarLista(itens, extrator, dir);
 }
 
+/* --------------------------------------------- cobertura alvo simulada --- */
+
+/** `SUG_COBERTURA`, recalculada no cliente só quando a pessoa MEXEU no
+ *  controle de cobertura alvo simulada — com `coberturaAlvoSimulada == null`
+ *  (estado inicial, e o que "voltar ao alvo do modelo" restaura), a sugestão
+ *  é `p.sugCobertura`, o número do SERVIDOR, byte a byte (§4.4 do prompt;
+ *  Etapa 19, item 2). Mesma fórmula de `int_produto_demanda.sql:277`:
+ *
+ *    greatest(0, round(media_janela * cobertura_alvo - est_pend, 0))
+ *
+ *  `Math.round` é seguro aqui: o Oracle arredonda "metade para longe do
+ *  zero" e o JS "metade para cima" — os dois só divergem em valor NEGATIVO,
+ *  que o `Math.max(0, …)` já elimina (§4.1 do prompt).
+ *
+ *  ⚠ CONTEXTO.md regra 6 / `cobertura.js`: `mediaJanela` e `estPend` já
+ *  chegam da API em unidade de EXIBIÇÃO (divididos por FATOR_EXIBICAO) — a
+ *  mesma unidade do alvo (meses, sem unidade de produto) e do campo de
+ *  quantidade. Multiplicar por `fatorExibicao` aqui seria recriar o defeito
+ *  que a Etapa 18 removeu de `coberturaComPedido`. */
+export function sugestaoCobertura(p, coberturaAlvoSimulada) {
+  if (coberturaAlvoSimulada == null) return p.sugCobertura;
+  if (!p.mediaJanela) return 0;
+  return Math.max(0, Math.round(p.mediaJanela * coberturaAlvoSimulada - (p.estPend || 0)));
+}
+
+/** Slider (0–6, passo 0,5) MAIS campo numérico (0–12, passo 0,1) escrevendo o
+ *  MESMO estado — não um OU o outro (§4.3 do prompt, com a medida que decide
+ *  isso: o universo inteiro de `COBERTURA_ALVO` cabe em [1,5; 2,0], então um
+ *  slider 0–12 daria ~2px por posição no dedo, precisão inatingível; um
+ *  slider 0–6 passo 0,5 dá ~19px, e o campo cobre tanto a casa decimal fora
+ *  do passo 0,5 quanto valores fora da faixa do slider).
+ *
+ *  `valor === null` é "use o alvo do modelo" — nunca pré-preenchido com um
+ *  número (ex.: 2,0): um placeholder cumpre esse papel sem fingir que
+ *  alguém decidiu 2,0. O botão "voltar ao alvo do modelo" é o único caminho
+ *  de volta a essa partição exata, e por isso fica desabilitado quando já
+ *  não há simulação (nada a desfazer).
+ *
+ *  O padrão de "campo sob o cursor não é recalculado a cada tecla" é o mesmo
+ *  de `Precificacao.jsx` → `CelulaEdicao`: `editando` guarda o texto cru
+ *  enquanto a pessoa digita; o valor FORMATADO (`numero(valor, 1)`, vírgula
+ *  pt-BR) só volta a aparecer no blur ou quando o valor muda por fora
+ *  (slider, "voltar ao alvo do modelo"). */
+function ControleCobertura({ valor, setValor }) {
+  const [editando, setEditando] = useState(null); // texto cru, ou null (não digitando)
+
+  function aoDigitarCampo(texto) {
+    setEditando(texto);
+    if (texto.trim() === "") { setValor(null); return; } // campo vazio = "use o alvo do modelo"
+    const n = parseNumeroPreco(texto);
+    if (Number.isFinite(n) && n >= 0 && n <= 12) setValor(n);
+  }
+
+  // Por que o texto digitado não vira alvo — ou `undefined` quando vira. É o
+  // `title` e o sinal de borda vermelha, o MESMO par dos campos de margem/MKP
+  // (precoEditavel.js: motivoMargemInvalida). Até 08/10/2026 este campo
+  // ignorava "13" ou "abc" EM SILÊNCIO: o valor anterior ficava — não havia
+  // descarte —, mas a pessoa não via por que nada acontecia, que é meia
+  // armadilha do mesmo tipo. Vazio não é erro: é o campo em repouso.
+  const motivo = (() => {
+    if (editando == null || editando.trim() === "") return undefined;
+    const n = parseNumeroPreco(editando);
+    if (!Number.isFinite(n)) return "Não é um número — use vírgula no decimal (ex.: 2,5)";
+    if (n < 0 || n > 12) return "Fora da faixa — o alvo vai de 0 a 12 meses";
+    return undefined;
+  })();
+
+  const valorCampo = editando != null ? editando : (valor != null ? numero(valor, 1) : "");
+
+  return (
+    <div>
+      <div className="mb-1 text-xs text-gray-500">Cobertura alvo simulada (meses)</div>
+      <div className="flex items-center gap-2">
+        <input type="range" min={0} max={6} step={0.5} value={valor ?? 2}
+               aria-label="Cobertura alvo simulada — slider, 0 a 6 meses"
+               onChange={(e) => { setEditando(null); setValor(Number(e.target.value)); }}
+               className="h-1.5 w-24 accent-current" style={{ color: NAVY }} />
+        <input type="text" inputMode="decimal" value={valorCampo} placeholder="alvo do modelo"
+               aria-label="Cobertura alvo simulada — valor exato, em meses"
+               onChange={(e) => aoDigitarCampo(e.target.value)}
+               onBlur={() => setEditando(null)}
+               title={motivo}
+               className={`num w-16 rounded-md border bg-white px-1.5 py-1 text-center text-sm ${motivo ? "border-red-500" : "border-gray-300"}`} />
+        <button type="button" onClick={() => { setEditando(null); setValor(null); }}
+                disabled={valor == null}
+                title="Cada linha volta a usar o alvo do modelo (COBERTURA_ALVO do departamento, ou o padrão). Nenhuma quantidade digitada ou gravada muda."
+                className="whitespace-nowrap rounded-md border border-gray-300 px-2 py-1.5 text-2xs font-medium text-gray-600 disabled:opacity-40">
+          Voltar ao alvo do modelo
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------- paginação --- */
 
 /** Veio de `telas/Pedidos.jsx` junto com a tabela, porque a edição de pedido
@@ -155,6 +250,11 @@ export function FiltrosCatalogo({
   busca, setBusca, setPagina, total,
   referencia, dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte,
   departamentoTravado = null,
+  // Etapa 19, item 2 — cobertura alvo SIMULADA (não é filtro: não vai para a
+  // API, não entra no `where`, não dispara `buscar()` — §4.4 do prompt). As
+  // DUAS telas que montam pedido (`/pedidos` e a edição de pedido salvo)
+  // passam por aqui, cada uma com sua PRÓPRIA chave de `sessionStorage`.
+  coberturaAlvoSimulada = null, setCoberturaAlvoSimulada = null,
 }) {
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -226,6 +326,9 @@ export function FiltrosCatalogo({
       <FiltroUltimaEntrada referencia={referencia}
                            dtUltEntDe={dtUltEntDe} setDtUltEntDe={(v) => { setDtUltEntDe(v); setPagina(1); }}
                            dtUltEntAte={dtUltEntAte} setDtUltEntAte={(v) => { setDtUltEntAte(v); setPagina(1); }} />
+      {setCoberturaAlvoSimulada && (
+        <ControleCobertura valor={coberturaAlvoSimulada} setValor={setCoberturaAlvoSimulada} />
+      )}
       <div className="num ml-auto text-xs text-gray-500">{numero(total)} produto(s)</div>
     </div>
   );
@@ -275,7 +378,8 @@ function SelectVazio() {
  *  precise saber o que é um pedido: o servidor faz UPSERT por (pedido,
  *  produto), e sem o aviso a pessoa digitaria de novo achando que soma. */
 export function TabelaCatalogo({ itens, valorDe, aoTrocar, ordenar, dir, aoOrdenar,
-                                 mesReferencia, parametros, avisoLinha, originalDe }) {
+                                 mesReferencia, parametros, avisoLinha, originalDe,
+                                 coberturaAlvoSimulada = null }) {
   // Rótulos dos meses, como no gráfico do SKU: nome do mês em vez de M-1/M-2/M-3.
   const rot = (i) => (mesReferencia ? mesCurto(mesesAntes(mesReferencia, i)) : ["Atual", "M-1", "M-2", "M-3"][i]);
   const props = { ordenar, dir, aoOrdenar };
@@ -336,6 +440,7 @@ export function TabelaCatalogo({ itens, valorDe, aoTrocar, ordenar, dir, aoOrden
                            valor={valorDe(p.codigo)}
                            original={originalDe?.(p.codigo) ?? null}
                            aviso={avisoLinha?.(p) ?? null}
+                           coberturaAlvoSimulada={coberturaAlvoSimulada}
                            aoTrocar={(v) => aoTrocar(p.codigo, v)} />
           ))}
         </tbody>
@@ -351,7 +456,7 @@ export function TabelaCatalogo({ itens, valorDe, aoTrocar, ordenar, dir, aoOrden
  *  valor digitado difere, com o número anterior logo abaixo ("era 36"). Sem
  *  esse par o campo mentiria: mostraria vazio para um item que tem 36
  *  gravadas, e confirmar sobrescreveria sem a pessoa ver o que mudou. */
-function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original }) {
+function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original, coberturaAlvoSimulada = null }) {
   const digitado = String(valor ?? "").trim();
   const alterado = original != null && digitado !== ""
     && Number(digitado.replace(",", ".")) !== Number(original);
@@ -368,6 +473,7 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original }) {
   const seta = p.tendPct == null ? "→" : p.tendPct > 0.03 ? "↑" : p.tendPct < -0.03 ? "↓" : "→";
   const corSeta = p.tendPct == null ? CINZA : p.tendPct > 0.03 ? NAVY : p.tendPct < -0.03 ? RED : CINZA;
 
+  const sug = sugestaoCobertura(p, coberturaAlvoSimulada);
   const mesesComPedido = coberturaComPedido(p, valor);
   const criticaProjetada = mesesComPedido != null && p.coberturaAlvo != null
     && mesesComPedido < p.coberturaAlvo * fracaoCritica;
@@ -449,17 +555,23 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original }) {
         {seta} {p.tendPct != null ? `${numero(p.tendPct * 100, 0)}%` : ""}
       </td>
       <td className="px-2 py-2 text-center">
-        {/* A sugestão vem do MODELO (SUG_COBERTURA, coluna AZ da planilha), não
-            recalculada aqui. O protótipo a refaz em JS como
-            `coberturaAlvo x média − (estDisp + estPend)` — e no nosso modelo
-            EST_PEND já inclui EST_DISP (medido: em 8.829 de 8.829 SKUs), então
-            aquela conta subtrai o estoque duas vezes e pede a menos. */}
-        {p.sugCobertura > 0 ? (
-          <button type="button" onClick={() => aoTrocar(String(p.sugCobertura))}
-                  title="Usar a sugestão do modelo"
+        {/* Com `coberturaAlvoSimulada == null` (padrão, "voltar ao alvo do
+            modelo"), a sugestão é a do MODELO (SUG_COBERTURA, coluna AZ da
+            planilha), byte a byte — não recalculada aqui. O protótipo a
+            refaz em JS como `coberturaAlvo x média − (estDisp + estPend)` —
+            e no nosso modelo EST_PEND já inclui EST_DISP (medido: em 8.829
+            de 8.829 SKUs), então aquela conta subtrai o estoque duas vezes e
+            pede a menos. Só quando a pessoa MEXEU no controle de cobertura
+            (Etapa 19, item 2) é que `sug` vira a simulação — ver
+            `sugestaoCobertura`, acima. */}
+        {sug > 0 ? (
+          <button type="button" onClick={() => aoTrocar(String(sug))}
+                  title={coberturaAlvoSimulada == null
+                    ? "Usar a sugestão do modelo"
+                    : `Usar a sugestão simulada (alvo ${numero(coberturaAlvoSimulada, 1)} meses)`}
                   className="num rounded-md px-2 py-1 text-2xs font-semibold"
                   style={{ background: `${NAVY}12`, color: NAVY }}>
-            {numero(p.sugCobertura, 0)}
+            {numero(sug, 0)}
           </button>
         ) : <span className="text-2xs text-gray-300">—</span>}
       </td>

@@ -48,6 +48,15 @@ export default function Pedidos() {
 
   const [filtros, setFiltros] = useEstadoPersistente(
     "app_compras_filtros_pedidos_v1", FILTROS_PADRAO);
+  // Etapa 19, item 2 — cobertura alvo SIMULADA, de SESSÃO (nunca gravada —
+  // §2 do prompt). `{ alvo: null }`, não um primitivo: `useEstadoPersistente`
+  // descarta primitivo e devolve sempre o padrão (`estadoTela.js:lerStorage`
+  // — o mesmo motivo por que `PedidoDetalhe.jsx` guarda `{ aberto }` em vez
+  // de um booleano solto). Chave PRÓPRIA desta tela — mexer no catálogo
+  // dentro de um pedido salvo (`PedidoDetalhe.jsx`) não pode alterar o que
+  // ficou simulado aqui, e vice-versa (§4.4 do prompt).
+  const [coberturaSimulada, setCoberturaSimulada] = useEstadoPersistente(
+    "app_compras_cobertura_alvo_pedidos_v1", { alvo: null });
   // Aceita valor direto ou função de atualização — mesmo par de formas que
   // `useState` aceita (molde: `Precificacao.jsx`).
   const setCampo = (campo) => (v) => setFiltros((f) => ({
@@ -221,6 +230,8 @@ export default function Pedidos() {
                              busca, setBusca, setPagina,
                              referencia: parametros?.data_referencia,
                              dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte }}
+                       coberturaAlvoSimulada={coberturaSimulada.alvo}
+                       setCoberturaAlvoSimulada={(v) => setCoberturaSimulada({ alvo: v })}
                        total={dados?.total} />
       {(dtUltEntDe || dtUltEntAte) && <AvisoSemEntrada />}
 
@@ -235,6 +246,7 @@ export default function Pedidos() {
                           valorDe={(codigo) => carrinho[codigo]}
                           aoTrocar={(codigo, v) => setCarrinho((c) => ({ ...c, [codigo]: v }))}
                           ordenar={ordenar} dir={dir} aoOrdenar={aoOrdenar}
+                          coberturaAlvoSimulada={coberturaSimulada.alvo}
                           mesReferencia={parametros?.mes_referencia} parametros={parametros} />
         )}
       </div>

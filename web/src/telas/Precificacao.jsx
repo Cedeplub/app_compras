@@ -7,8 +7,10 @@ import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
+import FiltroPreco from "../componentes/FiltroPreco.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
+import { precoDeMargem, motivoMargemInvalida, motivoMKPInvalido, precoDeMKP } from "../precoEditavel.js";
 import { data as fmtData, dataCompleta, moeda, numero, paraCampoPreco, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
 import { textoConfirmacaoLote } from "../lotePrecoStatus.js";
 
@@ -86,7 +88,7 @@ const ROTULO_COLUNA = {
 // (molde `contexto/carrinho.jsx`); `pagina` entra junto — voltar para a
 // página 7 e cair na 1 é perder o lugar tanto quanto perder o filtro.
 const FILTROS_PADRAO = {
-  departamento: "", comprador: "", status: "Ativo", estoque: "",
+  departamento: "", comprador: "", status: "Ativo", estoque: "", preco: "",
   cenarioSel: "st_valor", busca: "", pagina: 1, dtUltEntDe: "", dtUltEntAte: "",
 };
 
@@ -106,12 +108,13 @@ export default function Precificacao() {
   const setCampo = (campo) => (v) => setFiltros((f) => ({
     ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
   }));
-  const { departamento, comprador, status, estoque, cenarioSel, busca, pagina,
+  const { departamento, comprador, status, estoque, preco, cenarioSel, busca, pagina,
           dtUltEntDe, dtUltEntAte } = filtros;
   const setDepartamento = setCampo("departamento");
   const setComprador = setCampo("comprador");
   const setStatus = setCampo("status");
   const setEstoque = setCampo("estoque");
+  const setPreco = setCampo("preco");
   const setCenarioSel = setCampo("cenarioSel");
   const setBusca = setCampo("busca");
   const setPagina = setCampo("pagina");
@@ -192,6 +195,7 @@ export default function Precificacao() {
         comprador: comprador || null,
         status: status === "Todos" ? null : status,
         estoque: estoque || null,
+        preco: preco || null,
         busca: busca || null,
         ordenar, dir,
         cenarioMargem: cenarioSel,
@@ -206,7 +210,7 @@ export default function Precificacao() {
     } finally {
       setCarregando(false);
     }
-  }, [departamento, comprador, status, estoque, busca, ordenar, dir, cenarioSel, pagina,
+  }, [departamento, comprador, status, estoque, preco, busca, ordenar, dir, cenarioSel, pagina,
       dtUltEntDe, dtUltEntAte, versaoDados]);
 
   useEffect(() => {
@@ -422,6 +426,7 @@ export default function Precificacao() {
         </div>
 
         <FiltroEstoque valor={estoque} aoTrocar={(v) => { setEstoque(v); setPagina(1); }} />
+        <FiltroPreco valor={preco} aoTrocar={(v) => { setPreco(v); setPagina(1); }} />
 
         <Campo rotulo="Departamento" largura="w-40">
           <Select valor={departamento} vazio="Todos" opcoes={opcoes?.departamentos ?? []}
@@ -771,6 +776,15 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
                        precoAtual: p.pvVarejo, precoDigitado: precoVAR,
                        fatorPrazo: parametros.fator_prazo_varejo, parametros });
 
+  // Base de margem/MKP dos dois campos novos (item 1) — a MESMA `base` que
+  // `simular` já monta por dentro para `calcMargem`, só exposta aqui porque
+  // `CelulaEdicao` precisa dela para a conta INVERSA (`precoDeMargem`). Lida
+  // de `at.cenario`/`vr.cenario`, nunca re-resolvida (§3.4 do prompt): duas
+  // resoluções de cenário é como o protótipo acaba com uma alíquota na
+  // sugestão e outra na margem (precificacao.js:52-57).
+  const baseAT = { pisCofins: p.pisCofinsEfetivo, comissao: parametros.comissao, icmsEf: at.cenario?.icmsEf };
+  const baseVAR = { pisCofins: p.pisCofinsEfetivo, comissao: parametros.comissao, icmsEf: vr.cenario?.icmsEf };
+
   // Custo ocupa UMA linha quando a última entrada e o custo do cenário
   // coincidem, e DUAS quando divergem. É do protótipo, e é bom: a segunda
   // linha aparece só quando há de fato duas coisas a dizer.
@@ -855,7 +869,8 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
         {pct(at.margemAtual)}
       </td>
       <td className="num px-2 py-2 text-center text-gray-500" style={{ background: FUNDO_AT }}>{moeda(at.sugerido)}</td>
-      <CelulaEdicao fundo={FUNDO_AT_EDIT} sim={at} valor={precoAT} aoTrocar={setPrecoAT}
+      <CelulaEdicao fundo={FUNDO_AT_EDIT} sim={at} base={baseAT} cenarioSel={cenarioSel}
+                    valor={precoAT} aoTrocar={setPrecoAT}
                     rotulo={`Novo preço de atacado do produto ${p.codigo}`}
                     decidido={p.precoDecididoAtacadoAV}
                     aplicado={precoJaAplicado(p.pvAtacado, p.precoDecididoAtacadoAV)}
@@ -869,7 +884,8 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
         {pct(vr.margemAtual)}
       </td>
       <td className="num px-2 py-2 text-center text-gray-500" style={{ background: FUNDO_VAR }}>{moeda(vr.sugerido)}</td>
-      <CelulaEdicao fundo={FUNDO_VAR_EDIT} sim={vr} valor={precoVAR} aoTrocar={setPrecoVAR}
+      <CelulaEdicao fundo={FUNDO_VAR_EDIT} sim={vr} base={baseVAR} cenarioSel={cenarioSel}
+                    valor={precoVAR} aoTrocar={setPrecoVAR}
                     rotulo={`Novo preço de varejo do produto ${p.codigo}`}
                     decidido={p.precoDecididoVarejoAV}
                     aplicado={precoJaAplicado(p.pvVarejo, p.precoDecididoVarejoAV)}
@@ -910,18 +926,68 @@ function Tributacao({ p }) {
  * Defeito A (PROMPT_ETAPA_12 §2: o botão sumia depois da 1ª gravação e nunca
  * reaparecia); remover o botão daqui elimina o defeito por construção, em vez
  * de só consertá-lo. */
-function CelulaEdicao({ fundo, sim, valor, aoTrocar, rotulo, decidido, aplicado, dataDecisao, dataAplicado }) {
+function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, decidido, aplicado, dataDecisao, dataAplicado }) {
   // Etapa 15, ponto 2: "decidido, ainda não aplicado" é o único estado em que
   // o campo nasce preenchido e a sugestão desce para a linha de apoio — os
   // dois "efeitos" do decidido (§4.3 do prompt). Uma vez aplicado, é como se
   // não houvesse decisão pendente: mesmo tratamento visual de "sem decisão".
   const pendente = decidido != null && !aplicado;
+
+  // Etapa 19, item 1: margem e MKP viram campos editáveis, ao lado do preço —
+  // mas o ESTADO continua sendo só o preço (`valor`/`aoTrocar`, de sempre).
+  // Margem e MKP não são um segundo estado: são FORMAS DE ENTRADA que escrevem
+  // no mesmo mapa `precosAT`/`precosVAR` (§3.3 do prompt). `editando` guarda
+  // só o texto cru do campo que a pessoa está digitando, para o cursor não
+  // pular quando o valor derivado é recalculado a cada tecla.
+  const [editando, setEditando] = useState(null); // null | { campo: "margem"|"mkp", texto }
+
+  // Trocar o cenário muda custo e alíquota (§3.4): o campo dirigente volta a
+  // ser o preço, que PERMANECE — só margem e MKP são recalculados sob o
+  // cenário novo. Sem isto, o campo de margem continuaria mostrando o texto
+  // cru de um cenário que não existe mais.
+  useEffect(() => setEditando(null), [cenarioSel]);
+
+  const custoValido = sim.custo != null && sim.custo > 0;
+
+  function aoTrocarMargem(texto) {
+    setEditando({ campo: "margem", texto });
+    const pctDigitado = parseNumeroPreco(texto);
+    if (!Number.isFinite(pctDigitado)) return; // vazio ou inválido: não mexe no preço
+    const novoPreco = precoDeMargem(pctDigitado / 100, sim.custo, base);
+    if (novoPreco != null) aoTrocar(paraCampoPreco(novoPreco));
+  }
+  function aoTrocarMKP(texto) {
+    setEditando({ campo: "mkp", texto });
+    const mkp = parseNumeroPreco(texto);
+    if (!Number.isFinite(mkp)) return;
+    const novoPreco = precoDeMKP(mkp, sim.custo);
+    if (novoPreco != null) aoTrocar(paraCampoPreco(novoPreco));
+  }
+
+  const valorMargem = editando?.campo === "margem" ? editando.texto
+    : (sim.margemNova != null ? numero(sim.margemNova * 100, 1) : "");
+  const valorMKP = editando?.campo === "mkp" ? editando.texto
+    : (sim.mkpNovo != null ? numero(sim.mkpNovo, 2) : "");
+
+  // Vermelho só quando a pessoa digitou algo que não produz preço nenhum —
+  // nunca ao nascer vazio. Apagar o preço de quem digitou um caractere a mais
+  // é o descarte silencioso que este projeto corrige tela por tela (§3.3).
+  // O motivo vem de `precoEditavel.js`, uma vez só para as duas telas: ele é o
+  // `title` e, por ser não-undefined, o sinal de borda vermelha. Distingue
+  // "não é número" de "acima do teto", que antes diziam a mesma coisa.
+  const motivoMargem = editando?.campo === "margem"
+    ? motivoMargemInvalida(editando.texto, sim.custo, base) : undefined;
+  const motivoMKP = editando?.campo === "mkp"
+    ? motivoMKPInvalido(editando.texto, sim.custo) : undefined;
+  const margemInvalida = motivoMargem != null;
+  const mkpInvalido = motivoMKP != null;
+
   return (
-    <td className="px-2 py-1.5 text-center" style={{ background: fundo, minWidth: 180 }}>
-      <div className="flex items-center justify-center gap-1.5">
+    <td className="px-2 py-1.5 text-center" style={{ background: fundo, minWidth: 215 }}>
+      <div className="flex flex-wrap items-center justify-center gap-1">
         <input
           type="text" inputMode="decimal" value={valor ?? ""} aria-label={rotulo}
-          onChange={(e) => aoTrocar(e.target.value)}
+          onChange={(e) => { setEditando(null); aoTrocar(e.target.value); }}
           // O placeholder é a SUGESTÃO do cenário — quando NÃO há decisão
           // pendente (nem decisão, nem decisão já aplicada): aí o campo nasce
           // vazio e o placeholder é o único jeito de mostrar a meta, sem
@@ -931,12 +997,26 @@ function CelulaEdicao({ fundo, sim, valor, aoTrocar, rotulo, decidido, aplicado,
           // para a linha de apoio "sugerido" logo abaixo, porque um
           // placeholder não aparece atrás de um valor.
           placeholder={!pendente && sim.sugerido != null ? numero(sim.sugerido, 2) : undefined}
-          className="num w-[76px] rounded-md border border-gray-300 bg-white px-1 py-1 text-center text-sm"
+          className="num w-[68px] rounded-md border border-gray-300 bg-white px-1 py-1 text-center text-sm"
         />
-        <span className="num whitespace-nowrap text-2xs leading-none"
-              style={{ color: sim.mkpNovo != null ? NAVY : "#D1D5DB" }}>
-          {sim.mkpNovo != null ? `${numero(sim.mkpNovo, 2)}x/${pct(sim.margemNova, 0)}` : "—"}
-        </span>
+        <input
+          type="text" inputMode="decimal" value={valorMargem} disabled={!custoValido}
+          aria-label={`Margem alvo de ${rotulo}`}
+          onChange={(e) => aoTrocarMargem(e.target.value)}
+          onBlur={() => setEditando(null)}
+          title={motivoMargem}
+          className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${margemInvalida ? "border-red-500" : "border-gray-300"}`}
+        />
+        <span className="text-2xs text-gray-400">%</span>
+        <input
+          type="text" inputMode="decimal" value={valorMKP} disabled={!custoValido}
+          aria-label={`MKP de ${rotulo}`}
+          onChange={(e) => aoTrocarMKP(e.target.value)}
+          onBlur={() => setEditando(null)}
+          title={motivoMKP}
+          className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${mkpInvalido ? "border-red-500" : "border-gray-300"}`}
+        />
+        <span className="text-2xs text-gray-400">x</span>
       </div>
       <div className="num mt-1 whitespace-nowrap text-[9px] leading-none text-gray-400">
         {sim.prazo != null

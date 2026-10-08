@@ -6,6 +6,7 @@ import { useCarrinho } from "../contexto/carrinho.jsx";
 import { coberturaComPedido } from "../cobertura.js";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
+import { precoDeMargem, motivoMargemInvalida, motivoMKPInvalido, precoDeMKP } from "../precoEditavel.js";
 import {
   compacto, data as fmtData, mesCurto, mesesAntes, moeda, numero, paraCampoPreco, parseNumeroPreco,
 } from "../formato.js";
@@ -431,6 +432,12 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
   // preenchido com a SUGESTÃO (§2.10) — o que, num campo que grava em
   // APP_DECISAO_PRECO, faria a tela propor uma decisão que ninguém tomou.
   const [valor, setValor] = useState(() => paraCampoPreco(pendente ? decidido : null));
+  // Etapa 19, item 1: os mesmos dois campos editáveis de margem/MKP da
+  // Precificação — para não haver incoerência entre as duas telas para o
+  // mesmo produto e o mesmo preço (§3.6 do prompt). O ESTADO continua sendo
+  // só `valor` (o preço); `editando` guarda o texto cru do campo de
+  // margem/MKP sob o cursor, igual a `CelulaEdicao` de Precificacao.jsx.
+  const [editando, setEditando] = useState(null); // null | { campo: "margem"|"mkp", texto }
   const [estado, setEstado] = useState("parado");
   const [erroSalvar, setErroSalvar] = useState(null);
   // Para onde foi o preço decidido aqui — id do lote e se o servidor abriu um
@@ -450,12 +457,53 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
     setEstado("parado");
     setErroSalvar(null);
     setConfirmacaoLote(null);
+    setEditando(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.codigo]);
+
+  // Trocar o cenário muda custo e alíquota (§3.4 do prompt): o preço digitado
+  // PERMANECE, só margem e MKP são recalculados sob o cenário novo — o campo
+  // dirigente volta a ser o preço.
+  useEffect(() => setEditando(null), [cenarioSel]);
 
   const sim = simular({ produto: p, cenarios, cenarioSel, precoAtual,
                         precoDigitado: valor, fatorPrazo, parametros });
   const outros = cenarios.filter((c) => c.id !== sim.cenario?.id);
+
+  // Base de margem/MKP dos dois campos novos — a mesma que `simular` monta
+  // por dentro para `calcMargem`, exposta aqui para a conta INVERSA
+  // (`precoDeMargem`). Lida de `sim.cenario`, nunca re-resolvida.
+  const base = { pisCofins: p.pisCofinsEfetivo, comissao: parametros?.comissao, icmsEf: sim.cenario?.icmsEf };
+  const custoValido = sim.custo != null && sim.custo > 0;
+
+  function aoTrocarMargem(texto) {
+    setEditando({ campo: "margem", texto });
+    const pctDigitado = parseNumeroPreco(texto);
+    if (!Number.isFinite(pctDigitado)) return; // vazio ou inválido: não mexe no preço
+    const novoPreco = precoDeMargem(pctDigitado / 100, sim.custo, base);
+    if (novoPreco != null) aoDigitar(paraCampoPreco(novoPreco));
+  }
+  function aoTrocarMKP(texto) {
+    setEditando({ campo: "mkp", texto });
+    const mkp = parseNumeroPreco(texto);
+    if (!Number.isFinite(mkp)) return;
+    const novoPreco = precoDeMKP(mkp, sim.custo);
+    if (novoPreco != null) aoDigitar(paraCampoPreco(novoPreco));
+  }
+
+  const valorMargem = editando?.campo === "margem" ? editando.texto
+    : (sim.margemNova != null ? numero(sim.margemNova * 100, 1) : "");
+  const valorMKP = editando?.campo === "mkp" ? editando.texto
+    : (sim.mkpNovo != null ? numero(sim.mkpNovo, 2) : "");
+  // O motivo vem de `precoEditavel.js`, uma vez só para as duas telas: ele é o
+  // `title` e, por ser não-undefined, o sinal de borda vermelha. Distingue
+  // "não é número" de "acima do teto", que antes diziam a mesma coisa.
+  const motivoMargem = editando?.campo === "margem"
+    ? motivoMargemInvalida(editando.texto, sim.custo, base) : undefined;
+  const motivoMKP = editando?.campo === "mkp"
+    ? motivoMKPInvalido(editando.texto, sim.custo) : undefined;
+  const margemInvalida = motivoMargem != null;
+  const mkpInvalido = motivoMKP != null;
 
   // `parseNumeroPreco` (formato.js): lê de volta o mesmo formato que
   // `paraCampoPreco` produziu acima, sem cair no ponto-de-milhar que quebrava
@@ -540,7 +588,7 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
           Preço final decidido (à vista)
         </label>
         <input id={`preco-${praca}-${p.codigo}`} type="text" inputMode="decimal"
-               value={valor} onChange={(e) => aoDigitar(e.target.value)}
+               value={valor} onChange={(e) => { setEditando(null); aoDigitar(e.target.value); }}
                // Placeholder só quando o campo nasce vazio (sem decisão
                // PENDENTE — nem decisão, nem decisão já aplicada) — com
                // decisão pendente ele já nasce preenchido com ELA (acima), e a
@@ -575,12 +623,30 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
           </p>
         )}
 
-        {sim.novo != null && (
-          <p className="mt-1.5 text-xs" style={{ color: NAVY }}>
-            → MKP <span className="num font-semibold">{mult(sim.mkpNovo)}</span> · Margem{" "}
-            <span className="num font-semibold">{pct(sim.margemNova)}</span>
-          </p>
-        )}
+        {/* Etapa 19, item 1: margem e MKP viram campos editáveis — os mesmos
+            dois inputs de `Precificacao.jsx` → `CelulaEdicao`, mesma lógica
+            (o ESTADO continua sendo só `valor`, o preço; estes dois campos
+            são FORMAS DE ENTRADA que escrevem nele via `aoDigitar`). Visíveis
+            sempre, não só com `sim.novo` preenchido — é por aqui que a pessoa
+            PODE COMEÇAR a decidir o preço, partindo de uma margem em vez de
+            um valor em reais. */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs" style={{ color: NAVY }}>
+          <span>→ MKP</span>
+          <input type="text" inputMode="decimal" value={valorMKP} disabled={!custoValido}
+                 aria-label={`MKP de ${titulo}`}
+                 onChange={(e) => aoTrocarMKP(e.target.value)}
+                 onBlur={() => setEditando(null)}
+                 title={motivoMKP}
+                 className={`num w-[52px] rounded-md border bg-white px-1 py-0.5 text-center font-semibold disabled:bg-gray-100 disabled:text-gray-400 ${mkpInvalido ? "border-red-500" : "border-gray-300"}`} />
+          <span>x · Margem</span>
+          <input type="text" inputMode="decimal" value={valorMargem} disabled={!custoValido}
+                 aria-label={`Margem alvo de ${titulo}`}
+                 onChange={(e) => aoTrocarMargem(e.target.value)}
+                 onBlur={() => setEditando(null)}
+                 title={motivoMargem}
+                 className={`num w-[52px] rounded-md border bg-white px-1 py-0.5 text-center font-semibold disabled:bg-gray-100 disabled:text-gray-400 ${margemInvalida ? "border-red-500" : "border-gray-300"}`} />
+          <span>%</span>
+        </div>
         {sim.prazo != null && (
           <p className="mt-1.5 border-t border-gray-100 pt-1.5 text-xs text-gray-500">
             A prazo <span className="num font-medium text-gray-800">{moeda(sim.prazo)}</span> · MKP{" "}

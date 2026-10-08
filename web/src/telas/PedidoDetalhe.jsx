@@ -415,6 +415,13 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
   // `app_compras_filtros_pedidos_v1`), nem um pedido herdar o filtro do outro.
   const [filtros, setFiltros] = useEstadoPersistente(
     `app_compras_filtros_pedido_${pedido.id}_v1`, FILTROS_PADRAO);
+  // Etapa 19, item 2 — cobertura alvo SIMULADA, de SESSÃO, nunca gravada
+  // (§2 do prompt). Chave FIXA (não por pedido, ao contrário de `filtros`
+  // acima): o prompt pede duas chaves só, uma por TELA
+  // (`app_compras_cobertura_alvo_pedidos_v1` e esta), não uma por pedido —
+  // `{ alvo: null }`, não primitivo, pelo mesmo motivo de `secao` acima.
+  const [coberturaSimulada, setCoberturaSimulada] = useEstadoPersistente(
+    "app_compras_cobertura_alvo_pedido_detalhe_v1", { alvo: null });
   const setCampo = (campo) => (v) => setFiltros((f) => ({
     ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
   }));
@@ -627,6 +634,7 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
                                 originalDe={(codigo) => jaNoPedido.get(codigo) ?? null}
                                 aoTrocar={aoTrocarQtd}
                                 ordenar={ordenarPed} dir={dirPed} aoOrdenar={aoOrdenarPed}
+                                coberturaAlvoSimulada={coberturaSimulada.alvo}
                                 mesReferencia={parametros?.mes_referencia} parametros={parametros} />
               )}
             </div>
@@ -650,6 +658,8 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
                                  referencia: parametros?.data_referencia,
                                  dtUltEntDe, setDtUltEntDe, dtUltEntAte, setDtUltEntAte }}
                            departamentoTravado={pedido.fornecedor}
+                           coberturaAlvoSimulada={coberturaSimulada.alvo}
+                           setCoberturaAlvoSimulada={(v) => setCoberturaSimulada({ alvo: v })}
                            total={dados?.total} />
         </div>
         {(dtUltEntDe || dtUltEntAte) && <AvisoSemEntrada />}
@@ -668,6 +678,7 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
                             valorDe={(codigo) => quantidades[codigo]}
                             aoTrocar={aoTrocarQtd}
                             ordenar={ordenar} dir={dir} aoOrdenar={aoOrdenar}
+                            coberturaAlvoSimulada={coberturaSimulada.alvo}
                             mesReferencia={parametros?.mes_referencia} parametros={parametros} />
           )}
         </div>
