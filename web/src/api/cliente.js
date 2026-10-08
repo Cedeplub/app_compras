@@ -34,13 +34,27 @@ function detalheLegivel(detail) {
   return String(detail);
 }
 
+/** `autenticando: true` marca a requisição que É a tentativa de login.
+ *
+ *  Muda o significado do 401. Numa requisição comum ele quer dizer "a sessão
+ *  morreu", e a tela tem de ir para o login. Na tentativa de login ele quer
+ *  dizer "credencial errada" — não havia sessão para expirar.
+ *
+ *  Sem essa distinção, senha errada mostrava "Sessão expirada." (relatado em
+ *  08/10/2026): a mensagem certa, "Login ou senha inválidos.", vinha do
+ *  servidor e era descartada aqui — e ainda disparava SESSAO_EXPIROU, com a
+ *  tela de login mandando a si mesma para o login.
+ *
+ *  A marca fica no ponto de CHAMADA (`api.entrar`), não num `if` por caminho
+ *  aqui dentro: quem sabe que aquele POST é autenticação é quem o faz. */
 async function requisitar(caminho, opcoes = {}) {
+  const { autenticando = false, ...opcoesFetch } = opcoes;
   let resposta;
   try {
     resposta = await fetch(`/api${caminho}`, {
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      ...opcoes,
+      ...opcoesFetch,
     });
   } catch {
     // Falha de rede não tem status HTTP. Sem este ramo, a tela mostraria
@@ -49,7 +63,9 @@ async function requisitar(caminho, opcoes = {}) {
     throw new ErroApi(0, "Sem conexão com o servidor. Tente de novo em instantes.");
   }
 
-  if (resposta.status === 401) {
+  // 401 na tentativa de login NÃO é sessão expirada: cai no tratamento comum
+  // logo abaixo, que usa o `detail` do servidor ("Login ou senha inválidos.").
+  if (resposta.status === 401 && !autenticando) {
     window.dispatchEvent(new CustomEvent(SESSAO_EXPIROU));
     throw new ErroApi(401, "Sessão expirada.");
   }
@@ -85,7 +101,13 @@ let _parametros = null;
 export const api = {
   sessao: () => requisitar("/sessao"),
   entrar: (login, senha) =>
-    requisitar("/login", { method: "POST", body: JSON.stringify({ login, senha }) }),
+    requisitar("/login", {
+      method: "POST",
+      body: JSON.stringify({ login, senha }),
+      // Ver `autenticando` em `requisitar`: aqui o 401 é credencial errada,
+      // não sessão expirada.
+      autenticando: true,
+    }),
   sair: () => requisitar("/logout", { method: "POST" }),
 
   // Memorizado: os parâmetros do modelo só mudam com `dbt seed`, e cada tela
