@@ -82,13 +82,26 @@ vars:
   # descartaria produto sem linha de tributacao para a UF).
   compras_uf_destino: 'BA'
 
-  # v2 Etapa 10 (tela Entradas). Dias corridos para tras a partir de
-  # TRUNC(SYSDATE), semiaberto. Deliberadamente MENOR que compras_meses_historico
-  # (24 meses): a tela agrupa so em Hoje/Ontem/Essa semana/Esse mes, com
-  # navegacao Dia/Semana/Mes (SEM "Ano" - ver int_entrada_compra.sql). 180 dias
-  # da margem para navegar alguns meses para tras sem carregar uma janela
-  # dimensionada para comparacao anual, que esta tela nao faz.
-  compras_entrada_dias_historico: 180
+  # v2 Etapa 10 (tela Entradas). Em MESES, alinhado ao mes corrente, igual a
+  # compras_meses_historico e a compras_monitoramento_meses_historico - ver
+  # int_entrada_compra.sql.
+  #
+  # Era `compras_entrada_dias_historico: 180` ate 08/10/2026, justificado por
+  # "a tela agrupa so em Hoje/Ontem/Essa semana/Esse mes, com navegacao
+  # Dia/Semana/Mes, SEM Ano". A premissa estava ERRADA: a tela Entradas usa o
+  # MESMO componente SeletorPeriodo das demais (web/src/componentes/
+  # SeletorPeriodo.jsx), que renderiza as quatro granularidades de
+  # GRANULARIDADES - Ano inclusive. Nunca existiu versao da tela sem "Ano"; o
+  # comentario descrevia o prototipo, nao o que foi construido. Com 180 dias,
+  # escolher "Ano" e voltar um periodo devolvia tela vazia - mesmo defeito que
+  # a janela diaria do Monitoramento tinha em 05/10/2026.
+  #
+  # Medido em 08/10/2026: 12.006 itens de entrada em 180 dias contra 196.999 em
+  # 96 meses (4.837 produtos distintos, desde 11/2018). E uma tabela pequena -
+  # COMPRAS_MONITORAMENTO tem 2,0 milhoes de linhas - e o build de
+  # int_entrada_compra com a janela nova levou 5,1s. Ver o cabecalho do model
+  # para por que o micro-benchmark feito fora do dbt (10s -> 75s) nao valia.
+  compras_entrada_meses_historico: 96
 
   # v2 Etapa 10 (tela Monitoramento), grao DIARIO
   # (int_venda_diaria/COMPRAS_MONITORAMENTO). Em MESES, alinhado ao mes corrente,

@@ -1,7 +1,7 @@
 """Monitoramento e Entradas — as duas telas de acompanhamento (Etapa 10).
 
 Lê COMPRAS_MONITORAMENTO (grão dia × produto, 96 meses) e COMPRAS_ENTRADA
-(grão item de nota, 180 dias). Nenhuma delas escreve.
+(grão item de nota, 96 meses). Nenhuma delas escreve.
 
 ── Por que a agregação é feita no BANCO ─────────────────────────────────────
 São ~2,0 milhões de linhas de venda diária (eram 338 mil até 05/10/2026, quando

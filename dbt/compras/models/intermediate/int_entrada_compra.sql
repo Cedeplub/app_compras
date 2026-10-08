@@ -42,12 +42,47 @@
 -- 0 de 1.830 linhas 'E'/30 dias têm vlsubtotitem. Por isso valor = QT * PUNIT
 -- direto, sem CTE de complemento.
 --
--- Histórico: {{ var('compras_entrada_dias_historico', 180) }} dias corridos
--- (~6 meses) - deliberadamente MENOR que os 96 meses de compras_meses_historico.
--- A tela (PROTOTIPO.md §2.3) agrupa só em Hoje/Ontem/Essa semana/Esse mês, com
--- navegação Dia/Semana/Mês (sem "Ano" - diferente de Monitoramento). 180 dias
--- dá margem generosa para navegar alguns meses para trás sem carregar uma
--- janela dimensionada para comparação anual, que esta tela não faz.
+-- ── ⚠ A JANELA MUDOU EM 08/10/2026: de 180 DIAS para 96 MESES ───────────────
+-- Era `trunc(sysdate) - var('compras_entrada_dias_historico', 180)`, com esta
+-- justificativa: "a tela agrupa só em Hoje/Ontem/Essa semana/Esse mês, com
+-- navegação Dia/Semana/Mês (sem 'Ano' - diferente de Monitoramento)".
+--
+-- A premissa estava ERRADA, e pelo mesmo motivo que derrubou a janela de 400
+-- dias do Monitoramento em 05/10/2026: a tela Entradas usa o MESMO componente
+-- `SeletorPeriodo` das demais, que renderiza as quatro granularidades de
+-- `GRANULARIDADES` (web/src/periodo.js) - **Ano inclusive**. Nunca existiu
+-- versão desta tela sem "Ano"; o comentário descrevia o protótipo, não o que
+-- foi construído. O backend (`entradas()` em app/servicos/monitoramento.py)
+-- também é agnóstico de granularidade - recebe `de`/`ate` prontos e soma
+-- COMPRAS_ENTRADA. Com 180 dias, escolher "Ano" e voltar um período devolvia
+-- tela vazia: não por falta de dado, por falta de janela.
+--
+-- Agora são `var('compras_entrada_meses_historico', 96)` meses, o MESMO valor
+-- de compras_meses_historico e de compras_monitoramento_meses_historico, e
+-- ALINHADOS PELO MÊS (add_months sobre trunc(sysdate,'MM')), não por dia
+-- corrido - o mesmo alinhamento de int_periodo_diario/int_periodo_mensal, para
+-- que as três janelas do app comecem no mesmo mês.
+--
+-- Custo medido em 08/10/2026: 12.006 itens em 180 dias contra 196.999 em 96
+-- meses (4.837 produtos distintos, a partir de 11/2018). Tabela pequena -
+-- COMPRAS_MONITORAMENTO tem 2,0 MILHÕES de linhas. O build deste model com a
+-- janela nova levou 5,1s (`dbt run --select int_entrada_compra+` inteiro: 11,6s).
+--
+-- ⚠ Um micro-benchmark do "núcleo" desta consulta, rodado solto contra o CEDEP
+-- antes da mudança, deu 10s -> 75s e teria condenado a janela. O build real
+-- levou 5,1s. O motivo é que o model lê as VIEWS stg_* já no schema do dbt e o
+-- Oracle escolhe outro plano; a consulta avulsa reconstruía as CTEs à mão.
+-- É o MESMO erro de método que subestimou em 4x o custo da janela de 96 meses
+-- do Monitoramento em 05/10/2026, agora na direção oposta: medir fora do dbt
+-- não mede o dbt. A medição que vale é a do `dbt run`.
+--
+-- ⚠ POR QUE A JANELA É INLINE AQUI, e não um model `int_periodo_entrada`:
+-- int_periodo_mensal/int_periodo_diario existem porque VÁRIOS models precisam
+-- da MESMA janela e uma espinha de meses/dias desincronizaria num build parcial
+-- (ver o cabeçalho de int_periodo_mensal). Aqui há um model só, sem espinha -
+-- nada com que dessincronizar. Se um segundo model passar a ler entrada por
+-- data, aí sim extrair a janela para um `int_periodo_entrada` antes de duplicar
+-- a expressão.
 --
 -- Grão: 1 linha por ITEM DE MOVIMENTO de entrada (id_transacao_item) - não
 -- agregado por dia. Decisão: o mesmo produto pode entrar mais de uma vez no
@@ -59,7 +94,8 @@
 --
 -- ⚠ ARMADILHA MEDIDA: PCNFENT.NUMTRANSENT NÃO é chave única da tabela. 4.125
 -- valores de NUMTRANSENT têm mais de uma linha em PCNFENT no banco inteiro
--- (160 deles dentro da janela de compras_entrada_dias_historico), com
+-- (160 deles dentro da janela de 180 dias que vigorava quando isto foi medido;
+-- o teste compras_entrada_grao_unico segue PASSANDO com os 96 meses), com
 -- CODFORNEC e às vezes CODFISCAL diferentes por linha - dois "cabeçalhos de
 -- nota" compartilhando o mesmo NUMTRANSENT. Um join direto de `movimentacao`
 -- (1 linha por item) contra `nota` sem desduplicar FAN-OUT: o mesmo item de
@@ -117,7 +153,11 @@ final as (
        and n.tipo_descarga in ('1', '5')
        and m.data_cancelamento is null
        and n.data_cancelamento is null
-       and n.data_entrada >= trunc(sysdate) - {{ var('compras_entrada_dias_historico', 180) }}
+       -- Janela alinhada ao MÊS - ver o bloco "A JANELA MUDOU" no cabeçalho.
+       -- `- 1` porque a contagem INCLUI o mês corrente: 96 meses = os 95
+       -- anteriores mais este.
+       and n.data_entrada >= add_months(trunc(sysdate, 'MM'),
+                                        -({{ var('compras_entrada_meses_historico', 96) }} - 1))
        and n.data_entrada <  trunc(sysdate) + 1
 )
 

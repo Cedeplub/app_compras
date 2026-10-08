@@ -14,11 +14,16 @@ import { compacto, moeda, numero } from "../formato.js";
  *
  * As últimas movimentações de estoque, agrupadas por Hoje / Ontem / Essa semana
  * / Esse mês. No protótipo a lista é um array estático de 6 linhas e o filtro de
- * período não filtra nada (§8); aqui vem de COMPRAS_ENTRADA, com 180 dias.
+ * período não filtra nada (§8); aqui vem de COMPRAS_ENTRADA.
  *
- * O protótipo não tem granularidade "Ano" nesta tela — só Dia/Semana/Mês. É
- * coerente: entrada de mercadoria se acompanha em janela curta, e o dado tem
- * 180 dias de histórico, não um ano. Mantido.
+ * ⚠ Até 08/10/2026 este cabeçalho dizia que a tela não tem granularidade "Ano",
+ * "só Dia/Semana/Mês". Era falso desde sempre: `SeletorPeriodo` é o MESMO
+ * componente do Monitoramento e renderiza as quatro granularidades de
+ * `GRANULARIDADES` — não existe prop para esconder nenhuma. O comentário
+ * descrevia o protótipo; a tela construída sempre ofereceu "Ano". O que faltava
+ * era dado: COMPRAS_ENTRADA tinha 180 dias, então "Ano" um período atrás vinha
+ * vazio. A janela do dbt foi para 96 meses (int_entrada_compra.sql) e agora as
+ * quatro granularidades têm com que responder.
  */
 
 const NAVY = "#375DA8";
@@ -128,7 +133,6 @@ export default function Entradas() {
 
   return (
     <div className="px-4 pb-6 pt-3 md:px-6 md:pt-4">
-      {/* Sem "Ano": entrada se acompanha em janela curta, e o dado tem 180 dias. */}
       <SeletorPeriodo granularidade={granularidade} setGranularidade={setGranularidade}
                       offset={offset} setOffset={setOffset} referencia={referencia} />
 

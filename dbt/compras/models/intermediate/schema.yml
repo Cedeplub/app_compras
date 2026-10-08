@@ -1531,7 +1531,8 @@ models:
   - name: int_entrada_compra
     description: >
       Entrada de compra/bonificação (CODOPER 'E'/'EB'), filial 2, últimos
-      compras_entrada_dias_historico dias. Exclui devolução de cliente ('ED'),
+      compras_entrada_meses_historico meses, alinhada ao mês corrente (era
+      compras_entrada_dias_historico dias até 08/10/2026). Exclui devolução de cliente ('ED'),
       transferência entre filiais ('ET') e regularização de estoque ('ER') -
       ver cabeçalho do model para os números medidos. Grão: 1 linha por item
       de movimento (id_transacao_item).

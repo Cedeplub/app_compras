@@ -16,7 +16,8 @@
 -- Qual coluna Excel reproduz: nenhuma - não existe na planilha nem em
 -- query.py/query_mensal.py. Ver o cabeçalho de int_entrada_compra.sql para a
 -- decisão de escopo (CODOPER 'E'+'EB', filial 2, janela de
--- {{ var('compras_entrada_dias_historico', 180) }} dias).
+-- {{ var('compras_entrada_meses_historico', 96) }} meses alinhada ao mês
+-- corrente - era 180 dias até 08/10/2026).
 --
 -- Grão: 1 linha por ITEM DE MOVIMENTO de entrada (ID_TRANSACAO_ITEM). O mesmo
 -- produto pode aparecer várias vezes no mesmo dia (notas/fornecedores
