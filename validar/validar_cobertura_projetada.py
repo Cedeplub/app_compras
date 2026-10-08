@@ -35,7 +35,11 @@ que nao dependem de nenhuma coluna pre-calculada:
 Numeros de referencia (973 itens, 103 com fator > 1, erro mediano 15,77,
 erro maximo 195,59 no item 8811/pedido 282) foram medidos em 08/10/2026
 contra o schema COMPRAS. Este script RECALCULA esses numeros a cada
-execucao; nao os copia.
+execucao; nao os copia - e, desde 08/10/2026, tambem NAO OS USA COMO
+CRITERIO de aprovacao: eles sao impressos como leitura do dia, e quem
+decide passa/falha e' um invariante que nao envelhece. O porque esta' na
+docstring de cenario_autoteste_defeito_injetado, com a medicao que mostra
+o que faz esses numeros andarem - e o que nao faz.
 
 SCHEMA - decisao explicita (leia antes de rodar em outra maquina)
 ------------------------------------------------------------------------------
@@ -174,27 +178,65 @@ def _calcular(linhas: list[dict]) -> list[dict]:
 
 
 def cenario_autoteste_defeito_injetado(rep: Reporter, calc: list[dict]) -> None:
-    """Prova que a formula ANTIGA (buggy) ACUSA divergencia real contra a
-    formula NOVA (corrigida), nos itens com FATOR_EXIBICAO > 1 - e que a
-    magnitude bate com o Sec 5 do prompt (973 itens, 103 com fator > 1, erro
-    mediano 15,77, erro maximo 195,59 no item 8811/pedido 282)."""
+    """Prova que a formula ANTIGA (buggy) ACUSA divergencia real contra a NOVA.
+
+    ⚠ O CRITERIO E' UM INVARIANTE, NAO UM NUMERO CONGELADO - e isso e'
+    deliberado, decidido em 08/10/2026 depois da revisao desta etapa.
+
+    A primeira versao exigia encontrar EXATAMENTE 103 itens divergentes, erro
+    mediano 15,77 e maximo 195,59 no SKU 8811/pedido 282 - os numeros medidos
+    no dia em que o prompt foi escrito, pedidos pelo seu Sec 11.8. Nenhum dos
+    tres e' estavel:
+
+      - a CONTAGEM muda assim que alguem salvar um pedido com item MASTER;
+        APP_PEDIDO_ITEM e' tabela viva, nao gabarito;
+      - MEDIANA e MAXIMO dependem de MEDIA_JANELA, que e' MED02..MED12
+        (int_produto_demanda.sql:163-171) - media movel dos ultimos 2 a 12
+        meses FECHADOS. Ela rola quando o MES VIRA: MED12 em novembro nao e'
+        MED12 em outubro;
+      - QUAL SKU e' o pior e' so quem esta' no topo hoje.
+
+    Com os numeros congelados, este passo reprovaria sozinho em algumas
+    semanas, com o codigo 100% correto - e um validador que acusa sem motivo
+    e' pior que nenhum, porque ensina quem o roda a ignora-lo.
+
+    ⚠ O QUE **NAO** E' MOTIVO DE DERIVA, medido e nao suposto: ampliar a
+    janela do dbt de 24 para 96 meses (commit 6ab8b24) NAO move MEDIA_JANELA.
+    Medido em 08/10/2026 comparando COMPRAS_DEV (96 meses, build 10:52) com
+    COMPRAS (24 meses, build 10:35), no MESMO dia: 8.944 SKUs em comum,
+    **0** com MEDIA_JANELA diferente. MED12 e' a mais longa das seis e os 24
+    meses antigos ja' a cobriam. EST_PEND tambem nao entra: o erro e'
+    qtd*(fator-1)/media_janela, onde est_pend se cancela.
+
+    O criterio passou a ser o que vale em 2026 e em 2030:
+
+      1. TODO item de fator > 1 diverge. Nao "quase todo": o erro e'
+         qtd*(fator-1)/media_janela, que so e' zero se qtd for zero - e
+         CK_APP_PEDIDO_ITEM_QTD proibe quantidade zero na tabela.
+      2. NENHUM item de fator == 1 diverge (esse e' o cenario_controle_fator_um,
+         separado).
+      3. Existe pelo menos um item de fator > 1 - senao o autoteste nao testou
+         nada e tem de reprovar, nao passar por vacuidade.
+
+    Os numeros do dia continuam IMPRESSOS, para quem le ter a dimensao do
+    estrago. Eles so deixaram de decidir aprovacao.
+    """
     total = len(calc)
     divergentes = [c for c in calc if abs(c["erro"]) > TOLERANCIA]
     erros = [abs(c["erro"]) for c in divergentes]
     mediana = statistics.median(erros) if erros else 0.0
     maior = max(divergentes, key=lambda c: abs(c["erro"])) if divergentes else None
 
-    # `total` aqui e' so os itens com media_janela != 0 (969 de 973 - os 4
-    # restantes tem cobertura indefinida e ja' foram contados a parte, na
-    # consulta bulk em main()). Nao se exige total == 973 nesta funcao.
+    com_fator = [c for c in calc if float(c["fator_item"] or 1) > 1]
+    nao_acusados = [c for c in com_fator if abs(c["erro"]) <= TOLERANCIA]
+
+    # `total` aqui e' so os itens com media_janela != 0 (os demais tem
+    # cobertura indefinida e ja' foram contados a parte, na consulta bulk em
+    # main()).
     ok = (
-        len(divergentes) > 0
-        and len(divergentes) == 103
-        and maior is not None
-        and maior["codigo"] == 8811
-        and maior["id_pedido"] == 282
-        and abs(abs(maior["erro"]) - 195.59) < 0.1
-        and abs(mediana - 15.77) < 0.1
+        len(com_fator) > 0              # (3) o autoteste de fato testou algo
+        and len(nao_acusados) == 0      # (1) todo item de fator > 1 acusa
+        and len(divergentes) == len(com_fator)  # (2) e NADA alem deles
     )
     maior_erro = maior["erro"] if maior else None
     maior_cod = maior["codigo"] if maior else None
@@ -202,13 +244,15 @@ def cenario_autoteste_defeito_injetado(rep: Reporter, calc: list[dict]) -> None:
     maior_erro_fmt = f"{maior_erro:.2f}" if maior_erro is not None else "None"
     rep.registrar(
         f"AUTOTESTE - formula ANTIGA ((est_pend + qtd*fator)/media_janela) DIVERGE da NOVA "
-        f"((est_pend+qtd)/media_janela) em {len(divergentes)} de {total} itens de APP_PEDIDO_ITEM "
-        "(esperado 103 de 973)",
+        f"((est_pend+qtd)/media_janela) em TODOS os {len(com_fator)} itens de fator > 1, "
+        f"e em nenhum outro ({len(divergentes)} divergentes de {total} itens)",
         ok,
-        f"total_itens={total}; divergentes={len(divergentes)}; erro_mediano={mediana:.2f} meses "
-        f"(esperado 15,77); maior_erro={maior_erro_fmt} meses "
-        f"no item SKU {maior_cod}/pedido {maior_pedido} "
-        "(esperado 195,59 no SKU 8811/pedido 282)",
+        f"total_itens={total}; com_fator>1={len(com_fator)}; divergentes={len(divergentes)}; "
+        f"de fator>1 que NAO acusaram={len(nao_acusados)} (tem de ser 0)\n"
+        f"          leitura de hoje (informativa, NAO e' criterio - ver docstring): "
+        f"erro_mediano={mediana:.2f} meses; maior_erro={maior_erro_fmt} meses "
+        f"no SKU {maior_cod}/pedido {maior_pedido}"
+        f"  [prompt Sec 5, 08/10/2026: 103 itens, mediana 15,77, maximo 195,59 no SKU 8811/pedido 282]",
     )
     if not ok:
         print("          -- validador reprovando de proposito: formula antiga tem de divergir. "
