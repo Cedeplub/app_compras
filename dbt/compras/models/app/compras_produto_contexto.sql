@@ -15,7 +15,9 @@
 -- mesmo grão de COMPRAS_PEDIDO.
 --
 -- ── ⚠ QUAL COLUNA EXCEL REPRODUZ: NENHUMA, e é por isso que este model existe
--- Os três campos aqui NÃO existem na aba `pedido` da planilha v11. fat_pedido
+-- Nenhum campo aqui existe na aba `pedido` da planilha v11 (eram três quando
+-- este model nasceu; VALOR_TOT_GERENCIAL entrou em 08/10/2026 — a contagem
+-- sai do texto de propósito, para não envelhecer de novo). fat_pedido
 -- reproduz as 122 colunas daquela aba e compras_pedido é projeção PURA dele —
 -- acrescentar coluna em qualquer um dos dois quebraria de uma vez o teste
 -- compras_fat_pedido_122_colunas, o espelho compras_app_pedido_espelha_fat e a
@@ -157,6 +159,15 @@ ultima_entrada as (
     select * from {{ ref('int_produto_ultima_entrada') }}
 ),
 
+-- VALOR_TOT_GERENCIAL: o espelho BRUTO (sem credito) de CUSTO_TOT_GERENCIAL.
+-- Mora aqui pelo motivo que o cabecalho deste model inteiro explica: nao
+-- existe na planilha, e acrescenta-la em fat_pedido/compras_pedido quebraria
+-- as 122 colunas. A aritmetica vive em int_produto_custo, ao lado de BT/BU/BX,
+-- para que a base fiscal e a gerencial nao se separem em dois arquivos.
+custo as (
+    select * from {{ ref('int_produto_custo') }}
+),
+
 -- Mesmo mes de referencia do pivot (int_venda_mensal_pivot.mes_ref): o mes
 -- mais recente materializado, nao trunc(sysdate) - ver cabecalho.
 mes_alvo as (
@@ -214,7 +225,15 @@ final as (
         -- ⚠ NÃO é dividido por FATOR_EXIBICAO: é preço UNITÁRIO de um
         -- movimento de entrada, pela mesma razão de REGRAS.md regra 8
         -- ("VL_ULT_ENT nunca é dividido pela embalagem de compra").
-        ue.preco_ult_ent_sem_frete                      as PRECO_ULT_ENT_SEM_FRETE
+        ue.preco_ult_ent_sem_frete                      as PRECO_ULT_ENT_SEM_FRETE,
+        -- Quanto o produto custou para entrar no estoque SEM descontar nenhum
+        -- credito de imposto - documento do Diretor de 29/09/2026, validado
+        -- por ele na tela sobre 9 produtos. A tela mostra como o lado "ger" do
+        -- par ao lado do Valor da ultima entrada, igual ao que o Custo ja tem.
+        -- ⚠ NAO e' o "Valor NF projetado" retirado em 25/09: aquele
+        -- reconstruia o valor PARA TRAS a partir do custo e divergia da nota em
+        -- ate' 34%. Este parte de VL_ENT_UNIT e soma para frente.
+        cu.valor_tot_gerencial                          as VALOR_TOT_GERENCIAL
       from pedido p
       left join tributacao t
         on t.cod_tributacao = p.cod_icms
@@ -226,6 +245,8 @@ final as (
         on ex.codigo_produto = p.codigo
       left join ultima_entrada ue
         on ue.id_produto = p.codigo
+      left join custo cu
+        on cu.codigo = p.codigo
 )
 
 select * from final

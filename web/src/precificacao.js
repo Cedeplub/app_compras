@@ -83,9 +83,26 @@ export const aPrazo = (avista, fator) =>
  * procurar por ele chega aqui e entende, em vez de achar código que ninguém
  * chama — ou nada.
  *
- * Se o Diretor decidir que o número projetado deve voltar (com outro rótulo,
- * já que não é "Valor NF"), o histórico está no git. Não reintroduzir sem essa
- * decisão — ela estava pendente quando isto foi escrito.
+ * ── O DIRETOR DECIDIU, EM 08/10/2026 — e a resposta NÃO é esta função ──────
+ *
+ * O número projetado voltou, com o nome que ele deu: **Valor Gerencial**. Mas
+ * por outra fórmula, e é a diferença que importa:
+ *
+ *   esta função (REMOVIDA):  valor = custo ÷ [(1−créd.ICMS)(1−créd.PIS/COF)]
+ *   o Valor Gerencial:       valor = VL_ENT_UNIT + ICMS-ST bruto + adicional bruto
+ *
+ * A de cima ia PARA TRÁS, reconstruindo a nota a partir de um custo que embute
+ * ST e ajustes de outras entradas — por isso divergia. A de baixo vai PARA
+ * FRENTE a partir do valor REAL da nota: não tem como divergir dela, porque
+ * começa nela.
+ *
+ * Ele não mora aqui, e sim no dbt (`int_produto_custo.sql`, ao lado de BT/BU/
+ * BX, exposto por COMPRAS_PRODUTO_CONTEXTO.VALOR_TOT_GERENCIAL e pela chave
+ * `valorGerencial` do contrato). Cálculo fiscal não se duplica no front — é a
+ * mesma razão pela qual COMPRAS_PARAMETRO existe.
+ *
+ * Portanto: continua PROIBIDO reintroduzir a reconstrução. Quem precisar do
+ * número gerencial lê `p.valorGerencial` da API.
  */
 
 /** O cenário escolhido, ou — quando ele não existe nesta praça — o cenário REAL

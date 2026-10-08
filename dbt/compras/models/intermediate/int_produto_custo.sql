@@ -9,6 +9,51 @@
 --   BX CUSTO_ADICIONAL_IMAGEM  so' INGRAX: $BH2*(1/%NF-1)*(1-$BZ2)
 --   BY CUSTO_TOT_GERENCIAL     $BW2 + $BX2
 --
+-- ── TRES COLUNAS SEM LETRA: o VALOR GERENCIAL (08/10/2026) ─────────────────
+-- icms_st_bruto, valor_adicional_imagem e valor_tot_gerencial NAO vem do
+-- gabarito - nao existem na planilha, nao tem letra de coluna e NAO entram em
+-- fat_pedido/compras_pedido (que sao contrato de 122 colunas, conferido celula
+-- a celula contra o Excel). Saem por COMPRAS_PRODUTO_CONTEXTO, que e' onde o
+-- projeto poe derivado que a TELA precisa e a planilha nao tem - o mesmo lugar
+-- de PRECO_ULT_ENT_SEM_FRETE.
+--
+-- Origem: documento "Valor Gerencial e Custo Gerencial" do Diretor de Compras,
+-- 6a versao, validado por ele direto na tela de /precificacao em 29/09/2026
+-- sobre 9 produtos cobrindo as 3 modalidades x 2 tratamentos de PIS/COFINS.
+--
+-- O QUE E': quanto o produto custou para entrar no estoque SEM DESCONTAR
+-- NENHUM CREDITO de imposto. E' o espelho BRUTO do custo gerencial:
+--     Custo Gerencial = CUSTO_ULT_ENT + ICMS-ST liquido + adicional LIQUIDO
+--     Valor Gerencial = VL_ENT_UNIT   + ICMS-ST BRUTO   + adicional BRUTO
+-- "Bruto" = sem o termo de credito. Compare com BT/BU, que subtraem
+-- `vl_ent_unit * cred_icms`; o bruto nao subtrai nada. E o adicional bruto nao
+-- multiplica por (1 - piscof_ef).
+--
+-- ⚠ POR QUE PARTE DO VALOR, E NAO DO CUSTO - a armadilha que ja' custou caro.
+-- Ate 25/09/2026 a tela mostrava um "Valor NF" PROJETADO, reconstruido PARA
+-- TRAS a partir do custo: valor = custo / ((1-cred_icms)*(1-cred_piscof)).
+-- Foi retirado porque divergia da nota real - R$ 435,15 contra R$ 325,42 no
+-- SKU 1654, 34% - ja' que CUSTO_TOT_GERENCIAL embute ST e ajustes que nao sao
+-- daquela entrada (docs/VALOR_NF_PROJETADO.md, e o bloco que sobrou em
+-- web/src/precificacao.js no lugar de `valorAntesDoCredito`). A formula daqui
+-- vai para FRENTE a partir de VL_ENT_UNIT, o valor REAL da nota: nao tem como
+-- divergir dela, porque comeca nela. NAO reintroduzir a reconstrucao.
+--
+-- ⚠ O ADICIONAL DA INGRAX NAO DEPENDE DA MODALIDADE - medido, nao suposto.
+-- A Sec 2.1 do documento diz "Normal/Mono/ST Recolhido: Valor Gerencial =
+-- Valor da ultima entrada", sem ressalva; a Sec 4 diz que o 80/20 e' "como a
+-- Ingrax fatura QUALQUER item da linha", nao caracteristica de produto. Os
+-- dados decidem: 33 dos 230 SKUs INGRAX sao modalidade NORMAL e os 33 ja' tem
+-- CUSTO_ADICIONAL_IMAGEM > 0 (BX nao olha modalidade). Seguir a Sec 2.1 ao pe
+-- da letra deixaria 6 deles com CUSTO gerencial MAIOR que o VALOR gerencial
+-- (ex.: SKU 8592, custo 343,52 contra valor 280,00) - impossivel, porque o
+-- valor e' BRUTO de credito e o custo e' LIQUIDO. Entao o adicional bruto
+-- entra para INGRAX em qualquer modalidade, espelhando BX exatamente.
+--
+-- A propagacao de NULL tambem espelha BT/BU: ST_SUBSTITUTO sem MVA ou com nota
+-- zerada sai NULL (nao zero), para a tela mostrar "-" dos dois lados do par
+-- "ult / ger" em vez de "- / 0,00".
+--
 -- Grao: 1 linha por SKU. Espinha = int_produto_fiscal (que ja e' o cadastro
 -- inteiro), porque toda coluna daqui depende de MODALIDADE, MVA, CRED_ICMS e
 -- PISCOF_EF.
@@ -131,7 +176,25 @@ imposto as (
                   * (1 / par.perc_nf_normal_ingrax - 1)
                   * (1 - f.piscof_ef)
              else 0
-        end                                                as custo_adicional_imagem
+        end                                                as custo_adicional_imagem,
+        -- ── VALOR GERENCIAL (sem letra de coluna) - ver cabecalho ──────────
+        -- ICMS-ST BRUTO: igual a BT, mas SEM o termo de credito
+        -- `- vl_ent_unit * cred_icms`. Mesmo guarda-corpo, mesma propagacao
+        -- de NULL - o par "ult / ger" da tela tem de aparecer e sumir junto
+        -- com o do custo.
+        case when f.modalidade is null or f.modalidade <> 'ST_SUBSTITUTO'
+             then 0
+             when f.mva is null or f.vl_ent_unit = 0
+             then null
+             else f.vl_ent_unit * (1 + f.mva) * par.aliq_icms_interna_ba
+        end                                                as icms_st_bruto,
+        -- Adicional de imagem BRUTO: igual a BX sem o `* (1 - piscof_ef)`.
+        -- A parcela de 20% vem em nota de debito de servico, que nao gera
+        -- credito de PIS/COFINS - por isso o liquido desconta e o bruto nao.
+        case when upper(b.fornecedor) = 'INGRAX'
+             then f.vl_ent_unit * (1 / par.perc_nf_normal_ingrax - 1)
+             else 0
+        end                                                as valor_adicional_imagem
       from fiscal f
       join base b
         on b.codigo = f.codigo
@@ -156,7 +219,14 @@ final as (
         -- O ajuste de imagem entra AQUI e so' aqui (PDF 8.4).
         case when i.icms_st_s_custo is not null
              then i.custo_ult_ent + i.icms_st_s_custo + i.custo_adicional_imagem
-        end                                                as custo_tot_gerencial
+        end                                                as custo_tot_gerencial,
+        i.icms_st_bruto,
+        i.valor_adicional_imagem,
+        -- O espelho BRUTO de custo_tot_gerencial. Nao entra em fat_pedido:
+        -- sai por COMPRAS_PRODUTO_CONTEXTO - ver cabecalho.
+        case when i.icms_st_bruto is not null
+             then i.vl_ent_unit + i.icms_st_bruto + i.valor_adicional_imagem
+        end                                                as valor_tot_gerencial
       from imposto i
 )
 

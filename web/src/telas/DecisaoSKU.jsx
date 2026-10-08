@@ -355,6 +355,11 @@ function Fiscal({ p, cenarioSel }) {
   const rotulo = { ST_SUBSTITUTO: "ST Substituto", ST_RECOLHIDO: "ST Recolhido" }[p.modalidade] ?? "Normal";
   const igual = p.custoUltimaEntrada != null && cen?.custo != null
     && Math.abs(p.custoUltimaEntrada - cen.custo) < 0.01;
+  // Mesma regra do Custo: o par vira UMA linha quando os dois lados coincidem.
+  // Coincidem em Normal e ST Recolhido sem Ingrax — a maioria dos SKUs —,
+  // porque aí o Valor Gerencial é o próprio valor da nota.
+  const valorIgual = p.valorEntradaUnitario != null && p.valorGerencial != null
+    && Math.abs(p.valorEntradaUnitario - p.valorGerencial) < 0.01;
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-500">
@@ -373,19 +378,31 @@ function Fiscal({ p, cenarioSel }) {
       ) : (
         <span className="num">Custo — últ {moeda(p.custoUltimaEntrada)} / ger {moeda(cen?.custo)}</span>
       )}
-      {/* Valor NF (25/09) — mesma correção da Precificação (Precificacao.jsx,
-          coluna "Valor NF (c/ frete)"): mostra `valorEntradaUnitario`
-          (VL_ENT_UNIT/PCEST.VALORULTENT) direto, o valor REAL da última
-          entrada, e não mais uma reconstrução (`valorAntesDoCredito`) que
-          somava os créditos de volta ao custo e podia divergir do valor da
-          nota (74,97 contra 75,07 no SKU 8741 — foi o que motivou a troca).
-          Por isso só há UM valor aqui, ao contrário do "Custo" acima: não
-          existe um "Valor NF do lado 'ger'" — nenhuma coluna do banco
-          responde "qual seria o valor de nota se o custo fosse o do
-          cenário escolhido na tela", e projetar esse número e chamá-lo de
-          "Valor NF" é exatamente a confusão que este ajuste corrige. */}
-      <span>Valor NF <span className="num font-medium text-gray-700">
-        {p.valorEntradaUnitario != null ? moeda(p.valorEntradaUnitario) : "—"}</span></span>
+      {/* Valor NF — o lado "últ" é `valorEntradaUnitario`
+          (VL_ENT_UNIT/PCEST.VALORULTENT), o valor REAL da última entrada.
+          Desde 25/09/2026 ele NÃO é mais reconstruído a partir do custo
+          (`valorAntesDoCredito`), porque a reconstrução divergia da nota —
+          74,97 contra 75,07 no SKU 8741, e 34% no SKU 1654.
+
+          O lado "ger" voltou em 08/10/2026, por decisão do Diretor de Compras,
+          e é OUTRO número: `valorGerencial` (COMPRAS_PRODUTO_CONTEXTO.
+          VALOR_TOT_GERENCIAL), calculado PARA FRENTE a partir do valor real da
+          nota — nota + ICMS-ST bruto + adicional de imagem bruto. Não tem como
+          divergir da nota, porque começa nela. Não reintroduzir a
+          reconstrução antiga.
+
+          ⚠ Ao contrário do Custo acima, este par NÃO depende de `cenarioSel`:
+          o Diretor conferiu os 3 cenários em 8 produtos e o Valor é igual nos
+          três (a base do ICMS-ST muda por cenário só do lado do CUSTO). Por
+          isso usa `p.valorGerencial` e nunca `cen?.*`. */}
+      {p.valorEntradaUnitario == null ? (
+        <span>Valor NF <span className="num font-medium text-gray-700">—</span></span>
+      ) : valorIgual ? (
+        <span>Valor NF <span className="num font-medium text-gray-700">
+          {moeda(p.valorEntradaUnitario)}</span></span>
+      ) : (
+        <span className="num">Valor NF — últ {moeda(p.valorEntradaUnitario)} / ger {moeda(p.valorGerencial)}</span>
+      )}
     </div>
   );
 }

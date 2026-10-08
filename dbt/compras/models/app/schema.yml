@@ -156,6 +156,27 @@ models:
           estoque; é ausência de entrada, não preço zero.
           Não é dividido por FATOR_EXIBICAO (REGRAS.md regra 8).
 
+      - name: VALOR_TOT_GERENCIAL
+        description: >
+          Quanto o produto custou para ENTRAR NO ESTOQUE sem descontar nenhum
+          crédito de imposto - o espelho BRUTO de CUSTO_TOT_GERENCIAL. A tela
+          de Precificação e a de Decisão do SKU mostram como o lado "ger" do
+          par ao lado do valor da última entrada, no mesmo formato que a coluna
+          Custo já usa. Origem: documento "Valor Gerencial e Custo Gerencial"
+          do Diretor de Compras (6ª versão), validado por ele direto na tela em
+          29/09/2026 sobre 9 produtos que cobrem as 3 modalidades × 2
+          tratamentos de PIS/COFINS.
+          Fórmula: VL_ENT_UNIT + ICMS-ST BRUTO + adicional de imagem BRUTO,
+          onde "bruto" quer dizer SEM o termo de crédito que BT e BX
+          descontam. ST só para ST_SUBSTITUTO; adicional só para INGRAX, em
+          QUALQUER modalidade (ver o cabeçalho de int_produto_custo.sql para a
+          medição que decidiu isso).
+          ⚠ NÃO é o "Valor NF projetado" retirado da tela em 25/09/2026:
+          aquele reconstruía o valor PARA TRÁS a partir do custo e divergia da
+          nota real em até 34% (docs/VALOR_NF_PROJETADO.md). Este parte de
+          VL_ENT_UNIT, o valor REAL da nota, e soma para frente. NULO em
+          ST_SUBSTITUTO sem MVA ou com nota zerada, espelhando a propagação de
+          branco de BT/BU, para o par "últ / ger" sumir dos dois lados juntos.
   - name: compras_ind_fornecedor
     description: >
       Tabela física COMPRAS_IND_FORNECEDOR. ÚNICO model da camada `app` com

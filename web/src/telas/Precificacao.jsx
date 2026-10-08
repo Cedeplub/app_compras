@@ -780,6 +780,12 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
   // (`valorAntesDoCredito`) a partir de dois custos diferentes.
   const custoIgual = p.custoUltimaEntrada != null && at.custo != null
     && Math.abs(p.custoUltimaEntrada - at.custo) < 0.01;
+  // Desde 08/10/2026 a coluna Valor também tem o par "últ / ger", por decisão
+  // do Diretor — ver o comentário na célula, abaixo. Mesma regra de colapso do
+  // Custo: UMA linha quando os dois lados coincidem (Normal e ST Recolhido sem
+  // Ingrax, a maioria dos SKUs).
+  const valorIgual = p.valorEntradaUnitario != null && p.valorGerencial != null
+    && Math.abs(p.valorEntradaUnitario - p.valorGerencial) < 0.01;
 
   return (
     <tr className="border-t border-gray-100 hover:bg-gray-50">
@@ -802,11 +808,28 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
           </>
         )}
       </td>
-      {/* `valorEntradaUnitario` direto (VL_ENT_UNIT, com frete embutido quando
-          há) — não depende de `cenarioSel`, então é sempre UMA linha, ao
-          contrário da coluna Custo à esquerda. */}
+      {/* "últ" = `valorEntradaUnitario` (VL_ENT_UNIT, com frete embutido quando
+          há), o valor REAL da nota. "ger" = `valorGerencial`
+          (COMPRAS_PRODUTO_CONTEXTO.VALOR_TOT_GERENCIAL): nota + ICMS-ST bruto
+          + adicional de imagem bruto, ou seja, quanto o produto custou para
+          entrar SEM descontar crédito nenhum.
+
+          ⚠ Diferença em relação à coluna Custo à esquerda: lá o "ger" muda com
+          `cenarioSel` (a base do ICMS-ST é o Valor em "ST s/Valor" e o Custo
+          em "Oficial"/"Sem Redução"); aqui NÃO muda — o Diretor conferiu os 3
+          cenários em 8 produtos e o Valor é igual nos três. Por isso esta
+          célula lê `p.valorGerencial` e nunca `at.*`.
+
+          ⚠ Não é o "Valor NF projetado" retirado em 25/09/2026: aquele
+          reconstruía o valor PARA TRÁS a partir do custo e divergia da nota em
+          até 34%. Este soma para frente, a partir da nota. */}
       <td className="num px-2 py-1.5 text-center text-2xs text-gray-600" style={{ minWidth: 96 }}>
-        {p.valorEntradaUnitario != null ? moeda(p.valorEntradaUnitario) : "—"}
+        {p.valorEntradaUnitario == null ? "—" : valorIgual ? moeda(p.valorEntradaUnitario) : (
+          <>
+            <div>últ {moeda(p.valorEntradaUnitario)}</div>
+            <div className="text-gray-400">ger {moeda(p.valorGerencial)}</div>
+          </>
+        )}
       </td>
 
       {/* Formatação idêntica a `Pedidos.jsx` (dd/mm em cima, quantidade embaixo

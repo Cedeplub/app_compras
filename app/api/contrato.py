@@ -345,6 +345,17 @@ def produto(p: dict) -> dict:
         # onde se negocia com o fornecedor e o frete não entra. Não trocar um
         # pelo outro.
         "precoEntradaSemFrete": _f(p.get("preco_ult_ent_sem_frete")),
+        # O lado "ger" do par que a tela mostra ao lado de
+        # `valorEntradaUnitario`, no mesmo formato que o Custo já usa: quanto o
+        # produto custou para entrar no estoque SEM descontar nenhum crédito.
+        # Decisão do Diretor de Compras em 29/09/2026, validada por ele na tela
+        # sobre 9 produtos — ela FECHA a pergunta que `docs/VALOR_NF_PROJETADO.md`
+        # deixou aberta em 25/09.
+        # ⚠ Não confundir com o "Valor NF projetado" que foi retirado naquela
+        # data: aquele reconstruía o valor PARA TRÁS a partir do custo e
+        # divergia da nota em até 34%. Este parte de VL_ENT_UNIT e soma para
+        # frente, então não tem como divergir dela.
+        "valorGerencial": _f(p.get("valor_tot_gerencial")),
         "custoUltimaEntrada": _f(p.get("custo_ult_ent")),
         "custoStValor": _f(p.get("custo_tot_s_valor")),
         "custoOficial": _f(p.get("custo_tot_oficial")),
