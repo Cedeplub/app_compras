@@ -47,6 +47,22 @@ referencia_diaria as (
     select max(dia) as data_referencia from {{ ref('int_venda_diaria') }}
 ),
 
+-- DATA_INICIO (09/10/2026): o "DESDE QUANDO" do dado, o par de
+-- DATA_REFERENCIA. Pedido do Diretor de Compras junto com a ampliação da
+-- janela: "informar desde quando a base vai agora".
+--
+-- Sai de `min(dia)` do dado REAL, e não da var `compras_monitoramento_meses_
+-- historico`: a var diz o que o dbt PEDIU, o min diz o que o CEDEP TINHA.
+-- Hoje os dois coincidem em 11/2018, mas num SKU ou num período sem
+-- movimento a var mentiria sobre o alcance. É o mesmo princípio de
+-- MES_REFERENCIA e DATA_REFERENCIA saírem do dado e não de SYSDATE.
+--
+-- A tela usa para dizer até onde dá para navegar, em vez de deixar a pessoa
+-- descobrir voltando até achar tela vazia.
+inicio_diario as (
+    select min(dia) as data_inicio from {{ ref('int_venda_diaria') }}
+),
+
 final as (
     select
         -- usados na fórmula de margem que a tela refaz a cada tecla digitada
@@ -77,10 +93,12 @@ final as (
         p.cobertura_critica_fracao  as COBERTURA_CRITICA_FRACAO,
 
         r.mes_referencia            as MES_REFERENCIA,
-        rd.data_referencia          as DATA_REFERENCIA
+        rd.data_referencia          as DATA_REFERENCIA,
+        id.data_inicio              as DATA_INICIO
       from parametro p
      cross join referencia r
      cross join referencia_diaria rd
+     cross join inicio_diario id
 )
 
 select * from final

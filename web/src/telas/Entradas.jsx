@@ -134,7 +134,8 @@ export default function Entradas() {
   return (
     <div className="px-4 pb-6 pt-3 md:px-6 md:pt-4">
       <SeletorPeriodo granularidade={granularidade} setGranularidade={setGranularidade}
-                      offset={offset} setOffset={setOffset} referencia={referencia} />
+                      offset={offset} setOffset={setOffset} referencia={referencia}
+                      dataInicio={parametros?.data_inicio} />
 
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <Campo rotulo="Departamento" largura="w-44">

@@ -465,7 +465,26 @@ def obter(codigo: int) -> dict | None:
 
 # [rótulo interno, quantos meses antes de MES_REFERENCIA]. "ano_anterior" é o
 # MESMO mês de MES_REFERENCIA, 12 meses atrás — não os últimos 365 dias.
-_PERIODOS_HISTORICO = (("atual", 0), ("m1", 1), ("m2", 2), ("m3", 3), ("ano_anterior", 12))
+# [rótulo interno, quantos meses antes de MES_REFERENCIA].
+#
+# ⚠ Vai até m12 desde 09/10/2026, e até 08/10 ia só até m3. Relatado pelo
+# Diretor: "a média usa janela de 6 ou 12 meses em 1.616 itens, mas a tela do
+# produto só mostra 4 meses — assim não dá para conferir a média desses itens".
+# O exemplo dele é o SKU 810, que mostrava 0, 0, 2 e 1 com média negativa,
+# porque o mês negativo estava fora dos quatro visíveis.
+#
+# Não custa I/O: a consulta abaixo JÁ varre 12 meses (o `m.dia >=
+# add_months(..., -12)` do join existe desde sempre, para a barra de
+# `ano_anterior`). O que muda é o número de agregados CASE sobre as MESMAS
+# linhas — 13 períodos x 4 métricas em vez de 5 x 4.
+#
+# A tela mostra `1 + N_MESES` barras (o mês corrente mais os fechados da
+# janela daquele item), não as 13 — ver DecisaoSKU.jsx → Grafico.
+_PERIODOS_HISTORICO = (
+    ("atual", 0),
+    *((f"m{i}", i) for i in range(1, 13)),
+    ("ano_anterior", 12),
+)
 
 
 def _historico_monitoramento(codigo: int) -> dict:

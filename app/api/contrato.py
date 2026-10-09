@@ -171,7 +171,16 @@ COLUNA_MARGEM = {
 
 # Ordem fixa do histórico mensal — [Atual, M-1, M-2, M-3] — e o rótulo interno
 # que `produto._historico_monitoramento` usa para cada período.
-_PERIODOS_VENDA_HISTORICO = ("atual", "m1", "m2", "m3")
+# Espelha `produto._PERIODOS_HISTORICO` (sem `ano_anterior`, que sai à parte
+# em `_ano_anterior`). Desde 09/10/2026 vai até m12, para a tela poder mostrar
+# a janela INTEIRA da média de cada item - ver o comentário lá.
+#
+# ⚠ As listas continuam com 4 posições: elas não têm `historico_monitoramento`
+# (seria uma consulta por linha) e caem no ramo de VD_MES_ATUAL/VD_M_1..3,
+# logo abaixo. Quem desenha gráfico é só a tela do produto, que sempre passa
+# pelo ramo de cima - então o tamanho diferente não chega a lugar nenhum que
+# o use.
+_PERIODOS_VENDA_HISTORICO = ("atual", *(f"m{i}" for i in range(1, 13)))
 
 # As quatro métricas do gráfico do produto, e o que fazer com cada uma:
 # `True` = divide por FATOR_EXIBICAO (só quantidade — CONTEXTO.md regra 6).

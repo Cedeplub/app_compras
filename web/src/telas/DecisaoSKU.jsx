@@ -257,7 +257,20 @@ function Grafico({ p, mesReferencia }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.codigo, semLitragem]);
 
-  const historico = p.vendaHistorico?.[metrica] ?? [null, null, null, null];
+  // A API manda 13 posições (mês corrente + 12 fechados) desde 09/10/2026.
+  // A tela mostra o corrente mais os N_MESES fechados da janela DAQUELE item,
+  // e não os 13: é a janela que a média usa, e o pedido do Diretor foi
+  // justamente poder CONFERIR a média — "a média usa 6 ou 12 meses em 1.616
+  // itens, mas a tela só mostra 4". No SKU 810 dele, a janela é de 6 meses e o
+  // mês de -5 estava no 5º, fora dos quatro visíveis: a média dava -0,33 sem
+  // nada na tela que explicasse.
+  //
+  // `slice` tolera array curto: as linhas de LISTA não têm
+  // `historico_monitoramento` e caem num array de 4 (contrato.py), mas lista
+  // não desenha gráfico. O `?? 3` cobre N_MESES ausente.
+  const serie = p.vendaHistorico?.[metrica] ?? [null, null, null, null];
+  const mesesJanela = Math.max(1, Math.round(p.nMeses ?? 3));
+  const historico = serie.slice(0, 1 + mesesJanela);
   const anoAnteriorValor = p.anoAnterior?.[metrica] ?? null;
 
   const fmt = (v) => (v == null ? "—" : metrica === "faturamento" ? `R$ ${compacto(v)}`
@@ -266,9 +279,9 @@ function Grafico({ p, mesReferencia }) {
     : compacto(v));
 
   const barras = historico.map((v, i) => ({
-    // vendaHistorico[metrica] é [Atual, M-1, M-2, M-3]: o índice é quantos
+    // vendaHistorico[metrica] é [Atual, M-1, M-2, …]: o índice é quantos
     // meses antes da referência aquela barra está.
-    rotulo: mesReferencia ? mesCurto(mesesAntes(mesReferencia, i)) : ["Atual", "M-1", "M-2", "M-3"][i],
+    rotulo: mesReferencia ? mesCurto(mesesAntes(mesReferencia, i)) : (i === 0 ? "Atual" : `M-${i}`),
     // O primeiro é o mês corrente, ainda em curso — dizer isso evita ler uma
     // barra baixa como queda de venda quando é só mês pela metade.
     nota: i === 0 ? "em curso" : null,
@@ -288,10 +301,16 @@ function Grafico({ p, mesReferencia }) {
   return (
     <div className="mt-3 rounded-xl border border-gray-200 px-3 py-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-medium text-gray-600">Venda dos últimos meses</div>
+        {/* O título diz a JANELA, e não "últimos meses" genérico: é a janela
+            que a média daquele item usa, e saber disso é o que permite
+            conferir a média somando as barras. */}
+        <div className="text-xs font-medium text-gray-600">
+          Venda dos últimos {mesesJanela} meses
+          <span className="font-normal text-gray-400"> · a janela da média deste item</span>
+        </div>
         {/* Mesmo desenho do seletor de `Monitoramento.jsx:104` — pílulas num
-            fundo cinza, a ativa em navy. Trocar aqui NÃO busca de novo: os 20
-            números (4 métricas × 5 períodos) já vieram juntos de
+            fundo cinza, a ativa em navy. Trocar aqui NÃO busca de novo: os
+            números (4 métricas × 14 períodos) já vieram juntos de
             `/api/produtos/{codigo}`. */}
         <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
           {METRICAS.map((m) => {

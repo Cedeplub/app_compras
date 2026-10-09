@@ -78,6 +78,22 @@ export default function Monitoramento() {
     () => (referencia ? intervaloAnoAnterior(granularidade, offset, referencia) : null),
     [granularidade, offset, referencia]);
 
+  // ⚠ Declarado DEPOIS de `anterior`, e não antes: ler um `const`
+  // antes da declaração é ReferenceError de RUNTIME que o `vite build`
+  // aceita (já aconteceu nesta base em 30/09). O período anterior pode cair ANTES do começo da base, e aí a comparação
+  // não é queda nem alta: é base faltando. Relatado pelo Diretor em
+  // 09/10/2026 — "2019 aparece com +535% porque 2018 só tem nov-dez".
+  // Mostrar +535% ali é pior que não mostrar nada: o número é plausível e
+  // está errado, e quem o lê não tem como saber.
+  //
+  // A comparação é sobre o INÍCIO do período anterior: se ele começa antes de
+  // DATA_INICIO, parte da janela não existe. Comparar o FIM não serviria —
+  // um ano anterior que termina dentro da base mas começa fora continua
+  // somando menos meses do que deveria, que é exatamente o caso de 2019.
+  const semBase = Boolean(
+    parametros?.data_inicio && anterior
+      && anterior.de < String(parametros.data_inicio).slice(0, 10));
+
   const buscar = useCallback(async () => {
     if (!periodo || !anterior) return;
     setCarregando(true);
@@ -113,7 +129,8 @@ export default function Monitoramento() {
   return (
     <div className="px-4 pb-6 pt-3 md:px-6 md:pt-4">
       <SeletorPeriodo granularidade={granularidade} setGranularidade={setGranularidade}
-                      offset={offset} setOffset={setOffset} referencia={referencia} />
+                      offset={offset} setOffset={setOffset} referencia={referencia}
+                      dataInicio={parametros?.data_inicio} />
 
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div>
@@ -180,14 +197,22 @@ export default function Monitoramento() {
             Contra o ano anterior
           </div>
           <div className="mt-1 flex items-baseline gap-2">
-            <Variacao v={r?.variacao} tamanho="text-2xl" />
-            <span className="num text-xs text-gray-400">{r ? fmt(r.anterior) : ""}</span>
+            {semBase ? (
+              <span className="text-lg font-bold text-gray-400">sem base</span>
+            ) : (
+              <>
+                <Variacao v={r?.variacao} tamanho="text-2xl" />
+                <span className="num text-xs text-gray-400">{r ? fmt(r.anterior) : ""}</span>
+              </>
+            )}
           </div>
           {/* Sem esta frase, um "−38%" num mês pela metade parece desabamento de
               vendas. O protótipo tem o texto mas não o número (§8); aqui os
               dois dizem a mesma coisa. */}
           <div className="text-2xs text-gray-400">
-            {referencia ? rotuloComparacao(granularidade, offset, referencia) : ""}
+            {semBase
+              ? `o período anterior começa antes de ${String(parametros.data_inicio).slice(0, 10).split("-").reverse().join("/")}, onde a base começa`
+              : referencia ? rotuloComparacao(granularidade, offset, referencia) : ""}
           </div>
         </div>
       </div>

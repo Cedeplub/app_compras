@@ -13,8 +13,22 @@ import { GRANULARIDADES, rotuloPeriodo } from "../periodo.js";
 
 const NAVY = "#375DA8";
 
+/** Mês/ano de uma data ISO, por extenso curto: "nov/2018". Em UTC, pelo mesmo
+ *  motivo de `periodo.js` — `new Date("2018-11-01")` lido no fuso local vira
+ *  outubro a oeste de Greenwich, e o rótulo mentiria por um mês. */
+function desdeQuando(iso) {
+  if (!iso) return null;
+  const [ano, mes] = String(iso).slice(0, 10).split("-");
+  const nomes = ["jan", "fev", "mar", "abr", "mai", "jun",
+                 "jul", "ago", "set", "out", "nov", "dez"];
+  const i = Number(mes) - 1;
+  return nomes[i] ? `${nomes[i]}/${ano}` : null;
+}
+
 export default function SeletorPeriodo({ granularidade, setGranularidade,
-                                         offset, setOffset, referencia }) {
+                                         offset, setOffset, referencia,
+                                         dataInicio = null }) {
+  const inicio = desdeQuando(dataInicio);
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
@@ -43,6 +57,18 @@ export default function SeletorPeriodo({ granularidade, setGranularidade,
           <ChevronRight size={14} aria-hidden="true" />
         </button>
       </div>
+
+      {/* Até onde dá para voltar. Pedido do Diretor em 09/10/2026 junto com a
+          ampliação da janela ("informar desde quando a base vai agora"): sem
+          isto, quem navega para trás descobre o limite achando tela vazia, que
+          parece defeito. Sai de COMPRAS_PARAMETRO.DATA_INICIO, que é
+          `min(dia)` do dado REAL — não da var do dbt, que diria o que foi
+          pedido e não o que existe. */}
+      {inicio && (
+        <span className="text-2xs text-gray-400">
+          base desde {inicio}
+        </span>
+      )}
     </div>
   );
 }
