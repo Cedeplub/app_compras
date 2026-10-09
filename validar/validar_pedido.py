@@ -164,6 +164,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import math
 import ctypes
 import datetime
 import os
@@ -476,9 +477,20 @@ RAIZES_ENTRADA_HUMANA = {
 # entre si nem com o fecho de BA/CU/DI. Nenhuma das duas alcanca CLASSE (AX),
 # ALERTA (D), MODALIDADE (BL) ou CUSTO_TOT_GERENCIAL (BY) - as quatro criticas
 # continuam exigindo zero absoluto, sem excecao desta raiz condicional.
+# ⚠ O PADRAO DE DD DEIXOU DE SER O DE CN em 09/10/2026 (item 1.9: o varejo
+# ganhou MARGEM_ALVO_PADRAO_VAREJO = 0,33). Estes numeros sao FALLBACK, usados
+# so' quando o recalculo esta desligado (--sem-db, motor sintetico): com banco,
+# `carregar_contexto_recalculo` sobrescreve DD pelo parametro lido.
+#
+# Deixar 0,2 aqui depois da mudanca custou caro e vale registrar: a linha so' e'
+# tratada como "decisao humana gravada" quando a raiz SE DESVIA do padrao - e
+# com o padrao velho TODA linha se desviava. As cinco colunas de varejo
+# (DD/DE/DF/DG/DH) sairam "0/0 divergem, 600 ignoradas por decisao gravada" na
+# primeira execucao: a conferencia parou de conferir o varejo inteiro, sem
+# reprovar nada. Exatamente o silencio que este arquivo existe para nao ter.
 RAIZES_CONDICIONAIS: dict[str, float] = {
-    "CN": 0.2,  # MARGEM_ALVO         - MARGEM_ALVO_PADRAO (seed_parametros.csv)
-    "DD": 0.2,  # MARGEM_ALVO_VAREJO  - idem, independente de CN
+    "CN": 0.2,   # MARGEM_ALVO         - MARGEM_ALVO_PADRAO (seed_parametros.csv)
+    "DD": 0.33,  # MARGEM_ALVO_VAREJO  - MARGEM_ALVO_PADRAO_VAREJO, INDEPENDENTE de CN
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -621,8 +633,11 @@ LETRAS_DIVERGENCIA_ESPERADO: dict[str, int | None] = {
     "CY": 0,
     "CO": 0,
     "CP": 0,
-    "DE": 0,
-    "DF": 0,
+    # DE e DF SAIRAM daqui em 09/10/2026: ganharam RECALCULO (margem alvo de
+    # varejo propria). Um teto isenta do limiar; um recalculo exige zero. Ter
+    # os dois na mesma letra seria isentar justamente o que passou a ser
+    # exigido - por isso `_checar_exclusividade_recalculo()` reprova a dupla
+    # inscricao no import.
     "BO": 41,   # PENDENCIAS item 3 - grafia CAR80->CAR 80 (texto declara "41 SKUs")
     "CC": 5,    # PENDENCIAS item 4 - "exatamente os 5 SKUs de codst = 0"
     "AP": 71,   # MELHORIA A3 - "exatamente 71 SKUs"
@@ -664,6 +679,258 @@ LETRAS_DIVERGENCIA_ESPERADO: dict[str, int | None] = {
 # a divergencia esperada seria de 41 linhas em colunas que, nas outras 8.736,
 # continuam tendo que fechar. Rotular a COLUNA inteira esconderia defeito de
 # verdade no resto do catalogo.
+# -----------------------------------------------------------------------------
+# RECALCULO PELA REGRA NOVA (09/10/2026)
+#
+# Decisao do Diretor de Compras: "O painel passa a ser a referencia a partir de
+# agora. A planilha foi um prototipo inicial e nao sera corrigida. A conferencia
+# pode comparar esses numeros pela REGRA NOVA, em vez de silenciar a diferenca."
+#
+# -- O que muda em relacao a LETRAS_DIVERGENCIA_ESPERADO ----------------------
+# Aquele registro da um TETO: "espero 177 celulas diferentes em BY". O teto
+# aceita 177 celulas diferentes QUAISQUER. Se amanha a regra de ST quebrar e
+# mudar 177 SKUs ERRADOS, o teto passa.
+#
+# Aqui a coluna deixa de ser comparada contra a planilha e passa a ser comparada
+# contra o VALOR QUE A REGRA NOVA PRODUZ. Exige as celulas CERTAS, com os
+# valores CERTOS, e volta a exigir ZERO divergencia - como qualquer outra
+# coluna. E o oposto de silenciar.
+#
+# -- De onde vem cada insumo, e por que isso nao e o validador lendo a propria
+#    resposta ------------------------------------------------------------------
+# A aritmetica e refeita sobre os numeros DA PLANILHA. Do nosso lado vem
+# APENAS o insumo que a planilha nunca teve - e cada funcao declara qual e.
+# Em BY, por exemplo, o unico insumo externo e a data da ultima COMPRA: todo
+# o resto (custo, ICMS-ST calculado, ajuste Ingrax) sai do gabarito.
+#
+# Quem prova a REGRA em si sao o teste do dbt
+# (compras_st_embutido_cadastro_e_compra.sql) e validar_st_embutido.py. Aqui se
+# prova que o painel APLICOU a regra sobre os insumos certos.
+#
+# ATENCAO: coluna com recalculo NAO entra em LETRAS_DIVERGENCIA_ESPERADO. Os
+# dois mecanismos sao excludentes: um isenta do limiar, o outro exige zero. Ter
+# os dois na mesma letra seria isentar justamente o que passou a ser exigido.
+# -----------------------------------------------------------------------------
+
+
+@dataclass
+class Recalculo:
+    """Como refazer uma coluna pela regra nova.
+
+    `fn(og, dg, ctx)` recebe dois acessores por LETRA do gabarito - `og("BI")`
+    le a planilha, `dg("BL")` le o fat_pedido - mais o contexto de parametros.
+    Devolve o valor esperado, ou None quando a regra nao se avalia naquela
+    linha (insumo ausente). None NAO conta como divergencia: conta a parte, e
+    aparece no relatorio.
+    """
+    motivo: str
+    insumo_externo: str
+    fn: object
+
+
+def _num(v):
+    """Numero da celula, ou None. Reaproveita a normalizacao do comparador para
+    nao ter uma segunda ideia do que e '', '#N/A' ou texto."""
+    x = _norm_num_ou_erro(_normaliza_vazio(v))
+    return x if isinstance(x, float) else None
+
+
+def _st_soma(og, dg, ctx):
+    """As DUAS condicoes da regra final do ST embutido, aplicadas AQUI.
+
+    Nao le `st_ja_na_entrada` do nosso modelo - aplica a regra sobre a
+    modalidade (BL, do gabarito) e a data da ultima COMPRA (unico insumo
+    externo). Assim o validador afirma a regra, e nao repete o veredito.
+
+    PROVA, medida em 09/10/2026 contra COMPRAS_DEV: restringindo as 7.396
+    linhas em que o INSUMO nao mudou desde a foto da planilha (mesmo BI e
+    mesmo BX), o recalculo reproduz BY em 7.394. As 2 excecoes sao 363 e 7913,
+    e nas duas o CADASTRO mudou de ST_SUBSTITUTO para ST_RECOLHIDO depois de
+    agosto: a planilha ainda diz substituto, entao a regra lida DAQUI manda
+    somar, e o painel, lendo o cadastro de hoje, nao soma.
+
+    ⚠ E' deliberado ler BL da PLANILHA e nao do fat_pedido. Lendo do nosso
+    lado, BY concordaria com o painel por construcao nesses casos e a
+    divergencia sumiria - justamente a que interessa. A mudanca de cadastro ja
+    e' acusada por BL, que e coluna CRITICA e exige zero: o sinal aparece duas
+    vezes, e e melhor assim do que nao aparecer.
+    """
+    mod = _norm_texto(og("BL"))
+    if mod is None:
+        return None
+    if mod != "ST_SUBSTITUTO":
+        return False
+    dt = ctx["dt_ult_compra"].get(ctx["codigo_atual"])
+    if dt is None:
+        return False            # sem compra: nao soma (caso 4 da regra)
+    return dt >= ctx["st_beneficio_inicio"]
+
+
+def _recalc_by(og, dg, ctx):
+    """BY CUSTO_TOT_GERENCIAL = BI + BU + BX, com BU ZERADO quando o ST ja esta
+    na entrada. Toda a aritmetica e da planilha: o unico insumo nosso e a data
+    da ultima compra, dentro de `_st_soma`."""
+    bu = _num(og("BU"))
+    if bu is None:
+        return None             # BU vazio -> BW vazio -> BY vazio (o "" do Excel)
+    bi = _num(og("BI"))
+    bx = _num(og("BX"))
+    if bi is None or bx is None:
+        return None
+    soma = _st_soma(og, dg, ctx)
+    if soma is None:
+        return None
+    return bi + (bu if soma else 0.0) + bx
+
+
+def _recalc_ag(og, dg, ctx):
+    """AG MEDIA_JANELA ganhou piso em zero. Media negativa vinha de devolucao
+    maior que venda no mes e virava sugestao de compra negativa. Nenhum insumo
+    externo: e a propria celula da planilha, com o piso."""
+    ag = _num(og("AG"))
+    return None if ag is None else max(0.0, ag)
+
+
+def _recalc_az(og, dg, ctx):
+    """AZ SUG_COBERTURA passou a ser multiplo da CAIXA DE COMPRA.
+
+    A planilha para no `MAX(0, ROUND(...))` e nao conhece a caixa - e aquele
+    numero e exatamente a sugestao BRUTA de que partimos. Entao a propria
+    celula do gabarito e o insumo, e o recalculo aplica so o nosso delta:
+    arredondar PARA CIMA ate o multiplo da caixa.
+
+    Caixa = J/K (EMBAL_COMPRA / FATOR_EXIBICAO), as duas do gabarito. Item
+    MASTER tem K = J, a caixa da 1 e todo inteiro ja e multiplo.
+    """
+    bruta = _num(og("AZ"))
+    j = _num(og("J"))
+    k = _num(og("K"))
+    if bruta is None or j is None or k is None or k == 0:
+        return None
+    caixa = j / k
+    if caixa <= 0:
+        return None
+    if caixa <= 1:
+        return bruta
+    return math.ceil(bruta / caixa - 1e-9) * caixa
+
+
+def _den_varejo(og, ctx):
+    """1 - ICMS_SEM_RED - PIS/COFINS - comissao - MARGEM_ALVO_VAREJO, com a
+    margem alvo NOVA. CB e BZ saem do gabarito; comissao e margem alvo sao
+    parametros, lidos do banco e nunca escritos aqui."""
+    cb = _num(og("CB"))
+    bz = _num(og("BZ"))
+    if cb is None or bz is None:
+        return None
+    den = 1 - cb - bz - ctx["comissao"] - ctx["margem_alvo_varejo"]
+    return den if den > 0 else None
+
+
+def _recalc_dd(og, dg, ctx):
+    """DD MARGEM_ALVO_VAREJO: o padrao deixou de ser o do atacado.
+
+    Ate 09/10/2026 atacado e varejo caiam no mesmo MARGEM_ALVO_PADRAO (20%) e
+    os dois precos sugeridos saiam identicos nos 4.553 ativos. A linha com
+    decisao humana gravada nem chega aqui - o laco de comparacao ja a separa
+    por RAIZES_CONDICIONAIS."""
+    return ctx["margem_alvo_varejo"]
+
+
+def _recalc_de(og, dg, ctx):
+    """DE PV_SUG_ST_s/VALOR_VAR_AV = (BV + BX) / denominador, margem nova."""
+    bv = _num(og("BV"))
+    bx = _num(og("BX"))
+    den = _den_varejo(og, ctx)
+    if bv is None or bx is None or den is None:
+        return None
+    return (bv + bx) / den
+
+
+def _recalc_dg(og, dg, ctx):
+    """DG PV_SUG_SEM_RED_VAR_AV = BY / denominador.
+
+    ATENCAO: usa o BY RECALCULADO, nao o da planilha. BY mudou pela regra do
+    ST, e comparar DG contra um numerador velho acusaria divergencia que e de
+    BY, nao de DG. As duas correcoes se compoem na mesma celula."""
+    by = _recalc_by(og, dg, ctx)
+    den = _den_varejo(og, ctx)
+    if by is None or den is None:
+        return None
+    return by / den
+
+
+def _derivado_prazo_varejo(base_fn):
+    """DF e DH sao `a vista x FATOR_PRAZO_VAREJO` - nao tem formula propria."""
+    def _fn(og, dg, ctx):
+        v = base_fn(og, dg, ctx)
+        return None if v is None else v * ctx["fator_prazo_varejo"]
+    return _fn
+
+
+RECALCULO = {
+    "AG": Recalculo(
+        "MEDIA_JANELA ganhou piso em zero (08/10/2026): media negativa vinha de "
+        "devolucao maior que venda e virava sugestao de compra negativa.",
+        "nenhum - e a propria celula do gabarito com o piso aplicado",
+        _recalc_ag),
+    "AZ": Recalculo(
+        "SUG_COBERTURA passou a ser multiplo da CAIXA DE COMPRA (08/10/2026, item 2 "
+        "do Diretor): sugerir unidade solta num item que vem em caixa 24x1 obriga a "
+        "refazer a conta a mao em toda linha.",
+        "nenhum - a celula da planilha E a sugestao bruta de que partimos",
+        _recalc_az),
+    "BY": Recalculo(
+        "CUSTO_TOT_GERENCIAL deixou de somar ICMS-ST quando ele ja esta no valor de "
+        "entrada (regra final de 09/10/2026: cadastro ST substituto E ultima COMPRA "
+        "a partir do Decreto 7.799).",
+        "a data da ultima COMPRA (compras_produto_contexto.DT_ULT_COMPRA) - a "
+        "planilha nunca teve esse dado; todo o resto sai do gabarito",
+        _recalc_by),
+    "DD": Recalculo(
+        "MARGEM_ALVO_VAREJO ganhou padrao proprio (09/10/2026, item 1.9): atacado e "
+        "varejo caiam nos mesmos 20% e os dois precos sugeridos saiam identicos nos "
+        "4.553 ativos.",
+        "o parametro MARGEM_ALVO_PADRAO_VAREJO",
+        _recalc_dd),
+    "DE": Recalculo("CONSEQUENCIA de DD, no preco sugerido 'ST s/Valor' do varejo.",
+                    "o parametro MARGEM_ALVO_PADRAO_VAREJO", _recalc_de),
+    "DF": Recalculo("CONSEQUENCIA de DE (= DE x FATOR_PRAZO_VAREJO).",
+                    "idem DE, mais FATOR_PRAZO_VAREJO", _derivado_prazo_varejo(_recalc_de)),
+    "DG": Recalculo("CONSEQUENCIA de DD e de BY, no preco sugerido 'Sem Reducao' do varejo.",
+                    "idem DD, mais a data da ultima compra (via BY)", _recalc_dg),
+    "DH": Recalculo("CONSEQUENCIA de DG (= DG x FATOR_PRAZO_VAREJO).",
+                    "idem DG, mais FATOR_PRAZO_VAREJO", _derivado_prazo_varejo(_recalc_dg)),
+}
+
+# ATENCAO: BF (MESES_EST+PED) NAO TEM RECALCULO, e e deliberado.
+#
+# A regra nova e `(EST_PEND + unidades ABERTAS / FATOR_EXIBICAO) / MEDIA_JANELA`.
+# `unidades_abertas` sai de APP_DECISAO_PEDIDO (pedido salvo, status diferente
+# de Fechado) e NAO existe nem no gabarito nem em FAT_PEDIDO - nao ha como
+# refazer a conta a partir de insumo declarado. Fica em
+# LETRAS_DIVERGENCIA_ESPERADO com None, como ja estava, ate a parcela aberta
+# ser exposta.
+
+
+def _checar_exclusividade_recalculo() -> None:
+    """Nenhuma letra pode ter TETO e RECALCULO ao mesmo tempo.
+
+    Roda no import, e nao em teste: a dupla inscricao nao quebra nada
+    visivelmente - a coluna simplesmente para de ser cobrada, em silencio, que
+    e o defeito que este arquivo inteiro existe para evitar.
+    """
+    ambos = sorted(set(RECALCULO) & set(LETRAS_DIVERGENCIA_ESPERADO))
+    if ambos:
+        raise SystemExit(
+            f"ERRO DE CONFIGURACAO: {ambos} estao em RECALCULO e em "
+            f"LETRAS_DIVERGENCIA_ESPERADO ao mesmo tempo. Um isenta do limiar, "
+            f"o outro exige zero divergencia - a coluna ficaria isenta do que "
+            f"passou a ser exigido. Tire do teto a letra que ganhou recalculo.")
+
+
+_checar_exclusividade_recalculo()
+
 LETRAS_ARRASTO_CAR_80: list[str] = []
 
 LETRAS_CANDIDATA_ULTIMA_ENTRADA = {
@@ -958,6 +1225,14 @@ class ResultadoColunaPedido:
     ignorados_por_decisao: int = 0  # FALHA 3: so' > 0 nas colunas de RAIZES_CONDICIONAIS
                                      # (CN/DD e o fecho delas) - linha onde a PROPRIA raiz
                                      # se desviou do padrao, sinal de decisao gravada
+    # RECALCULO (09/10/2026): a coluna foi comparada contra a REGRA NOVA, nao
+    # contra a planilha. Muda o significado de `divergentes` - deixa de ser
+    # "difere do gabarito" e passa a ser "o painel nao aplicou a regra".
+    recalculada: bool = False
+    # Linhas em que a regra nao se avalia por falta de insumo. NAO sao
+    # divergencia (nao ha veredito a dar) e NAO sao acerto (nada foi provado) -
+    # por isso contam a parte, e aparecem no relatorio em vez de sumir no total.
+    nao_avaliaveis: int = 0
 
     @property
     def pct_divergente(self) -> float:
@@ -1159,7 +1434,8 @@ def _indexar(linhas: list[dict]) -> tuple[dict, int]:
 
 def comparar_pedido(nome: str, colspecs: list[ColSpec], linhas_orig: list[dict], linhas_dest: list[dict],
                      colunas_dest_disponiveis: set[str], tol_num: float, tol_razao: float, tol_pp: float,
-                     ignorar_dest_vazio_entrada_humana: bool = True) -> ResultadoPedido:
+                     ignorar_dest_vazio_entrada_humana: bool = True,
+                     ctx_recalculo: dict | None = None) -> ResultadoPedido:
     idx_orig, dup_orig = _indexar(linhas_orig)
     idx_dest, dup_dest = _indexar(linhas_dest)
     chaves_orig, chaves_dest = set(idx_orig), set(idx_dest)
@@ -1178,6 +1454,13 @@ def comparar_pedido(nome: str, colspecs: list[ColSpec], linhas_orig: list[dict],
         for letra in RAIZES_CONDICIONAIS
     }
 
+    # De LETRA do gabarito para o nome do campo de cada lado. As funcoes de
+    # RECALCULO enderecam por letra (og("BI")), que e como o gabarito e lido e
+    # como as formulas do Excel se referem umas as outras - enderecar por slug
+    # obrigaria quem escreve a regra a saber como `_slug` renomeia cada header.
+    slug_por_letra = {c.letra: c.slug for c in colspecs}
+    dest_por_letra = {c.letra: c.dest for c in colspecs}
+
     resultados: list[ResultadoColunaPedido] = []
     for c in colspecs:
         if c.dest not in colunas_dest_disponiveis:
@@ -1188,6 +1471,12 @@ def comparar_pedido(nome: str, colspecs: list[ColSpec], linhas_orig: list[dict],
         ignorados_decisao = 0
         maior_diff = 0.0
         exemplos: list[tuple] = []
+        nao_avaliaveis = 0
+        # So' recalcula com contexto: sem conexao ao banco (--sem-db) e no motor
+        # sintetico nao ha parametro nem data de compra, e inventar um valor
+        # padrao faria a conferencia passar por cima do que ela deveria provar.
+        recalc = (RECALCULO.get(c.letra) if ctx_recalculo else None)
+        ctx = ctx_recalculo
         pular_vazio = ignorar_dest_vazio_entrada_humana and c.bucket == "entrada_humana"
         raiz_dest = raiz_dest_por_letra.get(c.raiz_condicional) if c.raiz_condicional else None
         padrao_raiz = RAIZES_CONDICIONAIS.get(c.raiz_condicional) if c.raiz_condicional else None
@@ -1207,6 +1496,18 @@ def comparar_pedido(nome: str, colspecs: list[ColSpec], linhas_orig: list[dict],
                 if isinstance(raiz_dv, float) and abs(raiz_dv - padrao_raiz) > tol_razao:
                     ignorados_decisao += 1
                     continue
+            # RECALCULO: a celula da planilha deixa de ser o alvo e vira
+            # INSUMO. `ov` passa a ser o valor que a REGRA NOVA produz sobre os
+            # numeros do gabarito, e a coluna volta a exigir zero divergencia.
+            if recalc is not None:
+                ctx["codigo_atual"] = k
+                og = lambda L, _o=idx_orig[k]: _o.get(slug_por_letra.get(L))
+                dg = lambda L, _d=idx_dest[k]: _d.get(dest_por_letra.get(L))
+                esperado = recalc.fn(og, dg, ctx)
+                if esperado is None:
+                    nao_avaliaveis += 1
+                    continue
+                ov = esperado
             total += 1
             igual, diff = comparar_valor(c.tipo, ov, dv, tol_num, tol_razao, tol_pp)
             if not igual:
@@ -1219,6 +1520,7 @@ def comparar_pedido(nome: str, colspecs: list[ColSpec], linhas_orig: list[dict],
             letra=c.letra, header=c.header, slug=c.slug, dest=c.dest, tipo=c.tipo, bucket=c.bucket,
             total_comparavel=total, divergentes=divergentes, maior_diferenca=maior_diff,
             exemplos=exemplos[:3], ignorados_dest_vazio=ignorados, ignorados_por_decisao=ignorados_decisao,
+            recalculada=recalc is not None, nao_avaliaveis=nao_avaliaveis,
         ))
 
     return ResultadoPedido(
@@ -1388,18 +1690,34 @@ _ROTULO_BUCKET = {
 
 
 def _imprimir_coluna(c: ResultadoColunaPedido):
-    marca = "  <<< DIVERGENCIA ESPERADA POR DECISAO" if c.letra in LETRAS_DIVERGENCIA_POR_DECISAO else ""
+    if c.recalculada:
+        marca = "  <<< COMPARADA CONTRA A REGRA NOVA (nao contra a planilha)"
+    elif c.letra in LETRAS_DIVERGENCIA_POR_DECISAO:
+        marca = "  <<< DIVERGENCIA ESPERADA POR DECISAO"
+    else:
+        marca = ""
     print(f"  [{c.letra}] {c.header}  (slug={c.slug} -> dest={c.dest}, tipo={c.tipo}){marca}")
-    if marca:
+    if c.recalculada:
+        rc = RECALCULO[c.letra]
+        print(f"      MOTIVO: {rc.motivo}")
+        print(f"      INSUMO EXTERNO: {rc.insumo_externo}")
+    elif marca:
         print(f"      MOTIVO: {LETRAS_DIVERGENCIA_POR_DECISAO[c.letra]}")
     extra = f", {c.ignorados_dest_vazio} ignorada(s) por dest vazio" if c.ignorados_dest_vazio else ""
     if c.ignorados_por_decisao:
         extra += f", {c.ignorados_por_decisao} ignorada(s) por decisao gravada (raiz condicional)"
-    print(f"      {c.divergentes}/{c.total_comparavel} linhas divergem ({c.pct_divergente:.3f}%){extra}, "
+    if c.nao_avaliaveis:
+        extra += f", {c.nao_avaliaveis} sem insumo para a regra (nao conta dos dois lados)"
+    # Numa coluna recalculada, "divergem" deixa de significar "difere do
+    # gabarito" e passa a significar "o painel nao aplicou a regra" - o rotulo
+    # muda junto, senao quem le o relatorio conclui o contrario do que houve.
+    verbo = "nao batem com a regra" if c.recalculada else "divergem"
+    print(f"      {c.divergentes}/{c.total_comparavel} linhas {verbo} ({c.pct_divergente:.3f}%){extra}, "
           f"maior diferenca absoluta = {c.maior_diferenca:.4f}")
+    rotulo_orig = "regra" if c.recalculada else "planilha"
     for chave, ov, dv, diff in c.exemplos:
         diff_txt = f"diff={diff:.4f}" if diff < 1e18 else "(nulo de um lado)"
-        print(f"      exemplo CODIGO={chave}: planilha={_fmt(ov)}  dbt={_fmt(dv)}  {diff_txt}")
+        print(f"      exemplo CODIGO={chave}: {rotulo_orig}={_fmt(ov)}  dbt={_fmt(dv)}  {diff_txt}")
 
 
 def imprimir_resultado_pedido(r: ResultadoPedido):
@@ -1790,27 +2108,30 @@ def verificar_motor(colspecs: list[ColSpec], linhas: list[dict], tol_num: float,
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _ler_perfil_compras(profiles_path: str) -> dict:
+def _ler_perfil_compras(profiles_path: str, profile: str = "compras") -> dict:
     import yaml
     with open(profiles_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
-    return cfg["compras"]
+    return cfg[profile]
 
 
-def _ler_credencial_compras(profiles_path: str) -> tuple[str, str, str]:
-    perfil = _ler_perfil_compras(profiles_path)
+def _ler_credencial_compras(profiles_path: str, profile: str = "compras") -> tuple[str, str, str]:
+    perfil = _ler_perfil_compras(profiles_path, profile)
     target = perfil["target"]
     out = perfil["outputs"][target]
     return out["user"], out["password"], out["connection_string"]
 
 
-def conectar(lib_dir: str, profiles_path: str):
+def conectar(lib_dir: str, profiles_path: str, profile: str = "compras"):
+    """Conecta SOMENTE PARA LER. `profile` existe para a conferencia poder rodar
+    contra COMPRAS_DEV antes do deploy - trocar so o `--schema` nao basta,
+    porque o usuario COMPRAS nao enxerga o schema do outro."""
     import oracledb
     try:
         oracledb.init_oracle_client(lib_dir=lib_dir)
     except oracledb.ProgrammingError:
         pass  # ja inicializado (chamada dupla no mesmo processo) - inofensivo
-    user, password, dsn = _ler_credencial_compras(profiles_path)
+    user, password, dsn = _ler_credencial_compras(profiles_path, profile)
     conn = oracledb.connect(user=user, password=password, dsn=dsn)
     del password
     return conn
@@ -1886,6 +2207,66 @@ def resolver_dest(colspecs: list[ColSpec], colunas_disponiveis: set[str]) -> Non
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def carregar_contexto_recalculo(conn, schema: str) -> dict | None:
+    """Os insumos do RECALCULO que a planilha nunca teve.
+
+    Sao tres parametros de negocio (comissao, margem alvo de varejo, fator de
+    prazo do varejo), a data do Decreto e o mapa de ultima COMPRA por produto.
+    Nenhum deles e escrito aqui: todos saem do banco, pela mesma razao que o
+    resto do projeto nao chumba parametro - no dia em que a diretoria mudar a
+    margem alvo, a conferencia acompanha em vez de reprovar.
+
+    Devolve None se QUALQUER insumo faltar. Meio recalculo e pior que nenhum:
+    as colunas que sobrassem passariam a ser comparadas contra a planilha de
+    novo, silenciosamente, que e o comportamento que esta mudanca remove.
+    """
+    try:
+        cur = conn.cursor()
+        cur.execute(f"select comissao, fator_prazo_varejo from {schema}.compras_parametro")
+        linha = cur.fetchone()
+        if linha is None:
+            cur.close()
+            return None
+        comissao, fator_prazo_varejo = (float(linha[0]), float(linha[1]))
+
+        # Os dois que vivem so' no intermediario: nao sao parametro de TELA, e
+        # por isso nao estao em COMPRAS_PARAMETRO (ver int_parametro.sql).
+        cur.execute(f"select margem_alvo_padrao_varejo, st_beneficio_inicio "
+                    f"  from {schema}.int_parametro")
+        linha = cur.fetchone()
+        if linha is None or linha[0] is None or linha[1] is None:
+            cur.close()
+            return None
+        margem_alvo_varejo, st_beneficio_inicio = float(linha[0]), linha[1]
+
+        cur.execute(f"select codigo, dt_ult_compra from {schema}.compras_produto_contexto")
+        dt_ult_compra = {int(c): d for c, d in cur.fetchall() if d is not None}
+        cur.close()
+    except Exception as exc:                      # noqa: BLE001 - diagnostico, nao controle
+        print(f"AVISO: recalculo DESLIGADO - nao consegui ler os insumos em {schema}: {exc}")
+        print("       As colunas de RECALCULO voltam a ser comparadas contra a planilha, "
+              "e vao divergir. Rode com --schema apontando para um schema ja construido.")
+        return None
+
+    # A raiz condicional DD passa a usar o padrao LIDO, nao o literal do
+    # fallback: e' o mesmo numero em dois lugares, e o banco e' quem manda.
+    RAIZES_CONDICIONAIS["DD"] = margem_alvo_varejo
+
+    print(f"Recalculo ligado: {len(RECALCULO)} coluna(s) comparadas contra a REGRA NOVA "
+          f"({', '.join(sorted(RECALCULO))}).")
+    print(f"  margem alvo de varejo {margem_alvo_varejo:.0%} | comissao {comissao:.0%} | "
+          f"Decreto a partir de {st_beneficio_inicio:%d/%m/%Y} | "
+          f"{len(dt_ult_compra)} produto(s) com ultima compra conhecida")
+    return {
+        "comissao": comissao,
+        "margem_alvo_varejo": margem_alvo_varejo,
+        "fator_prazo_varejo": fator_prazo_varejo,
+        "st_beneficio_inicio": st_beneficio_inicio,
+        "dt_ult_compra": dt_ult_compra,
+        "codigo_atual": None,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tolerancia", type=float, default=0.01,
@@ -1904,6 +2285,14 @@ def main():
                      help="pula a autocomparacao + defeitos sinteticos (mais rapido, mas sem a prova)")
     ap.add_argument("--lib-dir", default=ORACLE_CLIENT_LIB_DIR, help="Oracle Instant Client (modo thick)")
     ap.add_argument("--profiles-path", default=PROFILES_PATH, help="caminho do profiles.yml")
+    # A conferencia nascera apontando para producao, o que impede conferir uma
+    # regra ANTES de subir - e foi exatamente o que faltou em 09/10/2026, quando
+    # a condicao de UF chegou ao servidor de teste sem a conferencia ter rodado.
+    ap.add_argument("--schema", default="compras",
+                    help="schema de FAT_PEDIDO (use compras_dev para conferir antes do deploy)")
+    ap.add_argument("--profile", default="compras",
+                    help="perfil do profiles.yml usado para conectar; acompanha --schema "
+                         "(o usuario COMPRAS nao enxerga COMPRAS_DEV e vice-versa)")
     args = ap.parse_args()
 
     t_inicio = time.perf_counter()
@@ -1995,10 +2384,10 @@ def main():
     print("#" * 92)
     print("COMPARACAO REAL: compras.fat_pedido x aba `pedido`")
     print("#" * 92)
-    conn = conectar(args.lib_dir, args.profiles_path)
+    conn = conectar(args.lib_dir, args.profiles_path, args.profile)
     print(f"Conectado como COMPRAS em {datetime.datetime.now():%Y-%m-%d %H:%M:%S}.")
 
-    if not tabela_existe(conn, "COMPRAS", "fat_pedido"):
+    if not tabela_existe(conn, args.schema.upper(), "fat_pedido"):
         conn.close()
         print()
         print("PENDENTE: compras.fat_pedido AINDA NAO EXISTE. A verificacao do motor (item acima) "
@@ -2021,7 +2410,7 @@ def main():
     binds: dict = {}
     if codigos_amostra:
         cur = conn.cursor()
-        cur.execute("select * from compras.fat_pedido where rownum = 0")
+        cur.execute(f"select * from {args.schema}.fat_pedido where rownum = 0")
         cols_preview = {d[0].lower() for d in cur.description}
         cur.close()
         chave = resolver_chave_dest(cols_preview) or "codigo"
@@ -2030,10 +2419,19 @@ def main():
         binds = {f"c{i}": c for i, c in enumerate(codigos_amostra)}
 
     t0 = time.perf_counter()
-    linhas_dest, colunas_dest = executar_com_colunas(conn, f"select * from compras.fat_pedido{filtro_sql}", binds)
+    linhas_dest, colunas_dest = executar_com_colunas(
+        conn, f"select * from {args.schema}.fat_pedido{filtro_sql}", binds)
     tempo_dest = time.perf_counter() - t0
+    # ⚠ O CONTEXTO DO RECALCULO TEM DE SER LIDO ANTES DO close(). Na primeira
+    # versao ele era lido logo antes da comparacao - que acontece com a conexao
+    # ja fechada - e o recalculo caia inteiro no `except` com "DPY-1001: not
+    # connected to database", deixando as colunas voltarem a ser comparadas
+    # contra a planilha. O AVISO apareceu no meio de 40 linhas de saida e quase
+    # passou: por isso o resumo final agora diz, em voz alta, quando o
+    # recalculo esta desligado.
+    ctx_recalculo = carregar_contexto_recalculo(conn, args.schema)
     conn.close()
-    print(f"compras.fat_pedido lido: {len(linhas_dest)} linhas em {tempo_dest:.2f}s")
+    print(f"{args.schema}.fat_pedido lido: {len(linhas_dest)} linhas em {tempo_dest:.2f}s")
 
     chave_dest = resolver_chave_dest(colunas_dest)
     if chave_dest is None:
@@ -2047,7 +2445,8 @@ def main():
     resolver_dest(colspecs, colunas_dest)
 
     resultado = comparar_pedido(
-        nome="compras.fat_pedido x aba `pedido` (CRITERIO DE ACEITE FINAL)",
+        nome=f"{args.schema}.fat_pedido x aba `pedido` (CRITERIO DE ACEITE FINAL)",
+        ctx_recalculo=ctx_recalculo,
         colspecs=colspecs, linhas_orig=linhas_cmp, linhas_dest=linhas_dest,
         colunas_dest_disponiveis=colunas_dest, tol_num=args.tolerancia, tol_razao=args.tolerancia_razao,
         tol_pp=args.tolerancia_razao * 100,
