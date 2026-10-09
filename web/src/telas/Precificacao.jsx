@@ -10,7 +10,7 @@ import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroPreco from "../componentes/FiltroPreco.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
-import { precoDeMargem, motivoMargemInvalida, motivoMKPInvalido, precoDeMKP } from "../precoEditavel.js";
+import { precoDeMargem, motivoMargemInvalida, motivoMKPInvalido, precoDeMKP, abaixoDoCusto } from "../precoEditavel.js";
 import { data as fmtData, dataCompleta, moeda, numero, paraCampoPreco, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
 import { textoConfirmacaoLote } from "../lotePrecoStatus.js";
 
@@ -306,13 +306,25 @@ export default function Precificacao() {
         item.precoVarejoAV = numVAR;
         tem = true;
       }
-      if (tem) lista.push(item);
+      // Marca de "abaixo do custo", para a confirmação poder avisar (item 1b
+      // do Diretor, 09/10/2026). NÃO vai no payload: `definirPrecos` monta o
+      // corpo com `codigo`/`precoAtacadoAV`/`precoVarejoAV` explicitamente, e
+      // este campo é só da tela. `custo` é o do cenário no instante da
+      // digitação — ver os setters em `Tabela`.
+      if (tem) {
+        item.abaixoDoCusto =
+          (item.precoAtacadoAV != null && abaixoDoCusto(item.precoAtacadoAV, entradaAT?.custo))
+          || (item.precoVarejoAV != null && abaixoDoCusto(item.precoVarejoAV, entradaVAR?.custo));
+        lista.push(item);
+      }
     }
     return lista;
   }, [precosAT, precosVAR]);
 
   const qtdPrecosLote = alteracoesLote.reduce(
     (s, it) => s + (it.precoAtacadoAV != null ? 1 : 0) + (it.precoVarejoAV != null ? 1 : 0), 0);
+
+  const qtdAbaixoDoCusto = alteracoesLote.filter((it) => it.abaixoDoCusto).length;
 
   // Quantos SKUs do lote NÃO estão na página visível agora — para a barra não
   // deixar o Diretor clicar "Gravar" sem saber que está incluindo edições de
@@ -517,6 +529,7 @@ export default function Precificacao() {
       )}
       {confirmarLote && (
         <ConfirmarDefinirPrecos qtdSkus={alteracoesLote.length} qtdPrecos={qtdPrecosLote}
+                                 abaixoDoCusto={qtdAbaixoDoCusto}
                                  foraDaPagina={foraDaPaginaLote}
                                  gravando={gravandoLote} erro={erroLote}
                                  aoCancelar={() => { setConfirmarLote(false); setErroLote(null); }}
@@ -569,8 +582,15 @@ function BarraGravacaoLote({ qtdSkus, qtdPrecos, foraDaPagina, aoAbrirConfirmaca
  * exige confirmação explícita, com a contagem, antes de gravar qualquer coisa
  * — o lote não pode ser mais fácil de disparar por acidente do que um clique
  * por SKU seria. */
-function ConfirmarDefinirPrecos({ qtdSkus, qtdPrecos, foraDaPagina, gravando, erro, aoCancelar, aoConfirmar }) {
+function ConfirmarDefinirPrecos({ qtdSkus, qtdPrecos, foraDaPagina, abaixoDoCusto = 0,
+                                  gravando, erro, aoCancelar, aoConfirmar }) {
   const emLotes = qtdSkus > LIMITE_LOTE_PRECO;
+  // Vender abaixo do custo pode ser decisão legítima (queima de estoque), mas
+  // tem de ser DECISÃO. Com algum item nessa situação, o diálogo exige um
+  // segundo gesto: a caixa marcada libera o botão. Pedido do Diretor em
+  // 09/10/2026 — "destacar em vermelho e pedir confirmação ao definir".
+  const [cienteDoCusto, setCienteDoCusto] = useState(false);
+  const travado = abaixoDoCusto > 0 && !cienteDoCusto;
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
          role="dialog" aria-modal="true" aria-labelledby="titulo-definir-precos">
@@ -600,6 +620,18 @@ function ConfirmarDefinirPrecos({ qtdSkus, qtdPrecos, foraDaPagina, gravando, er
                   vão para o MESMO lote — nunca um lote por pedaço (§4.3). */}
               {emLotes && ` Como passa de ${LIMITE_LOTE_PRECO} itens, será enviado em pedaços, todos para o MESMO lote.`}
             </p>
+            {abaixoDoCusto > 0 && (
+              <label className="mt-3 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2">
+                <input type="checkbox" checked={cienteDoCusto} className="mt-0.5"
+                       onChange={(e) => setCienteDoCusto(e.target.checked)} />
+                <span className="text-xs text-red-700">
+                  <span className="font-semibold">
+                    {numero(abaixoDoCusto)} produto(s) com preço ABAIXO DO CUSTO.
+                  </span>{" "}
+                  Confirmo que é intencional.
+                </span>
+              </label>
+            )}
             {erro && <p role="alert" className="mt-2 text-xs font-medium" style={{ color: RED }}>{erro}</p>}
           </div>
         </div>
@@ -608,7 +640,8 @@ function ConfirmarDefinirPrecos({ qtdSkus, qtdPrecos, foraDaPagina, gravando, er
                   className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50">
             Cancelar
           </button>
-          <button type="button" onClick={aoConfirmar} disabled={gravando}
+          <button type="button" onClick={aoConfirmar} disabled={gravando || travado}
+                  title={travado ? "Marque a caixa acima para confirmar os preços abaixo do custo." : undefined}
                   className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                   style={{ background: NAVY }}>
             {gravando && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
@@ -755,11 +788,16 @@ function Tabela({ itens, cenarioSel, parametros, ordenar, dir, aoOrdenar, precos
                    // alteração de verdade?" sem depender da página estar carregada
                    // (Diretor, 08/09/2026 — o lote sumia ao trocar de página porque
                    // dependia de `itens`, que é só a página atual).
-                   setPrecoAT={(v) => setPrecosAT((a) => ({
-                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoAtacadoAV },
+                   // `custo` entra no instantâneo pelo MESMO motivo de
+                   // `decidido`: o lote precisa saber se o preço ficou abaixo
+                   // do custo mesmo depois de a pessoa trocar de página, e
+                   // `itens` é só a página atual. É o custo DO CENÁRIO no
+                   // instante da digitação — quem digitou viu aquele custo.
+                   setPrecoAT={(v, custo) => setPrecosAT((a) => ({
+                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoAtacadoAV, custo },
                    }))}
-                   setPrecoVAR={(v) => setPrecosVAR((a) => ({
-                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoVarejoAV },
+                   setPrecoVAR={(v, custo) => setPrecosVAR((a) => ({
+                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoVarejoAV, custo },
                    }))} />
           ))}
         </tbody>
@@ -954,14 +992,14 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
     const pctDigitado = parseNumeroPreco(texto);
     if (!Number.isFinite(pctDigitado)) return; // vazio ou inválido: não mexe no preço
     const novoPreco = precoDeMargem(pctDigitado / 100, sim.custo, base);
-    if (novoPreco != null) aoTrocar(paraCampoPreco(novoPreco));
+    if (novoPreco != null) aoTrocar(paraCampoPreco(novoPreco), sim.custo);
   }
   function aoTrocarMKP(texto) {
     setEditando({ campo: "mkp", texto });
     const mkp = parseNumeroPreco(texto);
     if (!Number.isFinite(mkp)) return;
     const novoPreco = precoDeMKP(mkp, sim.custo);
-    if (novoPreco != null) aoTrocar(paraCampoPreco(novoPreco));
+    if (novoPreco != null) aoTrocar(paraCampoPreco(novoPreco), sim.custo);
   }
 
   const valorMargem = editando?.campo === "margem" ? editando.texto
@@ -979,15 +1017,38 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
     ? motivoMargemInvalida(editando.texto, sim.custo, base) : undefined;
   const motivoMKP = editando?.campo === "mkp"
     ? motivoMKPInvalido(editando.texto, sim.custo) : undefined;
+
+  // ⚠ NÃO solta a edição quando o valor digitado é inválido — 09/10/2026.
+  //
+  // Antes, o blur limpava `editando` sempre, e aí o campo voltava a exibir o
+  // valor DERIVADO do preço. Com um valor rejeitado isso produzia exatamente
+  // o que o Diretor relatou: digitar 80% no 2720 e o campo "virar 8,0% sem
+  // aviso". O 8,0% nem era invenção — era o dígito INTERMEDIÁRIO "8", que é
+  // margem válida, tendo escrito um preço antes do "0" chegar. O vermelho
+  // aparecia durante a digitação e sumia no blur, junto com a explicação.
+  //
+  // Segurando a edição, o campo continua mostrando "80" em vermelho, com o
+  // teto no `title`, até a pessoa corrigir ou apagar. Nada é revertido às
+  // escondidas e nada é descartado: o preço que o intermediário escreveu
+  // continua lá, visível, e é dela a decisão de mantê-lo ou não.
+  function aoSairDoCampo() {
+    if (motivoMargem == null && motivoMKP == null) setEditando(null);
+  }
   const margemInvalida = motivoMargem != null;
   const mkpInvalido = motivoMKP != null;
+  // Preço abaixo do custo (item 1b do Diretor, 09/10/2026). Diferente do
+  // vermelho de margem/MKP, este NÃO é erro: pode ser queima de estoque, e o
+  // preço é gravável. É aviso — e por isso continua marcado DEPOIS do blur,
+  // contra o valor que de fato está no campo, não contra o texto em edição.
+  // A confirmação de "Definir preços" cobra o segundo gesto.
+  const precoAbaixoDoCusto = abaixoDoCusto(parseNumeroPreco(valor), sim.custo);
 
   return (
     <td className="px-2 py-1.5 text-center" style={{ background: fundo, minWidth: 215 }}>
       <div className="flex flex-wrap items-center justify-center gap-1">
         <input
           type="text" inputMode="decimal" value={valor ?? ""} aria-label={rotulo}
-          onChange={(e) => { setEditando(null); aoTrocar(e.target.value); }}
+          onChange={(e) => { setEditando(null); aoTrocar(e.target.value, sim.custo); }}
           // O placeholder é a SUGESTÃO do cenário — quando NÃO há decisão
           // pendente (nem decisão, nem decisão já aplicada): aí o campo nasce
           // vazio e o placeholder é o único jeito de mostrar a meta, sem
@@ -997,13 +1058,17 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
           // para a linha de apoio "sugerido" logo abaixo, porque um
           // placeholder não aparece atrás de um valor.
           placeholder={!pendente && sim.sugerido != null ? numero(sim.sugerido, 2) : undefined}
-          className="num w-[68px] rounded-md border border-gray-300 bg-white px-1 py-1 text-center text-sm"
+          title={precoAbaixoDoCusto
+            ? `Abaixo do custo do cenário (${moeda(sim.custo)}). Grava, mas pede confirmação.`
+            : undefined}
+          className={`num w-[68px] rounded-md border bg-white px-1 py-1 text-center text-sm ${
+            precoAbaixoDoCusto ? "border-red-500 font-semibold text-red-700" : "border-gray-300"}`}
         />
         <input
           type="text" inputMode="decimal" value={valorMargem} disabled={!custoValido}
           aria-label={`Margem alvo de ${rotulo}`}
           onChange={(e) => aoTrocarMargem(e.target.value)}
-          onBlur={() => setEditando(null)}
+          onBlur={aoSairDoCampo}
           title={motivoMargem}
           className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${margemInvalida ? "border-red-500" : "border-gray-300"}`}
         />
@@ -1012,7 +1077,7 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
           type="text" inputMode="decimal" value={valorMKP} disabled={!custoValido}
           aria-label={`MKP de ${rotulo}`}
           onChange={(e) => aoTrocarMKP(e.target.value)}
-          onBlur={() => setEditando(null)}
+          onBlur={aoSairDoCampo}
           title={motivoMKP}
           className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${mkpInvalido ? "border-red-500" : "border-gray-300"}`}
         />

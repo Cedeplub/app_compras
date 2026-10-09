@@ -521,6 +521,23 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
     ? motivoMargemInvalida(editando.texto, sim.custo, base) : undefined;
   const motivoMKP = editando?.campo === "mkp"
     ? motivoMKPInvalido(editando.texto, sim.custo) : undefined;
+
+  // ⚠ NÃO solta a edição quando o valor digitado é inválido — 09/10/2026.
+  //
+  // Antes, o blur limpava `editando` sempre, e aí o campo voltava a exibir o
+  // valor DERIVADO do preço. Com um valor rejeitado isso produzia exatamente
+  // o que o Diretor relatou: digitar 80% no 2720 e o campo "virar 8,0% sem
+  // aviso". O 8,0% nem era invenção — era o dígito INTERMEDIÁRIO "8", que é
+  // margem válida, tendo escrito um preço antes do "0" chegar. O vermelho
+  // aparecia durante a digitação e sumia no blur, junto com a explicação.
+  //
+  // Segurando a edição, o campo continua mostrando "80" em vermelho, com o
+  // teto no `title`, até a pessoa corrigir ou apagar. Nada é revertido às
+  // escondidas e nada é descartado: o preço que o intermediário escreveu
+  // continua lá, visível, e é dela a decisão de mantê-lo ou não.
+  function aoSairDoCampo() {
+    if (motivoMargem == null && motivoMKP == null) setEditando(null);
+  }
   const margemInvalida = motivoMargem != null;
   const mkpInvalido = motivoMKP != null;
 
@@ -654,14 +671,14 @@ function BlocoPreco({ titulo, p, praca, cenarios, cenarioSel, precoAtual, margem
           <input type="text" inputMode="decimal" value={valorMKP} disabled={!custoValido}
                  aria-label={`MKP de ${titulo}`}
                  onChange={(e) => aoTrocarMKP(e.target.value)}
-                 onBlur={() => setEditando(null)}
+                 onBlur={aoSairDoCampo}
                  title={motivoMKP}
                  className={`num w-[52px] rounded-md border bg-white px-1 py-0.5 text-center font-semibold disabled:bg-gray-100 disabled:text-gray-400 ${mkpInvalido ? "border-red-500" : "border-gray-300"}`} />
           <span>x · Margem</span>
           <input type="text" inputMode="decimal" value={valorMargem} disabled={!custoValido}
                  aria-label={`Margem alvo de ${titulo}`}
                  onChange={(e) => aoTrocarMargem(e.target.value)}
-                 onBlur={() => setEditando(null)}
+                 onBlur={aoSairDoCampo}
                  title={motivoMargem}
                  className={`num w-[52px] rounded-md border bg-white px-1 py-0.5 text-center font-semibold disabled:bg-gray-100 disabled:text-gray-400 ${margemInvalida ? "border-red-500" : "border-gray-300"}`} />
           <span>%</span>

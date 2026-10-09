@@ -33,6 +33,43 @@ export function precoDeMargem(margem, custo, { pisCofins, comissao, icmsEf }) {
   return custo / denominador;
 }
 
+/** A margem MÁXIMA que o cenário comporta, em FRAÇÃO.
+ *
+ *  É o ponto em que o denominador de `precoDeMargem` chega a zero: acima dele
+ *  não existe preço nenhum que produza aquela margem, por mais caro que seja.
+ *
+ *      margem = 1 − pisCofins − comissao − icmsEf − custo/preco
+ *
+ *  Com `preco → ∞`, `custo/preco → 0`, e a margem tende a
+ *  `1 − pisCofins − comissao − icmsEf`. Esse é o teto, e ele NÃO é atingível:
+ *  é limite, não máximo. Por isso `precoDeMargem` exige denominador > 0.
+ *
+ *  Conferido no SKU 2720 (CAR 80, Normal com ICMS): 1 − 0,0925 − 0,04 − 0,205
+ *  = 0,6625 → 66,2%, exatamente o teto que o Diretor mediu em 09/10/2026 ao
+ *  digitar 80% e ver o campo voltar para 8,0% sem dizer por quê.
+ *
+ *  Devolve `null` quando falta algum componente do cenário — aí não há teto a
+ *  afirmar, e quem chama não deve inventar um. */
+export function margemMaxima({ pisCofins, comissao, icmsEf }) {
+  if (nulo(pisCofins) || nulo(comissao) || nulo(icmsEf)) return null;
+  return 1 - pisCofins - comissao - icmsEf;
+}
+
+/** O preço está abaixo do custo? (MKP < 1, margem fortemente negativa.)
+ *
+ *  Pedido do Diretor em 09/10/2026: "preço abaixo do custo passa sem alerta —
+ *  MKP 0,80 = margem -58,7%". Vender abaixo do custo pode ser decisão
+ *  legítima (queima de estoque, item de entrada), mas tem de ser DECISÃO, e
+ *  não descuido de digitação.
+ *
+ *  Compara contra o custo DO CENÁRIO, que é o mesmo que `calcMKP` usa — então
+ *  "abaixo do custo" aqui é exatamente "MKP < 1" na mesma célula. Devolve
+ *  `false` quando falta um dos dois: sem custo não há afirmação a fazer. */
+export function abaixoDoCusto(preco, custo) {
+  if (nulo(preco) || nulo(custo) || custo <= 0 || preco <= 0) return false;
+  return preco < custo;
+}
+
 /** Preço que produz um MKP. Inverso de `calcMKP`. */
 export function precoDeMKP(mkp, custo) {
   if (nulo(mkp) || mkp <= 0 || nulo(custo) || custo <= 0) return null;
@@ -58,7 +95,20 @@ export function motivoMargemInvalida(texto, custo, base) {
   const n = parseNumeroPreco(texto);
   if (!Number.isFinite(n)) return "Não é um número — use vírgula no decimal (ex.: 20,5)";
   if (precoDeMargem(n / 100, custo, base) == null) {
-    return "Margem acima do teto do cenário — nenhum preço produz esta margem";
+    // ⚠ Diz QUAL é o teto, e não só que foi ultrapassado. Até 09/10/2026 a
+    // mensagem era genérica, e o Diretor relatou o efeito: digitou 80% no
+    // 2720, o campo voltou sozinho para 8,0% e nada explicou que o máximo
+    // ali é 66,2%. Um limite que não se enuncia é indistinguível de defeito.
+    const teto = margemMaxima(base);
+    // ⚠ Arredonda PARA BAIXO, nunca para cima. O teto do 2720 é 66,25%:
+    // exibi-lo como "66,3%" anunciaria um valor que TAMBÉM falha, e quem o
+    // digitasse veria a mesma mensagem de novo. Para baixo, o número exibido
+    // é sempre digitável — 66,2% passa.
+    const tetoExibido = teto != null ? Math.floor(teto * 1000) / 10 : null;
+    return tetoExibido != null
+      ? `Margem máxima deste cenário: ${tetoExibido.toLocaleString("pt-BR", {
+          minimumFractionDigits: 1, maximumFractionDigits: 1 })}% — acima disso nenhum preço produz a margem`
+      : "Sem custo ou alíquota no cenário — não há margem a calcular";
   }
   return undefined;
 }
