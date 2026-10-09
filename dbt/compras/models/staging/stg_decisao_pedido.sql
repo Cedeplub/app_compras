@@ -40,14 +40,25 @@
 -- caixas. A invariante que se preserva é `BA x fator = BB`, que toda a cadeia
 -- do gabarito assume.
 --
--- ── Todos os STATUS contam ───────────────────────────────────────────────────
+-- ── Todos os STATUS contam em BA/BB; a COBERTURA é outra conta ──────────────
 -- APP_PEDIDO.STATUS percorre Rascunho → Orçamento Enviado → Fechado →
 -- Exportado. A coluna BA do gabarito significa "quanto o comprador decidiu
 -- comprar", não "quanto foi aprovado" — e a tabela velha não tinha status
 -- nenhum. Contar todos PRESERVA o significado; restringir a "Enviado para cima"
--- seria regra NOVA. Confirmado com o usuário em 12/09/2026: fica como está.
--- Hoje os 4 pedidos estão em Rascunho — filtrar por status devolveria zero e a
--- lacuna continuaria aberta com outra cara.
+-- seria regra NOVA. Confirmado com o usuário em 12/09/2026: BA e BB ficam como
+-- estão, e continuam contando todos os status.
+--
+-- ⚠ MAS A COBERTURA PROJETADA (BF) NÃO PODE contar todos — 09/10/2026.
+-- Pedido Fechado já virou pedido no WinThor e já está dentro do PENDENTE
+-- (PCEST.QTPEDIDA, que alimenta EST_PEND). Somá-lo de novo conta a mesma
+-- compra duas vezes. Medido no SKU 2808: o pedido 261 (Fechado, 50 caixas) e o
+-- 361 (Rascunho, 60 caixas) viravam 2.640 unidades, e BF dava 67,75 meses onde
+-- o certo são 6,94.
+--
+-- Daí `unidades_abertas`: a mesma soma de `unidades`, SEM os Fechados. É uma
+-- coluna À PARTE, e não um filtro em `unidades`, justamente para BA e BB não
+-- mudarem de significado — quem precisa de "o que o comprador decidiu" continua
+-- com `unidades`; quem precisa de "o que ainda não está no pendente" usa esta.
 --
 -- ⚠ Este model AGREGA, e por isso foge do `renamed` puro da camada staging: é
 -- a última camada onde a mudança de grão (PEDIDO x PRODUTO → PRODUTO) pode ser
@@ -72,6 +83,7 @@ item_marcado as (
         i.ID_PRODUTO                as id_produto,
         i.QUANTIDADE                as quantidade,
         i.FATOR_EXIBICAO            as fator_exibicao,
+        c.STATUS                    as status_pedido,
         i.CRIADO_EM                 as atualizado_em,
         c.ATUALIZADO_POR            as atualizado_por,
         row_number() over (
@@ -88,6 +100,11 @@ renamed as (
         id_produto,
         -- O que o cálculo usa: unidade REAL, somada com o fator de CADA item.
         sum(quantidade * fator_exibicao)                                as unidades,
+        -- Idem, mas só do que AINDA NÃO está no pendente do WinThor - ver o
+        -- bloco "a COBERTURA projetada" no cabeçalho. Em unidade REAL pelo
+        -- mesmo motivo de `unidades`: somar caixa com unidade não dá número.
+        sum(case when status_pedido <> 'Fechado'
+                 then quantidade * fator_exibicao else 0 end)           as unidades_abertas,
         -- O que a reexibição usa: o fator congelado do item mais recente.
         max(case when ordem_recencia = 1 then fator_exibicao end)       as fator_exibicao,
         -- BA: o total reexpresso naquela unidade de exibição.

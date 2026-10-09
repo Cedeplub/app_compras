@@ -163,7 +163,10 @@ quantidade as (
         -- total de um SKU presente em dois pedidos pelo fator errado. A
         -- multiplicacao que existia aqui so era valida quando a fonte tinha uma
         -- linha por produto (APP_DECISAO_PEDIDO, ate 12/09/2026).
-        nvl(dp.unidades, 0)                                as pedido_unidades
+        nvl(dp.unidades, 0)                                as pedido_unidades,
+        -- Só o que ainda NÃO está no pendente do WinThor (stg_decisao_pedido).
+        -- Usada SÓ por BF; BA/BB seguem contando todos os status.
+        nvl(dp.unidades_abertas, 0)                        as pedido_unidades_abertas
       from base b
       join classe_abc a on a.codigo = b.codigo
       join demanda    d on d.codigo = b.codigo
@@ -203,9 +206,45 @@ final as (
                        - mod(q.pedido_unidades / nullif(q.embal_compra, 0), q.qt_palete)))
                   || ' CAIXAS'
         end                                                as sug_palete,
-        -- BF: IF($AG2=0,"",($V2+$BB2)/$AG2)
+        -- BF — ⚠ DESVIO DELIBERADO DA PLANILHA, 09/10/2026 ────────────────
+        -- A planilha faz `($V2+$BB2)/$AG2`, e as duas parcelas estão em
+        -- unidades DIFERENTES: V (EST+PEND) vem dividido por FATOR_EXIBICAO
+        -- (int_produto_demanda.sql:138,142,201) e BB está em unidade REAL.
+        -- Num item de caixa 24, somar 60 caixas como 1.440 unidades ao estoque
+        -- que está em caixas infla a cobertura por 24.
+        --
+        -- Duas correções, relatadas pelo Diretor de Compras em 09/10/2026:
+        --
+        --   1. UNIDADE: divide por fator_exibicao, para as duas parcelas
+        --      ficarem na mesma grandeza - a MESMA regra 6 do CONTEXTO.md que a
+        --      Etapa 18 aplicou na tela.
+        --   2. PEDIDO FECHADO NÃO SOMA: ele já virou pedido no WinThor e já
+        --      está dentro do PENDENTE. Somá-lo conta a compra duas vezes.
+        --
+        -- Conferido no SKU 2808 (fator 24, EST_PEND 234,5, média 42,4306):
+        -- pedido 261 Fechado (50 cx) + pedido 361 Rascunho (60 cx) davam 2.640
+        -- unidades e BF = 67,75 meses. Agora só o 361 conta, em caixas:
+        -- (234,5 + 60) / 42,4306 = 6,94 - o número que o Diretor conferiu à mão.
+        --
+        -- ⚠ O QUE ESTA CORREÇÃO **NÃO** FAZ, e por quê. A regra dele tem uma
+        -- terceira parte: "Orçamento Enviado só soma se ainda não estiver no
+        -- pendente". Isso não é implementável hoje: APP_PEDIDO não guarda
+        -- NENHUMA ligação com o WinThor (suas colunas são ID_PEDIDO,
+        -- FORNECEDOR, STATUS, CRIADO_EM/POR, ATUALIZADO_EM/POR), e o PENDENTE
+        -- vem de PCEST.QTPEDIDA, um agregado por produto sem rastro de qual
+        -- pedido o gerou. Medido no SKU 455: os pedidos 201 e 221 estão os dois
+        -- em "Orçamento Enviado", e a quantidade do 201 (8.016) é EXATAMENTE o
+        -- pendente - mas casar por quantidade é heurística que erra calada.
+        -- Para fechar essa parte é preciso gravar o número do pedido do WinThor
+        -- (ou um instante de exportação) em APP_PEDIDO no momento da
+        -- exportação - mudança de schema e de fluxo, registrada para decisão.
+        --
+        -- BF deixa de bater com a planilha nos SKUs com pedido salvo. É
+        -- divergência DELIBERADA, decidida com o usuário em 09/10/2026.
         case when q.media_janela <> 0
-             then (q.est_pend + q.pedido_unidades) / q.media_janela
+             then (q.est_pend
+                   + q.pedido_unidades_abertas / nullif(q.fator_exibicao, 0))
+                  / q.media_janela
         end                                                as meses_est_ped,
         -- BG: $V2 * $K2 * $BW2 - desfaz o FATOR_EXIBICAO antes do custo unitario
         q.est_pend * q.fator_exibicao * q.custo_tot_oficial as valor_estoque

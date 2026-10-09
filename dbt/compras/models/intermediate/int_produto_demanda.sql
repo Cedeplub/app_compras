@@ -159,16 +159,41 @@ demanda as (
         nvl(v.q00, 0)    / r.fator_exibicao as vd_m1,
         nvl(v.q01, 0)    / r.fator_exibicao as vd_m2,
         nvl(v.q02, 0)    / r.fator_exibicao as vd_m3,
-        -- AG: N_MESES seleciona a coluna de media; fora da lista -> 0
-        case r.n_meses
-             when 2  then nvl(v.med02, 0)
-             when 3  then nvl(v.med03, 0)
-             when 4  then nvl(v.med04, 0)
-             when 6  then nvl(v.med06, 0)
-             when 9  then nvl(v.med09, 0)
-             when 12 then nvl(v.med12, 0)
-             else 0
-        end / r.fator_exibicao                 as media_janela,
+        -- AG: N_MESES seleciona a coluna de media; fora da lista -> 0.
+        --
+        -- ⚠ `greatest(0, ...)` — DESVIO DELIBERADO DA PLANILHA, 09/10/2026.
+        -- As MED* somam a venda LIQUIDA dos meses da janela, e um mes pode ser
+        -- negativo quando a devolucao supera a venda. Isso e' correto e fica
+        -- como esta': a media continua carregando o mes negativo. O que nao
+        -- pode e' o TOTAL da janela sair negativo e virar cobertura negativa -
+        -- "este estoque dura -114 meses" nao quer dizer nada, e foi o que o
+        -- Diretor de Compras relatou em 09/10/2026 (SKU 810 com -114 meses,
+        -- 7593 com -66,3 e 5971 com -34,5).
+        --
+        -- Regra dele, aplicada aqui: so se o TOTAL der negativo a media vira
+        -- ZERO. Com media zero, toda a cadeia ja se comporta certo sozinha,
+        -- sem mais nenhuma mudanca:
+        --   * MESES_EST e MESES_EST_PED saem NULOS (as duas tem guarda
+        --     `media_janela <> 0`), e a tela mostra ausencia em vez de
+        --     numero negativo;
+        --   * SUG_COBERTURA vira `greatest(0, round(0 * alvo - est_pend))` = 0;
+        --   * no front, `coberturaComPedido` e `sugestaoCobertura` ja tratam
+        --     media falsy.
+        --
+        -- Medido em producao em 09/10/2026: atinge 3 SKUs, os tres que o
+        -- Diretor citou, e NENHUM deles tinha sugestao > 0 (o greatest ja
+        -- cobria esse lado). O desvio contra a planilha e' nesses 3.
+        greatest(0,
+            case r.n_meses
+                 when 2  then nvl(v.med02, 0)
+                 when 3  then nvl(v.med03, 0)
+                 when 4  then nvl(v.med04, 0)
+                 when 6  then nvl(v.med06, 0)
+                 when 9  then nvl(v.med09, 0)
+                 when 12 then nvl(v.med12, 0)
+                 else 0
+            end
+        ) / r.fator_exibicao                   as media_janela,
         nvl(v.cli_atac_00, 0)                  as qt_cli_atacado,
         nvl(v.cli_var_00, 0)                   as qt_cli_varejo,
         nvl(v.dias_sem_est_00, 0)              as dias_sem_estoque,

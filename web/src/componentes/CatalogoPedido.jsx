@@ -469,6 +469,8 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original, cobert
   const fracaoCritica = parametros?.cobertura_critica_fracao ?? 0.6;
   const critica = p.mesesCobertura != null && p.coberturaAlvo != null
     && p.mesesCobertura < p.coberturaAlvo * fracaoCritica;
+  // Sem média não há cobertura: não é dado faltando, é divisão que não existe.
+  const semVenda = !p.mediaJanela;
   const emCaixa = (p.fatorExibicao || 1) > 1;
   const seta = p.tendPct == null ? "→" : p.tendPct > 0.03 ? "↑" : p.tendPct < -0.03 ? "↓" : "→";
   const corSeta = p.tendPct == null ? CINZA : p.tendPct > 0.03 ? NAVY : p.tendPct < -0.03 ? RED : CINZA;
@@ -534,11 +536,22 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original, cobert
       </td>
       <td className="num px-2 py-2 text-center font-semibold"
           style={{ background: F_COB, color: critica ? RED : "#7E22CE" }}>
-        <div>
-          <span className="font-normal text-gray-400 text-2xs">agora </span>
-          {numero(p.mesesCobertura, 1)}
-          <span className="font-normal text-gray-400"> / {numero(p.coberturaAlvo, 1)}</span>
-        </div>
+        {/* "sem venda" em vez de traço quando a média é zero: o traço é
+            ambíguo (parece dado faltando) e o número não existe mesmo — não há
+            por quanto dividir. Acontece quando o SKU não vendeu na janela, e
+            também quando a devolução superou a venda e o total ficou negativo,
+            caso em que o dbt trava a média em zero (int_produto_demanda.sql).
+            Pedido do Diretor em 09/10/2026, junto com o fim das coberturas
+            negativas (-114 meses no SKU 810). */}
+        {semVenda ? (
+          <div className="text-2xs font-normal text-gray-400">sem venda</div>
+        ) : (
+          <div>
+            <span className="font-normal text-gray-400 text-2xs">agora </span>
+            {numero(p.mesesCobertura, 1)}
+            <span className="font-normal text-gray-400"> / {numero(p.coberturaAlvo, 1)}</span>
+          </div>
+        )}
         {/* Projeção de "se eu comprar isso agora" — só aparece com quantidade
             digitada, que é justamente a pergunta que digitar existe para
             responder (item 5 do Diretor, 08/09). Verde quando a projeção
