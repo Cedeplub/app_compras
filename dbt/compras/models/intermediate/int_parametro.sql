@@ -103,7 +103,22 @@ final as (
 
         -- UNICO parametro de texto: 'LITROS' | 'PESO' | qualquer outro valor
         -- cai no ramo UNIDADE_MASTER da coluna BC (Parametros!$B$19)
-        {{ compras_parametro_txt('MEDIDA_PEDIDO') }}             as medida_pedido
+        {{ compras_parametro_txt('MEDIDA_PEDIDO') }}             as medida_pedido,
+
+        -- Decreto 7.799: a data a partir da qual o ST deixou de vir destacado
+        -- na compra INTERESTADUAL e passou a ser somado ao custo/valor
+        -- gerencial. E' a condicao 2 das TRES do ST embutido - ver o cabecalho
+        -- de int_produto_custo.sql. Regra fechada pelo Diretor de Compras em
+        -- 09/10/2026.
+        --
+        -- ⚠ Entra por compras_parametro_txt + to_date, e nao por _num: a
+        -- macro numerica converteria '2022-10-01' em 2022 menos 10 menos 1 se
+        -- o Oracle resolvesse os hifens como subtracao, ou simplesmente
+        -- falharia. Mascara explicita, como a de NLS_NUMERIC_CHARACTERS da
+        -- macro numerica, e pelo mesmo motivo: parametro fiscal silenciosamente
+        -- convertido errado e o pior defeito que este projeto pode ter.
+        to_date({{ compras_parametro_txt('ST_BENEFICIO_INICIO') }}, 'YYYY-MM-DD')
+                                                                 as st_beneficio_inicio
       from ativo
 )
 

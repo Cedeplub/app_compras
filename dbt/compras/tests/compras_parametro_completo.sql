@@ -43,6 +43,10 @@ faltando as (
     -- epoca; incluida em 02/09/2026 junto com os tres limiares da taxonomia
     -- nova de alertas (OPORTUNIDADE_DE_GIRO e MARGEM_ALTA).
     union all select 'COBERTURA_CRITICA_FRACAO'      from parametro where cobertura_critica_fracao  is null
+    -- ST_BENEFICIO_INICIO entrou em 09/10/2026 com a regra das tres condicoes
+    -- do ST embutido. Sem ele, a condicao 2 nao tem data e NENHUM produto
+    -- somaria ST - uma queda silenciosa do valor gerencial em ~2.800 ativos.
+    union all select 'ST_BENEFICIO_INICIO'            from parametro where st_beneficio_inicio       is null
     union all select 'OPORTUNIDADE_GIRO_MESES'       from parametro where oportunidade_giro_meses   is null
     union all select 'MARGEM_ALTA_MIN'               from parametro where margem_alta_min           is null
     union all select 'MARGEM_ALTA_MIN_VAREJO'        from parametro where margem_alta_min_varejo    is null

@@ -82,41 +82,89 @@
 -- when.
 --
 -- ── ⚠ ST JA EMBUTIDO NA ENTRADA: quando NAO se soma ICMS-ST ────────────────
--- Relatado pelo Diretor de Compras em 09/10/2026: "entradas anteriores a
--- 01/10/2022 ja trazem o ICMS-ST no valor e no custo, e o painel soma o ST de
--- novo". O fato e' real; a REGRA proposta (corte por data) nao e'.
+-- Regra FECHADA pelo Diretor de Compras em 09/10/2026. Ela substitui tanto o
+-- corte por data que ele propos na primeira rodada quanto a deteccao por
+-- CUSTOULTENTSEMST que vigorou entre as duas - as duas estao descritas no fim
+-- deste bloco, com os numeros, porque quem reabrir este codigo precisa saber
+-- por que nenhuma das duas ficou.
 --
--- Medido contra a fonte (PCEST, filial 2, 09/10/2026). O WinThor guarda
--- CUSTOULTENTSEMST ao lado de CUSTOULTENT: quando os dois diferem, o ST da
--- nota esta DENTRO do custo. Perguntando a ele em vez de inferir:
+-- SOMA-SE o ICMS-ST ao custo/valor gerencial quando as TRES condicoes valem
+-- AO MESMO TEMPO:
 --
---   * 177 SKUs ativos tem ST de fato embutido (65 com estoque ou venda). O
---     Diretor contou 171/59 - praticamente o mesmo conjunto, entao a MEDIDA
---     dele estava certa.
---   * Mas nao ha corte de data: a populacao aparece em TODOS os anos,
---     inclusive 2024 (12 ativos), 2025 (5) e 2026 (5). Nao foi mudanca de
---     regime, e caracteristica de cada entrada.
---   * A regra de data acertaria 131 ativos, alteraria 40 que NAO tem ST
---     embutido (erro para baixo no preco de venda) e deixaria 29 de fora.
---   * O exemplo que ele deu, o SKU 1843, NAO tem ST nenhum na ultima entrada
---     (VLSTULTENT = 0,00; custo com e sem ST sao o mesmo 39,82). Como a CEDEP
---     e' a substituta, ela recolhe o ST na venda - entao somar o ST ali esta
---     CERTO, e o 53,84 que a tela mostra nao e' defeito.
+--   1. CADASTRO: modalidade = ST_SUBSTITUTO. A CEDEP e' a substituta e recolhe
+--      o ST na SAIDA. Produto Normal ou ST_RECOLHIDO nunca soma.
+--   2. DATA: ultima entrada a partir de ST_BENEFICIO_INICIO (01/10/2022,
+--      Decreto 7.799). Antes dela, produto ST vinha com o ST destacado na nota
+--      e o imposto ja entrava no custo.
+--   3. ORIGEM: fornecedor de FORA da Bahia. O beneficio vale so' para compra
+--      INTERESTADUAL - distribuidor ou industria da BA sempre veio, e continua
+--      vindo, com o ST ja no preco.
 --
--- Por isso a deteccao e' por SKU, pela coluna da fonte, e nao por data.
+-- Falhando QUALQUER uma, o ST ja esta no valor de entrada (ou nao existe) e
+-- nao soma. E' por isso que a flag se chama `st_ja_na_entrada` e e' 1 por
+-- padrao: a excecao e' somar, nao deixar de somar.
 --
--- O QUE SE FAZ quando o ST esta embutido: NAO soma o ICMS-ST calculado. O
--- custo ja carrega o ST REALMENTE COBRADO, que e' numero melhor que um
--- recalculado - conferido no SKU 1680: 2.710,04 (sem ST) + 1.015,75 (ST da
--- nota) = 3.725,79 (CUSTOULTENT), ao centavo. O ajuste de imagem da INGRAX
--- continua entrando: ele nao tem nada a ver com ST.
+-- ── POR QUE AS TRES JUNTAS, nas palavras dele ──────────────────────────────
+--   * so' a DATA falha nas compras dentro do estado depois de 2022 - sao os
+--     casos de 2024-2026 que a deteccao por coluna achava e ninguem explicava;
+--   * so' a NOTA falha nas entradas SEM nota (19 ativos com data 30/06/2013,
+--     a carga inicial do WinThor) e trata igual o que e' diferente: outros 7
+--     com a MESMA data saiam como "sem ST" so' porque a coluna nao diferia;
+--   * so' o CADASTRO nao diz como aquela compra especifica veio.
+--
+-- ── A LEITURA DA NOTA NAO SUMIU: virou CONFERENCIA ─────────────────────────
+-- `custo_ult_ent > custo_ult_ent_sem_st` continua calculada, agora com o nome
+-- que descreve o que ela e': `st_destacado_na_nota`. Ela NAO decide mais nada
+-- no custo. Serve ao relatorio de divergencia (regra x nota x cadastro) que o
+-- Diretor pediu para mandar ao Fiscal - onde regra e nota discordam, pode ser
+-- erro de CADASTRO, e nao do painel.
+--
+-- ── A ORIGEM DA COMPRA NAO E' A DO CADASTRO ────────────────────────────────
+-- A condicao 3 le `int_produto_entrada_fornecedor.uf_entrada`, que e' a UF do
+-- fornecedor da entrada QUE FORMOU O CUSTO (casada por produto + dia de
+-- PCEST.DTULTENT) - nao `int_produto_fiscal.uf_origem`, que e' a UF do
+-- fornecedor CADASTRADO no produto. Medido em 09/10/2026 nos 3.055 ativos onde
+-- a condicao 3 decide: as duas divergem em 235, e em 191 deles a compra veio
+-- da BAHIA com o cadastro apontando para fora. O cadastro somaria ST em 191
+-- produtos que ja vieram com ele no preco.
+--
+-- ⚠ CONDICAO NAO COMPROVADA E' CONDICAO FALHA. Sem UF do fornecedor da entrada
+-- (28 ativos) ou sem data de ultima entrada (43), a condicao nao se verifica e
+-- o ST NAO soma. E' a direcao conservadora de proposito: deixar de somar
+-- subestima o custo e o preco sugerido, e aparece; somar sobre um ST que ja
+-- estava dentro conta o imposto duas vezes e nao aparece em lugar nenhum.
+--
+-- ── O QUE MUDA, medido em 09/10/2026 ───────────────────────────────────────
+--   ativos ST_SUBSTITUTO ................................. 3.279
+--   param de somar por DATA (entrada antes de 01/10/2022) .. 181
+--   param de somar por DATA AUSENTE ......................... 43
+--   param de somar por ORIGEM (fornecedor da BA) ............ 214
+--   param de somar por FALTA DE UF .......................... 28
+--   continuam somando .................................... ~2.813
+-- Conferencia do Diretor: 1689 e 2671 (entradas de 2013 e 2014) param de
+-- somar - gerencial igual a entrada, R$ 44,14 e R$ 6,99.
 --
 -- ⚠ ISTO MUDA CUSTO_TOT_GERENCIAL, que e' coluna de FAT_PEDIDO e base de toda
--- margem e todo preco sugerido. 177 SKUs ativos mudam de custo, e com ele de
--- preco sugerido. A comparacao celula a celula contra a planilha V11
--- (validar/validar_pedido.py) passa a divergir nessa coluna para esses SKUs:
--- a planilha nao conhece esta correcao. E' divergencia DELIBERADA, decidida
--- com o usuario em 09/10/2026, e nao regressao.
+-- margem e todo preco sugerido. A comparacao celula a celula contra a planilha
+-- V11 (validar/validar_pedido.py) diverge nessa coluna para esses SKUs: a
+-- planilha nao conhece a regra. E' divergencia DELIBERADA - e, desde a
+-- resposta do Diretor em 09/10/2026, o PAINEL e' a referencia e a planilha nao
+-- sera corrigida.
+--
+-- ── AS DUAS REGRAS QUE NAO FICARAM, e por que ──────────────────────────────
+-- 1. CORTE SO' POR DATA (1a proposta, 09/10/2026). Media dele: 171 ativos com
+--    ST embutido. Medindo contra PCEST: 177 - a MEDIDA estava certa. Mas a
+--    populacao aparecia em TODOS os anos, inclusive 2024 (12), 2025 (5) e 2026
+--    (5), e o corte puro acertaria 131, alteraria 40 sem ST embutido e deixaria
+--    29 de fora. Os de 2024-2026 eram compra DENTRO do estado - que a condicao
+--    3 agora explica.
+-- 2. DETECCAO POR CUSTOULTENTSEMST (o que vigorou entre as duas rodadas).
+--    Pergunta a fonte se o ST esta dentro daquele custo, e acerta quando ha
+--    nota. Nao tem resposta para entrada SEM nota: dos 26 ativos com data
+--    30/06/2013 (carga inicial), 19 saiam somando ST e 7 nao, por diferenca de
+--    coluna e nao de fato. O SKU 1843, que o Diretor deu como exemplo na 1a
+--    rodada, nao tem ST na ultima entrada (VLSTULTENT = 0,00) - pela regra
+--    nova ele soma ou nao conforme data e origem, nao conforme a coluna.
 --
 -- ── BT x BU: o que muda e' SO' o primeiro termo ─────────────────────────────
 -- BT usa $BH2 (VL_ENT_UNIT, o valor da nota) e BU usa $BI2 (CUSTO_ULT_ENT, o
@@ -178,6 +226,13 @@ parametro as (
     select * from {{ ref('int_parametro') }}
 ),
 
+-- A ORIGEM da compra que formou o custo - condicao 3 das tres do ST embutido.
+-- Nao e' o fornecedor do cadastro; ver o bloco "A ORIGEM DA COMPRA NAO E' A DO
+-- CADASTRO" no cabecalho.
+entrada as (
+    select * from {{ ref('int_produto_entrada_fornecedor') }}
+),
+
 -- BT e BU. A aliquota interna da BA (Parametros!$B$16) vem do int_parametro -
 -- nenhum 0,205 escrito dentro do SQL.
 imposto as (
@@ -190,17 +245,38 @@ imposto as (
         f.mva,
         f.cred_icms,
         f.piscof_ef,
-        -- ST ja embutido? Pergunta respondida pela FONTE, por SKU - ver o
-        -- bloco "ST JA EMBUTIDO" no cabecalho. O `+ 0.005` e' tolerancia de
-        -- centavo: igualdade exata entre dois NUMBER do Oracle nao e' garantia.
+        -- ── AS TRES CONDICOES, escritas uma vez so' ───────────────────────
+        -- `st_ja_na_entrada` = 1 significa "NAO soma o ST calculado". E' 1 por
+        -- PADRAO: so' as tres condicoes juntas o levam a 0. Ver o bloco "ST JA
+        -- EMBUTIDO NA ENTRADA" no cabecalho para o porque de cada uma.
+        --
+        -- ⚠ A negacao esta escrita como `case ... then 0 else 1`, e nao como
+        -- um `not(...)`: com UF ou data NULAS, `not` daria UNKNOWN e a linha
+        -- cairia no lugar errado em silencio. Assim, tudo que nao PROVA as
+        -- tres condicoes vai para o 1 - a direcao conservadora.
+        {{ compras_st_ja_na_entrada() }}                   as st_ja_na_entrada,
+        -- A leitura da NOTA, que ate 09/10/2026 era a regra e agora e'
+        -- CONFERENCIA: o WinThor guarda CUSTOULTENTSEMST ao lado de
+        -- CUSTOULTENT, e quando os dois diferem o ST daquela nota esta DENTRO
+        -- do custo. Nao decide nada aqui; alimenta o relatorio de divergencia
+        -- (regra x nota x cadastro) que vai para o Fiscal. O `+ 0.005` e'
+        -- tolerancia de centavo: igualdade exata entre dois NUMBER do Oracle
+        -- nao e' garantia.
         case when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
              then 1 else 0
-        end                                                as st_ja_na_entrada,
+        end                                                as st_destacado_na_nota,
+        e.dt_ult_ent,
+        e.uf_entrada,
+        e.entrada_sem_nota,
+        e.fornecedor_sem_uf,
         -- BT: base sobre o VALOR DA NOTA
         case when f.modalidade is null or f.modalidade <> 'ST_SUBSTITUTO'
              then 0
-             -- o ST da nota ja esta no custo: somar o calculado contaria 2x
-             when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
+             -- o ST ja esta no valor de entrada: somar o calculado contaria
+             -- 2x. As tres condicoes moram em `st_ja_na_entrada`, acima - nao
+             -- repita a expressao aqui, que foi assim que a regra antiga
+             -- acabou escrita em quatro lugares.
+             when {{ compras_st_ja_na_entrada() }} = 1
              then 0
              when f.mva is null or f.vl_ent_unit = 0
              then null   -- o "" do Excel: sem MVA ou sem nota, nao ha base
@@ -210,7 +286,7 @@ imposto as (
         -- BU: base sobre o CUSTO CONTABIL; o guarda-corpo continua sendo $BH2
         case when f.modalidade is null or f.modalidade <> 'ST_SUBSTITUTO'
              then 0
-             when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
+             when {{ compras_st_ja_na_entrada() }} = 1
              then 0                                   -- idem BT: ja esta dentro
              when f.mva is null or f.vl_ent_unit = 0
              then null
@@ -232,7 +308,7 @@ imposto as (
         -- com o do custo.
         case when f.modalidade is null or f.modalidade <> 'ST_SUBSTITUTO'
              then 0
-             when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
+             when {{ compras_st_ja_na_entrada() }} = 1
              then 0                                   -- idem BT/BU: ja esta dentro
              when f.mva is null or f.vl_ent_unit = 0
              then null
@@ -248,6 +324,8 @@ imposto as (
       from fiscal f
       join base b
         on b.codigo = f.codigo
+      left join entrada e
+        on e.codigo = f.codigo
      cross join parametro par
 ),
 
@@ -271,6 +349,16 @@ final as (
              then i.custo_ult_ent + i.icms_st_s_custo + i.custo_adicional_imagem
         end                                                as custo_tot_gerencial,
         i.st_ja_na_entrada,
+        -- Os insumos da CONFERENCIA (regra x nota x cadastro). Nao entram em
+        -- fat_pedido nem em compras_pedido - as 122 colunas sao o gabarito e
+        -- so' elas. Saem daqui para o relatorio que vai ao Fiscal, e ficam no
+        -- modelo, e nao numa consulta solta do validador, para a lista ser
+        -- montada pelos MESMOS numeros que a regra usou.
+        i.st_destacado_na_nota,
+        i.dt_ult_ent,
+        i.uf_entrada,
+        i.entrada_sem_nota,
+        i.fornecedor_sem_uf,
         i.icms_st_bruto,
         i.valor_adicional_imagem,
         -- O espelho BRUTO de custo_tot_gerencial. Nao entra em fat_pedido:

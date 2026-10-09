@@ -29,3 +29,8 @@ Thumbs.db
 # front v2
 web/node_modules/
 app/static/v2/
+
+# Relatorios gerados pelos scripts de validar/ - saida de execucao, nao fonte.
+# Sao regerados a cada rodada e carregam a data da rodada; versiona-los faria
+# cada build virar um diff de centenas de linhas que ninguem le.
+validar/saida/
