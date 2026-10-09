@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Percent } from "lucide-react";
 import { api } from "../api/cliente.js";
-import { numero, paraCampoPreco, parseNumeroPreco } from "../formato.js";
-import { precoDeMargem, precoDeMKP } from "../precoEditavel.js";
+import { numero, paraCampoPreco, parseNumeroPreco, percentual } from "../formato.js";
+import { precoDeMargem, precoDeMKP, avaliarMargem,
+         MARGEM_ALERTA, MARGEM_NEGATIVA } from "../precoEditavel.js";
 
 /* Aplicar margem ou MKP a TODOS os itens do filtro — item 1c do Diretor de
  * Compras, 09/10/2026:
@@ -75,11 +76,19 @@ export default function AplicarEmLote({ filtros, parametros, aoAplicar, aoFechar
     let semCusto = 0;
     let acimaDoTeto = 0;
 
+    // Degraus de margem do item 4 do Diretor: "mostrar quantos itens ficaram
+    // abaixo de 12% e de 0%". Contados sobre o PIOR cenário do item
+    // (`cenarioPior`, resolvido por `contrato._cenario_pior`) — e não sobre o
+    // cenário escolhido na tela, que pode ser o mais generoso dos três.
+    let abaixoDoAlerta = 0;   // nível >= ALERTA: abaixo de margem_alerta_min
+    let margemNegativa = 0;   // nível NEGATIVA: abaixo de zero
+
     for (const it of base.itens) {
       const precos = {};
       let algum = false;
       let faltouCusto = false;
       let passouDoTeto = false;
+      let piorNivel = 0;
 
       for (const [praca, custo, icmsEf] of [
         ["atacado", it.custoAT, it.icmsEfAT],
@@ -92,15 +101,28 @@ export default function AplicarEmLote({ filtros, parametros, aoAplicar, aoFechar
                           { pisCofins: it.pisCofinsEfetivo, comissao, icmsEf })
           : precoDeMKP(valor, custo);
         if (preco == null) { passouDoTeto = true; continue; }
-        precos[praca] = { preco, custo };
+        const { nivel } = avaliarMargem(preco, [it.cenarioPior],
+                                        { pisCofins: it.pisCofinsEfetivo, comissao },
+                                        parametros);
+        if (nivel > piorNivel) piorNivel = nivel;
+        precos[praca] = { preco, custo, cenarioPior: it.cenarioPior,
+                          pisCofins: it.pisCofinsEfetivo };
         algum = true;
       }
 
-      if (algum) linhas.push({ codigo: it.codigo, precos, item: it });
+      if (algum) {
+        linhas.push({ codigo: it.codigo, precos, item: it });
+        // Conta uma vez por ITEM, pelo pior dos canais preenchidos — é a
+        // leitura que o Diretor pediu ("quantos itens ficaram abaixo"), e
+        // contar por preço faria "Ambos" dobrar o número sem dobrar o
+        // problema.
+        if (piorNivel >= MARGEM_ALERTA) abaixoDoAlerta += 1;
+        if (piorNivel === MARGEM_NEGATIVA) margemNegativa += 1;
+      }
       else if (faltouCusto) semCusto += 1;
       else if (passouDoTeto) acimaDoTeto += 1;
     }
-    return { linhas, semCusto, acimaDoTeto };
+    return { linhas, semCusto, acimaDoTeto, abaixoDoAlerta, margemNegativa };
   }, [base, valorValido, valor, tipo, canal, parametros]);
 
   const carregando = base == null && erro == null;
@@ -182,6 +204,23 @@ export default function AplicarEmLote({ filtros, parametros, aoAplicar, aoFechar
                       do cenário deles.
                     </div>
                   )}
+                  {/* Item 4 do Diretor. Uma margem de 20% no cenário escolhido
+                      pode ser 2% no pior — e o lote preenche os dois sem
+                      distinguir. Dizer isto ANTES de preencher é o que
+                      transforma o número em decisão. */}
+                  {resultado.abaixoDoAlerta > 0 && (
+                    <div className="mt-0.5 text-amber-700">
+                      {numero(resultado.abaixoDoAlerta)} abaixo da margem mínima
+                      {parametros?.margem_alerta_min != null
+                        && ` (${percentual(parametros.margem_alerta_min, 0)})`} no pior cenário.
+                    </div>
+                  )}
+                  {resultado.margemNegativa > 0 && (
+                    <div className="mt-0.5 font-semibold text-red-700">
+                      {numero(resultado.margemNegativa)} com margem NEGATIVA no pior
+                      cenário — “Definir preços” vai pedir confirmação.
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -227,7 +266,8 @@ export function aplicarNosMapas(linhas, canal, setPrecosAT, setPrecosVAR) {
         const p = l.precos.atacado;
         if (p) {
           novo[l.codigo] = { valor: paraCampoPreco(p.preco),
-                             decidido: l.item.precoDecididoAtacadoAV, custo: p.custo };
+                             decidido: l.item.precoDecididoAtacadoAV, custo: p.custo,
+                             cenarios: [p.cenarioPior], pisCofins: p.pisCofins };
         }
       }
       return novo;
@@ -240,7 +280,8 @@ export function aplicarNosMapas(linhas, canal, setPrecosAT, setPrecosVAR) {
         const p = l.precos.varejo;
         if (p) {
           novo[l.codigo] = { valor: paraCampoPreco(p.preco),
-                             decidido: l.item.precoDecididoVarejoAV, custo: p.custo };
+                             decidido: l.item.precoDecididoVarejoAV, custo: p.custo,
+                             cenarios: [p.cenarioPior], pisCofins: p.pisCofins };
         }
       }
       return novo;

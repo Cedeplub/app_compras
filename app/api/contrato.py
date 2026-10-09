@@ -115,6 +115,50 @@ def _custo_do_cenario(p: dict, cenario: str) -> float | None:
     return _CUSTO_DO_CENARIO[cenario](p)
 
 
+def _cenario_pior(p: dict) -> dict:
+    """O cenário de MENOR margem do produto — o custo mais alto, no ICMS cheio.
+
+    Serve o aviso de margem mínima do item 4 do Diretor (09/10/2026) na
+    aplicação em LOTE. A tela, que recebe a lista inteira de cenários, acha o
+    pior pelo caminho direto: calcula a margem em cada um e pega a menor
+    (`margemPiorCenario`, precoEditavel.js). Aqui a lista não viaja — seriam
+    cinco objetos a mais em cada um dos 4.552 itens do filtro — então o pior
+    vem resolvido, e a redução abaixo é o que torna as duas resoluções
+    equivalentes.
+
+    ── Por que dá para resolver sem saber o preço ───────────────────────────
+    A margem é `K − icmsEf − custo/preço`, com K igual em todos os cenários.
+    Comparando dois a dois:
+
+      * Oficial × Sem Redução: MESMO custo (`custo_tot_gerencial`), então
+        quem decide é a alíquota. `icms_saida_ef <= icms_sem_red` sempre —
+        redução de base só diminui o imposto. Medido: 0 violações em 4.553
+        ativos, e o teste `compras_icms_saida_nao_supera_sem_reducao` guarda
+        isso. Logo Oficial NUNCA é o pior.
+      * ST s/Valor × Sem Redução: MESMA alíquota (os dois usam `icms_sem_red`,
+        ver _ICMS_DO_CENARIO), então quem decide é o custo — e a comparação
+        de custos não depende do preço.
+
+    Sobra: pior = maior custo entre os dois, com `icms_sem_red`. Sem preço na
+    conta, e por isso resolvível no servidor.
+
+    ⚠ NÃO é `margem_sem_red`, apesar de `int_produto_margem.sql:244` chamar
+    aquela coluna de "o PIOR cenario de atacado". Medido em 09/10/2026: ST
+    s/Valor dá margem MENOR em 3.014 dos 4.337 ativos com os três cenários,
+    com diferença de até 71,5 pontos — porque `custo_tot_s_valor +
+    ajuste_imagem` supera `custo_tot_gerencial` em 3.015 ativos.
+
+    Vale para as DUAS praças: varejo não tem Oficial, e o par que sobra é
+    exatamente o mesmo.
+    """
+    custos = [_custo_do_cenario(p, "st_valor"), _custo_do_cenario(p, "sem_red")]
+    validos = [c for c in custos if c is not None]
+    return {
+        "custo": max(validos) if validos else None,
+        "icmsEf": _f(p.get("icms_sem_red")),
+    }
+
+
 def _cenario_real(modalidade: str | None) -> str | None:
     """Qual cenário de fato se aplica ao produto hoje.
 
@@ -195,6 +239,12 @@ def base_precificacao(linhas: list[dict], cenario_sel: str | None) -> dict:
             "icmsEfVAR": _f(p.get(_ICMS_DO_CENARIO[cen_var])),
             "precoDecididoAtacadoAV": _f(p.get("alt_pv_at_av")),
             "precoDecididoVarejoAV": _f(p.get("alt_pv_var_av")),
+            # O pior cenário, para o aviso de margem mínima do lote (item 4 do
+            # Diretor): um só para as duas praças — ver `_cenario_pior`. Vai
+            # na forma `{custo, icmsEf}` de propósito, a MESMA de `_cenarios`,
+            # para a tela alimentar `margemPiorCenario` com a lista de uma
+            # linha e usar a mesma função dos campos digitados.
+            "cenarioPior": _cenario_pior(p),
         })
     return {"itens": itens, "total": len(itens)}
 

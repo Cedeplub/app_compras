@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Check, ChevronDown, Filter, Loader2, X } from "lucide-react";
 import { api } from "../api/cliente.js";
+import { useUltimaRequisicao } from "../ultimaRequisicao.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
 import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
@@ -11,7 +12,8 @@ import FiltroPreco from "../componentes/FiltroPreco.jsx";
 import AplicarEmLote, { aplicarNosMapas } from "../componentes/AplicarEmLote.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
-import { precoDeMargem, motivoMargemInvalida, motivoMKPInvalido, precoDeMKP, abaixoDoCusto } from "../precoEditavel.js";
+import { precoDeMargem, motivoMargemInvalida, motivoMKPInvalido, precoDeMKP, abaixoDoCusto,
+         avaliarMargem, MARGEM_ALERTA, MARGEM_CRITICA, MARGEM_NEGATIVA } from "../precoEditavel.js";
 import { data as fmtData, dataCompleta, moeda, numero, paraCampoPreco, parseNumeroPreco, quantidadeEstoque } from "../formato.js";
 import { textoConfirmacaoLote } from "../lotePrecoStatus.js";
 
@@ -206,23 +208,33 @@ export default function Precificacao() {
 
   const [loteAberto, setLoteAberto] = useState(false);
 
+  // Ignora resposta atrasada — ver ultimaRequisicao.js. Clicar rápido
+  // fazia a consulta antiga sobrescrever a nova (Diretor, 09/10/2026).
+  const novaRequisicao = useUltimaRequisicao();
+
   const buscar = useCallback(async () => {
+    const aindaVale = novaRequisicao();
     setCarregando(true);
     setErro(null);
     try {
-      setDados(await api.produtos({
+      const resposta = await api.produtos({
         ...filtrosAtuais,
         ordenar, dir,
         pagina,
         porPagina: POR_PAGINA,
-      }));
+      });
+      if (!aindaVale()) return;   // chegou atrasada: outra foi pedida depois
+      setDados(resposta);
     } catch (e) {
+      if (!aindaVale()) return;
       setErro(e.detalhe);
       setDados(null);
     } finally {
-      setCarregando(false);
+      // Guardado também: sem isto, a resposta atrasada apaga o "Carregando"
+      // da consulta que ainda está em curso.
+      if (aindaVale()) setCarregando(false);
     }
-  }, [filtrosAtuais, ordenar, dir, pagina, versaoDados]);
+  }, [filtrosAtuais, ordenar, dir, pagina, versaoDados, novaRequisicao]);
 
   useEffect(() => {
     const t = setTimeout(buscar, busca ? 350 : 0);
@@ -326,16 +338,37 @@ export default function Precificacao() {
         item.abaixoDoCusto =
           (item.precoAtacadoAV != null && abaixoDoCusto(item.precoAtacadoAV, entradaAT?.custo))
           || (item.precoVarejoAV != null && abaixoDoCusto(item.precoVarejoAV, entradaVAR?.custo));
+        // Margem mínima (item 4 do Diretor, 09/10/2026), pelo PIOR cenário.
+        // `cenarios` e `pisCofins` entram no instantâneo pela mesma razão que
+        // `custo` e `decidido`: a barra de lote tem de saber julgar o preço
+        // depois de a pessoa trocar de página, e `itens` é só a página atual.
+        // Snapshot antigo (sem `cenarios`) devolve nível 0 — não vira alarme
+        // falso nem some com o aviso de custo, que é independente deste.
+        const niveis = [
+          item.precoAtacadoAV != null
+            ? avaliarMargem(item.precoAtacadoAV, entradaAT?.cenarios,
+                            { pisCofins: entradaAT?.pisCofins, comissao: parametros?.comissao },
+                            parametros).nivel : 0,
+          item.precoVarejoAV != null
+            ? avaliarMargem(item.precoVarejoAV, entradaVAR?.cenarios,
+                            { pisCofins: entradaVAR?.pisCofins, comissao: parametros?.comissao },
+                            parametros).nivel : 0,
+        ];
+        item.nivelMargem = Math.max(...niveis);
         lista.push(item);
       }
     }
     return lista;
-  }, [precosAT, precosVAR]);
+  }, [precosAT, precosVAR, parametros]);
 
   const qtdPrecosLote = alteracoesLote.reduce(
     (s, it) => s + (it.precoAtacadoAV != null ? 1 : 0) + (it.precoVarejoAV != null ? 1 : 0), 0);
 
   const qtdAbaixoDoCusto = alteracoesLote.filter((it) => it.abaixoDoCusto).length;
+  // Contados por ITEM, pelo pior dos dois canais — a mesma leitura do diálogo
+  // de aplicação em lote, para os dois números não discordarem na mesma tela.
+  const qtdAbaixoDaMargem = alteracoesLote.filter((it) => it.nivelMargem >= MARGEM_ALERTA).length;
+  const qtdMargemNegativa = alteracoesLote.filter((it) => it.nivelMargem === MARGEM_NEGATIVA).length;
 
   // Quantos SKUs do lote NÃO estão na página visível agora — para a barra não
   // deixar o Diretor clicar "Gravar" sem saber que está incluindo edições de
@@ -563,6 +596,9 @@ export default function Precificacao() {
       {confirmarLote && (
         <ConfirmarDefinirPrecos qtdSkus={alteracoesLote.length} qtdPrecos={qtdPrecosLote}
                                  abaixoDoCusto={qtdAbaixoDoCusto}
+                                 abaixoDaMargem={qtdAbaixoDaMargem}
+                                 margemNegativa={qtdMargemNegativa}
+                                 margemAlertaMin={parametros?.margem_alerta_min}
                                  foraDaPagina={foraDaPaginaLote}
                                  gravando={gravandoLote} erro={erroLote}
                                  aoCancelar={() => { setConfirmarLote(false); setErroLote(null); }}
@@ -616,14 +652,22 @@ function BarraGravacaoLote({ qtdSkus, qtdPrecos, foraDaPagina, aoAbrirConfirmaca
  * — o lote não pode ser mais fácil de disparar por acidente do que um clique
  * por SKU seria. */
 function ConfirmarDefinirPrecos({ qtdSkus, qtdPrecos, foraDaPagina, abaixoDoCusto = 0,
+                                  abaixoDaMargem = 0, margemNegativa = 0, margemAlertaMin,
                                   gravando, erro, aoCancelar, aoConfirmar }) {
   const emLotes = qtdSkus > LIMITE_LOTE_PRECO;
   // Vender abaixo do custo pode ser decisão legítima (queima de estoque), mas
   // tem de ser DECISÃO. Com algum item nessa situação, o diálogo exige um
   // segundo gesto: a caixa marcada libera o botão. Pedido do Diretor em
   // 09/10/2026 — "destacar em vermelho e pedir confirmação ao definir".
+  //
+  // A MARGEM NEGATIVA entra na MESMA caixa, e não numa segunda (item 4 do
+  // Diretor: "vermelho e pede confirmação ao definir, igual a abaixo do
+  // custo"). Duas caixas pedindo o mesmo gesto viram duas caixas marcadas sem
+  // leitura — e os dois conjuntos se sobrepõem bastante, já que todo preço
+  // abaixo do custo tem margem negativa, mas não o contrário.
   const [cienteDoCusto, setCienteDoCusto] = useState(false);
-  const travado = abaixoDoCusto > 0 && !cienteDoCusto;
+  const exigeCiencia = abaixoDoCusto > 0 || margemNegativa > 0;
+  const travado = exigeCiencia && !cienteDoCusto;
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
          role="dialog" aria-modal="true" aria-labelledby="titulo-definir-precos">
@@ -653,14 +697,36 @@ function ConfirmarDefinirPrecos({ qtdSkus, qtdPrecos, foraDaPagina, abaixoDoCust
                   vão para o MESMO lote — nunca um lote por pedaço (§4.3). */}
               {emLotes && ` Como passa de ${LIMITE_LOTE_PRECO} itens, será enviado em pedaços, todos para o MESMO lote.`}
             </p>
-            {abaixoDoCusto > 0 && (
+            {/* Amarelo: avisa, não trava. Margem abaixo do mínimo é um
+                número que se quer VER antes de gravar, mas segurar o botão
+                por causa dele transformaria o aviso em obstáculo diário —
+                o Diretor pediu confirmação só abaixo de zero. Conta só os
+                que NÃO estão no bloco vermelho, para os dois números somarem
+                em vez de se sobreporem. */}
+            {abaixoDaMargem - margemNegativa > 0 && (
+              <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <span className="font-semibold">
+                  {numero(abaixoDaMargem - margemNegativa)} produto(s) abaixo da margem mínima
+                  {margemAlertaMin != null && ` (${pct(margemAlertaMin, 0)})`}
+                </span>{" "}
+                no pior cenário. Grava assim mesmo.
+              </p>
+            )}
+            {exigeCiencia && (
               <label className="mt-3 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2">
                 <input type="checkbox" checked={cienteDoCusto} className="mt-0.5"
                        onChange={(e) => setCienteDoCusto(e.target.checked)} />
                 <span className="text-xs text-red-700">
-                  <span className="font-semibold">
-                    {numero(abaixoDoCusto)} produto(s) com preço ABAIXO DO CUSTO.
-                  </span>{" "}
+                  {abaixoDoCusto > 0 && (
+                    <span className="font-semibold">
+                      {numero(abaixoDoCusto)} produto(s) com preço ABAIXO DO CUSTO.{" "}
+                    </span>
+                  )}
+                  {margemNegativa > 0 && (
+                    <span className="font-semibold">
+                      {numero(margemNegativa)} com MARGEM NEGATIVA no pior cenário.{" "}
+                    </span>
+                  )}
                   Confirmo que é intencional.
                 </span>
               </label>
@@ -674,7 +740,7 @@ function ConfirmarDefinirPrecos({ qtdSkus, qtdPrecos, foraDaPagina, abaixoDoCust
             Cancelar
           </button>
           <button type="button" onClick={aoConfirmar} disabled={gravando || travado}
-                  title={travado ? "Marque a caixa acima para confirmar os preços abaixo do custo." : undefined}
+                  title={travado ? "Marque a caixa acima para confirmar os preços abaixo do custo ou de margem negativa." : undefined}
                   className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                   style={{ background: NAVY }}>
             {gravando && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
@@ -826,11 +892,19 @@ function Tabela({ itens, cenarioSel, parametros, ordenar, dir, aoOrdenar, precos
                    // do custo mesmo depois de a pessoa trocar de página, e
                    // `itens` é só a página atual. É o custo DO CENÁRIO no
                    // instante da digitação — quem digitou viu aquele custo.
+                   // `cenarios` e `pisCofins` entram no instantâneo pelo mesmo
+                   // motivo que `custo`: o aviso de margem mínima (item 4 do
+                   // Diretor) é julgado pelo PIOR cenário, e a barra de lote
+                   // precisa refazer esse julgamento depois de a pessoa trocar
+                   // de página. `cenarios` é a lista INTEIRA da praça, não o
+                   // cenário escolhido — é ela que define qual é o pior.
                    setPrecoAT={(v, custo) => setPrecosAT((a) => ({
-                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoAtacadoAV, custo },
+                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoAtacadoAV, custo,
+                                         cenarios: p.cenariosAtacado, pisCofins: p.pisCofinsEfetivo },
                    }))}
                    setPrecoVAR={(v, custo) => setPrecosVAR((a) => ({
-                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoVarejoAV, custo },
+                     ...a, [p.codigo]: { valor: v, decidido: p.precoDecididoVarejoAV, custo,
+                                         cenarios: p.cenariosVarejo, pisCofins: p.pisCofinsEfetivo },
                    }))} />
           ))}
         </tbody>
@@ -941,6 +1015,7 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
       </td>
       <td className="num px-2 py-2 text-center text-gray-500" style={{ background: FUNDO_AT }}>{moeda(at.sugerido)}</td>
       <CelulaEdicao fundo={FUNDO_AT_EDIT} sim={at} base={baseAT} cenarioSel={cenarioSel}
+                    cenarios={p.cenariosAtacado} parametros={parametros}
                     valor={precoAT} aoTrocar={setPrecoAT}
                     rotulo={`Novo preço de atacado do produto ${p.codigo}`}
                     decidido={p.precoDecididoAtacadoAV}
@@ -956,6 +1031,7 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
       </td>
       <td className="num px-2 py-2 text-center text-gray-500" style={{ background: FUNDO_VAR }}>{moeda(vr.sugerido)}</td>
       <CelulaEdicao fundo={FUNDO_VAR_EDIT} sim={vr} base={baseVAR} cenarioSel={cenarioSel}
+                    cenarios={p.cenariosVarejo} parametros={parametros}
                     valor={precoVAR} aoTrocar={setPrecoVAR}
                     rotulo={`Novo preço de varejo do produto ${p.codigo}`}
                     decidido={p.precoDecididoVarejoAV}
@@ -997,7 +1073,8 @@ function Tributacao({ p }) {
  * Defeito A (PROMPT_ETAPA_12 §2: o botão sumia depois da 1ª gravação e nunca
  * reaparecia); remover o botão daqui elimina o defeito por construção, em vez
  * de só consertá-lo. */
-function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, decidido, aplicado, dataDecisao, dataAplicado }) {
+function CelulaEdicao({ fundo, sim, base, cenarioSel, cenarios, parametros, valor, aoTrocar,
+                        rotulo, decidido, aplicado, dataDecisao, dataAplicado }) {
   // Etapa 15, ponto 2: "decidido, ainda não aplicado" é o único estado em que
   // o campo nasce preenchido e a sugestão desce para a linha de apoio — os
   // dois "efeitos" do decidido (§4.3 do prompt). Uma vez aplicado, é como se
@@ -1074,7 +1151,36 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
   // preço é gravável. É aviso — e por isso continua marcado DEPOIS do blur,
   // contra o valor que de fato está no campo, não contra o texto em edição.
   // A confirmação de "Definir preços" cobra o segundo gesto.
-  const precoAbaixoDoCusto = abaixoDoCusto(parseNumeroPreco(valor), sim.custo);
+  const precoNoCampo = parseNumeroPreco(valor);
+  const precoAbaixoDoCusto = abaixoDoCusto(precoNoCampo, sim.custo);
+
+  // Margem mínima (item 4 do Diretor, 09/10/2026). Julgada pelo PIOR cenário
+  // da praça, não pelo escolhido: no 2720 o preço de R$ 18,00 dá margem
+  // positiva num cenário e -18,9% noutro, e quem grava grava o preço, não o
+  // cenário. Como `precoAbaixoDoCusto`, é julgado contra o VALOR DO CAMPO e
+  // não contra o texto em edição — o aviso sobrevive ao blur, porque não é
+  // erro de digitação: é consequência do preço.
+  //
+  // Os dois avisos são independentes e podem aparecer juntos. Todo preço
+  // abaixo do custo tem margem negativa, mas o contrário é falso — e é
+  // justamente esse "contrário" (preço ACIMA do custo e margem negativa, pelos
+  // ~34% de impostos e comissão que saem antes) o caso que o Diretor mediu e
+  // que passava calado.
+  const { nivel: nivelMargemCampo, motivo: motivoMargemBaixa, margem: margemPiorCampo } =
+    avaliarMargem(precoNoCampo, cenarios, base, parametros);
+  const margemCritica = nivelMargemCampo >= MARGEM_CRITICA;
+  const margemEmAlerta = nivelMargemCampo === MARGEM_ALERTA;
+
+  // A borda dos TRÊS campos vem daqui: preço, margem e MKP escrevem o mesmo
+  // preço, então avisar só no campo onde a pessoa digitou esconderia o aviso
+  // de quem entrou pela margem — e o Diretor pediu explicitamente que valesse
+  // "para a digitação de preço, margem e MKP".
+  const bordaAviso = (precoAbaixoDoCusto || margemCritica) ? "border-red-500"
+    : margemEmAlerta ? "border-amber-500" : null;
+  const tituloAviso = [
+    precoAbaixoDoCusto && `Abaixo do custo do cenário (${moeda(sim.custo)}).`,
+    motivoMargemBaixa,
+  ].filter(Boolean).join(" ") || undefined;
 
   return (
     <td className="px-2 py-1.5 text-center" style={{ background: fundo, minWidth: 215 }}>
@@ -1091,19 +1197,20 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
           // para a linha de apoio "sugerido" logo abaixo, porque um
           // placeholder não aparece atrás de um valor.
           placeholder={!pendente && sim.sugerido != null ? numero(sim.sugerido, 2) : undefined}
-          title={precoAbaixoDoCusto
-            ? `Abaixo do custo do cenário (${moeda(sim.custo)}). Grava, mas pede confirmação.`
-            : undefined}
+          title={tituloAviso}
           className={`num w-[68px] rounded-md border bg-white px-1 py-1 text-center text-sm ${
-            precoAbaixoDoCusto ? "border-red-500 font-semibold text-red-700" : "border-gray-300"}`}
+            precoAbaixoDoCusto || margemCritica ? "border-red-500 font-semibold text-red-700"
+            : margemEmAlerta ? "border-amber-500 font-semibold text-amber-700"
+            : "border-gray-300"}`}
         />
         <input
           type="text" inputMode="decimal" value={valorMargem} disabled={!custoValido}
           aria-label={`Margem alvo de ${rotulo}`}
           onChange={(e) => aoTrocarMargem(e.target.value)}
           onBlur={aoSairDoCampo}
-          title={motivoMargem}
-          className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${margemInvalida ? "border-red-500" : "border-gray-300"}`}
+          title={motivoMargem ?? tituloAviso}
+          className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${
+            margemInvalida ? "border-red-500" : bordaAviso ?? "border-gray-300"}`}
         />
         <span className="text-2xs text-gray-400">%</span>
         <input
@@ -1111,8 +1218,9 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
           aria-label={`MKP de ${rotulo}`}
           onChange={(e) => aoTrocarMKP(e.target.value)}
           onBlur={aoSairDoCampo}
-          title={motivoMKP}
-          className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${mkpInvalido ? "border-red-500" : "border-gray-300"}`}
+          title={motivoMKP ?? tituloAviso}
+          className={`num w-[40px] rounded-md border bg-white px-1 py-1 text-center text-2xs disabled:bg-gray-100 disabled:text-gray-400 ${
+            mkpInvalido ? "border-red-500" : bordaAviso ?? "border-gray-300"}`}
         />
         <span className="text-2xs text-gray-400">x</span>
       </div>
@@ -1121,6 +1229,16 @@ function CelulaEdicao({ fundo, sim, base, cenarioSel, valor, aoTrocar, rotulo, d
           ? `Pz ${moeda(sim.prazo)} · ${numero(sim.mkpPrazo, 2)}x/${pct(sim.margemPrazo, 0)}`
           : "Pz —"}
       </div>
+      {/* O número que o aviso afirma, escrito na célula — não só no `title`.
+          Um aviso que só existe ao passar o mouse não existe no celular, e a
+          Precificação é usada nele. Aparece apenas quando HÁ aviso: em
+          operação normal a linha não ocupa espaço nenhum. */}
+      {nivelMargemCampo !== 0 && (
+        <div className={`num mt-0.5 whitespace-nowrap text-[9px] font-semibold leading-none ${
+          margemCritica ? "text-red-700" : "text-amber-700"}`}>
+          pior cenário {pct(margemPiorCampo, 1)}
+        </div>
+      )}
       {/* Preço já decidido por gente, lido AO VIVO de APP_DECISAO_PRECO — só
           enquanto PENDENTE (ainda não aplicado no Winthor). A data é a da
           DECISÃO (`precoDecididoEm`/`APP_DECISAO_PRECO.ATUALIZADO_EM`), nunca

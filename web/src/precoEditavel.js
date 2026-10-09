@@ -134,3 +134,106 @@ export function motivoMKPInvalido(texto, custo) {
  * preço que `precoDeMKP` produziu devolve o MKP de partida —
  * `validar/validar_parametros_editaveis.py` confere isto no banco. */
 export { calcMKP, calcMargem };
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * MARGEM MÍNIMA — item 4 do Diretor de Compras, 09/10/2026
+ *
+ *   "Hoje só avisa abaixo do custo. No 2720 (custo R$ 15,34), preço R$ 18,00
+ *    dá margem -18,9% sem aviso nenhum. Usar os parâmetros que já existem
+ *    (margem_alerta_min 12% e margem_critica_min 5%), pelo pior cenário, como
+ *    nos alertas: abaixo de 12% amarelo; abaixo de 5% vermelho; abaixo de 0%
+ *    vermelho e pede confirmação ao definir, igual a abaixo do custo."
+ *
+ * ── Por que "abaixo do custo" não bastava ────────────────────────────────────
+ * `abaixoDoCusto` compara preço com custo e nada mais. Mas a margem desconta
+ * PIS/COFINS, comissão e ICMS de saída ANTES do custo — no 2720 isso soma
+ * 33,75% do preço. Um preço 17% ACIMA do custo ainda dá margem negativa, e é
+ * exatamente o caso que ele mediu. Os dois avisos coexistem: um é sobre o
+ * custo, o outro é sobre o que sobra.
+ *
+ * ── O "pior cenário" é MEDIDO, não é uma coluna ──────────────────────────────
+ * ⚠ `int_produto_margem.sql:244` chama MARGEM_SEM_RED de "o PIOR cenario de
+ * atacado (CJ)". Medido nos 4.553 ativos de 09/10/2026: é FALSO em 3.014 dos
+ * 4.337 que têm os três cenários — "ST s/Valor" dá margem MENOR, com diferença
+ * de até 71,5 pontos percentuais. A causa é o custo: `custo_tot_s_valor +
+ * ajuste_imagem` é MAIOR que `custo_tot_gerencial` em 3.015 ativos.
+ *
+ * Então aqui o pior cenário é o de MENOR margem entre os cenários da praça,
+ * calculado a cada preço. Usar a coluna rotulada "pior" deixaria passar em
+ * silêncio justamente os 3.014 casos que este aviso existe para pegar.
+ *
+ * (O alerta do dbt continua como está: mudá-lo é decisão de negócio, não
+ * consequência deste campo. Está registrado para o Diretor decidir.)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export const MARGEM_OK = 0;
+export const MARGEM_ALERTA = 1;    // abaixo de margem_alerta_min  — amarelo
+export const MARGEM_CRITICA = 2;   // abaixo de margem_critica_min — vermelho
+export const MARGEM_NEGATIVA = 3;  // abaixo de zero — vermelho + confirmação
+
+/** A margem do preço no PIOR cenário da praça, em FRAÇÃO — ou `null`.
+ *
+ *  Percorre os cenários que a API devolveu para aquela praça (3 no atacado,
+ *  2 no varejo) e devolve a MENOR margem. Cenário sem custo ou sem alíquota é
+ *  pulado por `calcMargem`, que devolve `null` — não entra como zero, porque
+ *  "não sei calcular" não é "margem zero".
+ *
+ *  `null` quando nenhum cenário produz margem: aí não há afirmação a fazer, e
+ *  `nivelMargem` responde MARGEM_OK (não se pinta de vermelho o que não se
+ *  sabe). */
+export function margemPiorCenario(preco, cenarios, { pisCofins, comissao }) {
+  if (nulo(preco) || preco <= 0 || !cenarios?.length) return null;
+  let pior = null;
+  for (const c of cenarios) {
+    const m = calcMargem(preco, c?.custo, { pisCofins, comissao, icmsEf: c?.icmsEf });
+    if (m == null) continue;
+    if (pior == null || m < pior) pior = m;
+  }
+  return pior;
+}
+
+/** A escada de limiares, em 4 degraus — a MESMA de `int_produto_margem.sql`
+ *  (`nivel_base_margem`), com os mesmos parâmetros lidos de COMPRAS_PARAMETRO.
+ *
+ *  ⚠ Nenhum 0,12 ou 0,05 escrito aqui. Os dois vêm de `/api/parametros`, pela
+ *  mesma razão que comissão e fator de prazo vêm: duas cópias de um limiar são
+ *  duas chances de a tela pintar de amarelo o que o alerta considera normal.
+ *  Parâmetro ausente não inventa limiar — só o degrau NEGATIVA sobrevive, por
+ *  ser o único que não depende de parâmetro nenhum. */
+export function nivelMargem(margem, parametros) {
+  if (nulo(margem)) return MARGEM_OK;
+  if (margem < 0) return MARGEM_NEGATIVA;
+  const critica = parametros?.margem_critica_min;
+  const alerta = parametros?.margem_alerta_min;
+  if (!nulo(critica) && margem < critica) return MARGEM_CRITICA;
+  if (!nulo(alerta) && margem < alerta) return MARGEM_ALERTA;
+  return MARGEM_OK;
+}
+
+/** Preço, cenários e parâmetros entram; margem do pior cenário, degrau e
+ *  explicação saem. É o que a célula de edição e a barra de lote chamam — as
+ *  duas, para não existirem duas escadas de limiar.
+ *
+ *  A explicação DIZ O NÚMERO e DIZ O LIMIAR: "margem -18,9% no pior cenário
+ *  (mínimo 12,0%)". Um aviso que não enuncia o limite é indistinguível de
+ *  defeito — foi o que aconteceu com o teto de margem do 2720 e está
+ *  documentado em `motivoMargemInvalida`. */
+export function avaliarMargem(preco, cenarios, base, parametros) {
+  const margem = margemPiorCenario(preco, cenarios, base ?? {});
+  const nivel = nivelMargem(margem, parametros);
+  if (nivel === MARGEM_OK) return { margem, nivel, motivo: undefined };
+
+  const pct = (v) => (v * 100).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const limiar = nivel === MARGEM_NEGATIVA ? 0
+    : nivel === MARGEM_CRITICA ? parametros?.margem_critica_min
+    : parametros?.margem_alerta_min;
+  const cauda = nivel === MARGEM_NEGATIVA
+    ? " — grava, mas pede confirmação."
+    : ` (mínimo ${pct(limiar ?? 0)}%).`;
+  return {
+    margem,
+    nivel,
+    motivo: `Margem ${pct(margem)}% no pior cenário${cauda}`,
+  };
+}
