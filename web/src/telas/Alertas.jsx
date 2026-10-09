@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, ChevronRight, Filter } from "lucide-react";
 import { api } from "../api/cliente.js";
+import { useUltimaRequisicao } from "../ultimaRequisicao.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
 import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, ClasseChip, Erro } from "../componentes/Basicos.jsx";
@@ -85,11 +86,16 @@ export default function Alertas() {
     api.opcoes().then(setOpcoes).catch((e) => setErro(e.detalhe));
   }, []);
 
+  // Ignora resposta atrasada — ver ultimaRequisicao.js. Clicar rápido
+  // fazia a consulta antiga sobrescrever a nova (Diretor, 09/10/2026).
+  const novaRequisicao = useUltimaRequisicao();
+
   const buscar = useCallback(async () => {
+    const aindaVale = novaRequisicao();
     setCarregando(true);
     setErro(null);
     try {
-      setDados(await api.produtos({
+      const resposta = await api.produtos({
         tipoAlerta: ativos,
         // Sem nenhum tipo ligado a tela mostra quem tem PELO MENOS UM alerta —
         // que não é "todo mundo" (§2.1).
@@ -110,15 +116,20 @@ export default function Alertas() {
         cenarioMargem: cenarioSel,
         pagina,
         porPagina: POR_PAGINA,
-      }));
+      });
+      if (!aindaVale()) return;   // chegou atrasada: outra foi pedida depois
+      setDados(resposta);
     } catch (e) {
+      if (!aindaVale()) return;
       setErro(e.detalhe);
       setDados(null);
     } finally {
-      setCarregando(false);
+      // Guardado também: sem isto, a resposta atrasada apaga o "Carregando"
+      // da consulta que ainda está em curso.
+      if (aindaVale()) setCarregando(false);
     }
   }, [ativos, filtroDepartamento, filtroComprador, filtroStatus, busca, ordenar, dir, cenarioSel,
-      pagina, versaoDados]);
+      pagina, versaoDados, novaRequisicao]);
 
   useEffect(() => {
     // Espera a digitação parar. Sem isso "elaion" dispara seis buscas, e a

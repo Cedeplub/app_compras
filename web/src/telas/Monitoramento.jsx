@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
 import { api } from "../api/cliente.js";
+import { useUltimaRequisicao } from "../ultimaRequisicao.js";
 import { useAtualizacao } from "../contexto/atualizacao.jsx";
 import { useEstadoPersistente } from "../estadoTela.js";
 import { Carregando, Erro } from "../componentes/Basicos.jsx";
@@ -94,12 +95,17 @@ export default function Monitoramento() {
     parametros?.data_inicio && anterior
       && anterior.de < String(parametros.data_inicio).slice(0, 10));
 
+  // Ignora resposta atrasada — ver ultimaRequisicao.js. Clicar rápido
+  // fazia a consulta antiga sobrescrever a nova (Diretor, 09/10/2026).
+  const novaRequisicao = useUltimaRequisicao();
+
   const buscar = useCallback(async () => {
     if (!periodo || !anterior) return;
+    const aindaVale = novaRequisicao();
     setCarregando(true);
     setErro(null);
     try {
-      setDados(await api.monitoramento({
+      const resposta = await api.monitoramento({
         de: periodo.de, ate: periodo.ate,
         deAnterior: anterior.de, ateAnterior: anterior.ate,
         metrica,
@@ -108,14 +114,19 @@ export default function Monitoramento() {
         comprador: comprador || null,
         status: status || null,
         porProduto: porProduto || null,
-      }));
+      });
+      if (!aindaVale()) return;   // chegou atrasada: outra foi pedida depois
+      setDados(resposta);
     } catch (e) {
+      if (!aindaVale()) return;
       setErro(e.detalhe);
       setDados(null);
     } finally {
-      setCarregando(false);
+      // Guardado também: sem isto, a resposta atrasada apaga o "Carregando"
+      // da consulta que ainda está em curso.
+      if (aindaVale()) setCarregando(false);
     }
-  }, [periodo, anterior, metrica, departamento, secao, comprador, status, porProduto, versaoDados]);
+  }, [periodo, anterior, metrica, departamento, secao, comprador, status, porProduto, versaoDados, novaRequisicao]);
 
   useEffect(() => { buscar(); }, [buscar]);
 
@@ -197,13 +208,9 @@ export default function Monitoramento() {
             Contra o ano anterior
           </div>
           <div className="mt-1 flex items-baseline gap-2">
-            {semBase ? (
-              <span className="text-lg font-bold text-gray-400">sem base</span>
-            ) : (
-              <>
-                <Variacao v={r?.variacao} tamanho="text-2xl" />
-                <span className="num text-xs text-gray-400">{r ? fmt(r.anterior) : ""}</span>
-              </>
+            <Variacao v={r?.variacao} tamanho="text-2xl" semBase={semBase} />
+            {!semBase && (
+              <span className="num text-xs text-gray-400">{r ? fmt(r.anterior) : ""}</span>
             )}
           </div>
           {/* Sem esta frase, um "−38%" num mês pela metade parece desabamento de
@@ -223,8 +230,9 @@ export default function Monitoramento() {
         {!carregando && !erro && dados && (
           porProduto
             ? <TabelaProdutos itens={dados.produtos ?? []} fmt={fmt} metrica={metrica}
-                              totalProdutos={r?.produtos} />
+                              totalProdutos={r?.produtos} semBase={semBase} />
             : <TabelaGrupos grupos={dados.grupos ?? []} dimensao={dados.dimensao} fmt={fmt}
+                            semBase={semBase}
                             aoFixar={(g) => (dados.dimensao === "departamento"
                               ? setDepartamento(g) : setSecao(g))} />
         )}
@@ -274,7 +282,14 @@ function SelectVazio() {
   );
 }
 
-function Variacao({ v, tamanho = "text-sm" }) {
+function Variacao({ v, tamanho = "text-sm", semBase = false }) {
+  // ⚠ `semBase` vem de FORA e vence o número: quando o período anterior
+  // começa antes do início da base, a variação É calculável (o servidor soma
+  // os meses que existem) e está ERRADA — foi assim que 2019 apareceu com
+  // +485% na tabela por departamento enquanto o cartão acima já dizia "sem
+  // base" (Diretor, 09/10/2026). O cartão e a tabela comparam o MESMO
+  // período, então não podem discordar sobre ele existir.
+  if (semBase) return <span className={`${tamanho} font-medium text-gray-400`}>sem base</span>;
   // `null` é "não havia base no ano anterior" — não é 0% nem 100%. Mostrar um
   // número ali seria inventar comparação onde não há com o que comparar.
   if (v == null) return <span className={`${tamanho} font-bold text-gray-400`}>—</span>;
@@ -290,7 +305,7 @@ function Variacao({ v, tamanho = "text-sm" }) {
 
 /* ----------------------------------------------------------------- tabelas --- */
 
-function TabelaGrupos({ grupos, dimensao, fmt, aoFixar }) {
+function TabelaGrupos({ grupos, dimensao, fmt, aoFixar, semBase = false }) {
   // Etapa 13, ponto 4: lista SEM paginação — ordena NO CLIENTE (§3.1), com o
   // mesmo componente `CabecalhoOrdenavel` das listas paginadas, só que sem
   // ida ao servidor. Ajuste 3 do revisor (13/09): diferente de
@@ -350,7 +365,7 @@ function TabelaGrupos({ grupos, dimensao, fmt, aoFixar }) {
                 </td>
                 <td className="num px-3 py-2 text-right font-semibold">{fmt(g.atual)}</td>
                 <td className="num px-3 py-2 text-right text-gray-500">{fmt(g.anterior)}</td>
-                <td className="px-3 py-2 text-right"><Variacao v={g.variacao} /></td>
+                <td className="px-3 py-2 text-right"><Variacao v={g.variacao} semBase={semBase} /></td>
                 <td className="num px-3 py-2 text-right text-gray-500">
                   {total > 0 ? `${numero((g.atual / total) * 100, 1)}%` : "—"}
                 </td>
@@ -363,7 +378,7 @@ function TabelaGrupos({ grupos, dimensao, fmt, aoFixar }) {
   );
 }
 
-function TabelaProdutos({ itens, fmt, metrica, totalProdutos }) {
+function TabelaProdutos({ itens, fmt, metrica, totalProdutos, semBase = false }) {
   // Mesma lógica de `TabelaGrupos` acima: lista sem paginação, ordenação NO
   // CLIENTE (§3.1). Diferente dela, esta TEM teto: `por_produto`
   // (`app/servicos/monitoramento.py:230-231`) corta `rownum <= 50` DEPOIS de
@@ -428,7 +443,7 @@ function TabelaProdutos({ itens, fmt, metrica, totalProdutos }) {
                 <td className="px-3 py-2 text-gray-500">{p.departamento}</td>
                 <td className="num px-3 py-2 text-right font-semibold">{fmt(p.atual)}</td>
                 <td className="num px-3 py-2 text-right text-gray-500">{fmt(p.anterior)}</td>
-                <td className="px-3 py-2 text-right"><Variacao v={p.variacao} /></td>
+                <td className="px-3 py-2 text-right"><Variacao v={p.variacao} semBase={semBase} /></td>
               </tr>
             ))}
           </tbody>
