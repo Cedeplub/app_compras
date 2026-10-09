@@ -122,6 +122,8 @@ regra_fornecedor as (
         b.codigo,
         b.fornecedor,
         b.fator_exibicao,
+        -- Só para AZ: a sugestão sobe para o múltiplo da caixa de compra.
+        b.embal_compra,
         b.l_por_unidade,
         nvl(f.MESES_MEDIA,    p.n_meses_padrao)        as n_meses,
         nvl(f.COBERTURA_ALVO, p.cobertura_alvo_padrao) as cobertura_alvo
@@ -215,6 +217,7 @@ derivado as (
     select
         r.codigo,
         r.fator_exibicao,
+        r.embal_compra,
         r.l_por_unidade,
         r.n_meses,
         r.cobertura_alvo,
@@ -293,13 +296,46 @@ final as (
         / nullif((d.v03 + d.v04 + d.v05) / nullif(d.vd_ant_3m * 3, 0), 0)
         - 1                                            as var_pv,
         d.tx_devolucao_3m,
+        -- Sem letra no Excel: o alvo que ESTA linha usou em AZ, vindo de
+        -- seed_fornecedor (ou do padrao de int_parametro). Fica exposto para
+        -- a sugestao ser auditavel sem reabrir o seed - e porque o teste
+        -- compras_sug_cobertura_multiplo_da_caixa precisa recalcular a
+        -- sugestao bruta para provar que o arredondamento e' so' para cima.
+        d.cobertura_alvo,
         -- AW: IF($AG2=0,"",$V2/$AG2)
         case when d.media_janela <> 0
              then d.est_pend / d.media_janela
         end                                            as meses_est,
         -- AZ: MAX(0, ROUND($AG2 * cobertura - $V2, 0)). ROUND do Excel e do
         -- Oracle sao os dois "metade para longe do zero" - mesmo resultado.
-        greatest(0, round(d.media_janela * d.cobertura_alvo - d.est_pend, 0)) as sug_cobertura
+        --
+        -- ⚠ `ceil(... / caixa) * caixa` — DESVIO DELIBERADO DA PLANILHA,
+        -- 09/10/2026. A planilha para no ROUND e sugere um numero que NAO SE
+        -- PODE COMPRAR: o fornecedor vende em caixa fechada. Relatado pelo
+        -- Diretor de Compras, que mediu 370 das 805 sugestoes fora do multiplo
+        -- - exemplo dele, o SKU 109, que vem em caixa 24x1 e recebia sugestao
+        -- de unidade solta.
+        --
+        -- `caixa` e' a embalagem de compra expressa na UNIDADE DE EXIBICAO:
+        -- `embal_compra / fator_exibicao`. Nos itens MASTER (fator =
+        -- embal_compra) isso da 1, e a sugestao ja' e' multiplo por
+        -- construcao - o ceil nao muda nada neles, que e' o comportamento
+        -- certo. Medido: dos 806 ativos com sugestao, 359 tem caixa = 1
+        -- (nada muda) e 370 sobem para o multiplo.
+        --
+        -- Para CIMA, nunca para baixo: arredondar para baixo entregaria menos
+        -- cobertura do que o alvo pede, que e' o oposto do que a sugestao
+        -- existe para fazer.
+        --
+        -- O `nullif` cobre embal_compra ou fator zerados: ai a divisao vira
+        -- NULL, o ceil vira NULL e o nvl devolve a sugestao sem arredondar -
+        -- degrada para o comportamento da planilha em vez de estourar.
+        greatest(0, nvl(
+            ceil(  round(d.media_janela * d.cobertura_alvo - d.est_pend, 0)
+                 / nullif(d.embal_compra / nullif(d.fator_exibicao, 0), 0))
+            * (d.embal_compra / nullif(d.fator_exibicao, 0)),
+            round(d.media_janela * d.cobertura_alvo - d.est_pend, 0)
+        ))                                             as sug_cobertura
       from derivado d
 )
 

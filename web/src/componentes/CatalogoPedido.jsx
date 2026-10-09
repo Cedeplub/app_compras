@@ -142,7 +142,33 @@ export function ordenarCatalogo(itens, ordenar, dir) {
 export function sugestaoCobertura(p, coberturaAlvoSimulada) {
   if (coberturaAlvoSimulada == null) return p.sugCobertura;
   if (!p.mediaJanela) return 0;
-  return Math.max(0, Math.round(p.mediaJanela * coberturaAlvoSimulada - (p.estPend || 0)));
+  const bruta = Math.max(0, Math.round(p.mediaJanela * coberturaAlvoSimulada - (p.estPend || 0)));
+  return paraMultiploDaCaixa(bruta, p);
+}
+
+/** Sobe `qtd` para o múltiplo da caixa de compra, na unidade de EXIBIÇÃO.
+ *
+ *  Pedido do Diretor em 09/10/2026: "a sugestão não arredonda para a caixa —
+ *  370 de 805 sugestões; o 109 pede 5.771 unidades de um item que vem em
+ *  caixa 24x1". Sugerir um número que não se pode comprar faz a pessoa
+ *  refazer a conta à mão toda vez.
+ *
+ *  A caixa, em unidade de exibição, é `embalCompra / fatorExibicao`:
+ *    * item MASTER (fator = embalCompra) → dá 1, e qualquer inteiro já é
+ *      múltiplo. O arredondamento não mexe em nada, que é o certo;
+ *    * item em unidade (fator 1, caixa 24) → dá 24, e é nele que a conta
+ *      vale.
+ *
+ *  Para CIMA, nunca para baixo: para baixo entregaria menos cobertura que o
+ *  alvo pede, o oposto do que a sugestão existe para fazer.
+ *
+ *  Espelha `int_produto_demanda.sql` (coluna AZ), que faz o mesmo no modelo —
+ *  as duas contas têm de dar o mesmo número, senão a coluna "Sug." muda de
+ *  valor só por alguém ter encostado no controle de cobertura. */
+export function paraMultiploDaCaixa(qtd, p) {
+  const caixa = (p?.embalCompra || 0) / (p?.fatorExibicao || 1);
+  if (!Number.isFinite(caixa) || caixa <= 1) return qtd;
+  return Math.ceil(qtd / caixa) * caixa;
 }
 
 /** Slider (0–6, passo 0,5) MAIS campo numérico (0–12, passo 0,1) escrevendo o
@@ -471,6 +497,19 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original, cobert
     && p.mesesCobertura < p.coberturaAlvo * fracaoCritica;
   // Sem média não há cobertura: não é dado faltando, é divisão que não existe.
   const semVenda = !p.mediaJanela;
+  // O alvo que a célula MOSTRA. Com o controle mexido, mostra o SIMULADO —
+  // pedido do Diretor em 09/10/2026 ("a coluna continua mostrando 2,0 com o
+  // slider em 3,0"). A Etapa 19 (§4.4) tinha decidido o contrário, para a
+  // pessoa não perder a referência de onde partiu; ele preferiu ver o alvo
+  // que está simulando, e o alvo do modelo continua à mão no próprio
+  // controle, que mostra quanto foi posto e tem o botão de voltar.
+  //
+  // ⚠ A COR de crítica continua no alvo do MODELO (`critica`, acima): pintar
+  // de verde porque alguém baixou o slider seria o indicador seguindo o
+  // ajuste em vez de julgá-lo. O alvo simulado muda o que se lê, não o
+  // veredito.
+  const alvoSimulado = coberturaAlvoSimulada != null;
+  const alvoExibido = alvoSimulado ? coberturaAlvoSimulada : p.coberturaAlvo;
   const emCaixa = (p.fatorExibicao || 1) > 1;
   const seta = p.tendPct == null ? "→" : p.tendPct > 0.03 ? "↑" : p.tendPct < -0.03 ? "↓" : "→";
   const corSeta = p.tendPct == null ? CINZA : p.tendPct > 0.03 ? NAVY : p.tendPct < -0.03 ? RED : CINZA;
@@ -549,7 +588,13 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original, cobert
           <div>
             <span className="font-normal text-gray-400 text-2xs">agora </span>
             {numero(p.mesesCobertura, 1)}
-            <span className="font-normal text-gray-400"> / {numero(p.coberturaAlvo, 1)}</span>
+            <span className={alvoSimulado ? "font-semibold" : "font-normal text-gray-400"}
+                  style={alvoSimulado ? { color: NAVY } : undefined}
+                  title={alvoSimulado
+                    ? `Alvo simulado. O alvo do modelo é ${numero(p.coberturaAlvo, 1)} meses.`
+                    : undefined}>
+              {" "}/ {numero(alvoExibido, 1)}
+            </span>
           </div>
         )}
         {/* Projeção de "se eu comprar isso agora" — só aparece com quantidade
