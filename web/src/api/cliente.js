@@ -125,6 +125,14 @@ export const api = {
   },
   produto: (codigo) => requisitar(`/produtos/${codigo}`),
 
+  /** Os insumos de preço do FILTRO INTEIRO, sem paginação — só para a
+   *  aplicação de margem/MKP em lote da Precificação. Payload mínimo (8
+   *  campos por item); não grava nada. Ver o docstring da rota. */
+  basePrecificacao: (filtros = {}) => {
+    const busca = parametrosDeBusca(filtros);
+    return requisitar(`/produtos-base-precificacao${busca ? `?${busca}` : ""}`);
+  },
+
   /** Grava a decisão humana de preço. Só à vista — o a prazo é derivado do
    *  fator, e a API recusa com 422 quem tentar mandá-lo, para não criar duas
    *  verdades sobre o mesmo preço. Devolve o produto já atualizado. */

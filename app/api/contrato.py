@@ -151,6 +151,54 @@ def _cenarios(p: dict, praca: str) -> list[dict]:
     ]
 
 
+def _cenario_visivel(p: dict, praca: str, escolhido: str | None) -> str:
+    """Qual cenário de fato vale para este item nesta praça.
+
+    ⚠ Replica EXATAMENTE `cenarioVisivel` de web/src/precificacao.js:
+    o escolhido, senão o REAL do produto, senão o primeiro da lista. Varejo
+    não tem "Oficial", então escolher Oficial e olhar o varejo cai no
+    fallback — e é por isso que a regra não pode ser "usa o escolhido e
+    pronto".
+
+    Existe para a aplicação em LOTE precificar com o mesmo custo e a mesma
+    alíquota que a célula mostra. Duas resoluções do cenário é como nasce uma
+    tela que sugere um preço e exibe outro — o defeito do protótipo que
+    `precificacao.js:52-57` documenta.
+    """
+    ids = CENARIOS_VAREJO if praca == "varejo" else CENARIOS_ATACADO
+    if escolhido in ids:
+        return escolhido
+    real = _cenario_real(p.get("modalidade"))
+    return real if real in ids else ids[0]
+
+
+def base_precificacao(linhas: list[dict], cenario_sel: str | None) -> dict:
+    """Os insumos de preço do filtro inteiro, para a aplicação em lote.
+
+    Payload deliberadamente mínimo — ver `produto._COLUNAS_PRECIFICACAO_LOTE`.
+    Cada item traz o custo e a alíquota JÁ RESOLVIDOS por praça, para o
+    cliente não ter de repetir a resolução (e errar nela).
+
+    `custo` nulo é "não dá para precificar este": a tela conta esses à parte
+    e os PULA, que é o que o Diretor pediu — "pular itens sem custo".
+    """
+    itens = []
+    for p in linhas:
+        cen_at = _cenario_visivel(p, "atacado", cenario_sel)
+        cen_var = _cenario_visivel(p, "varejo", cenario_sel)
+        itens.append({
+            "codigo": int(p["codigo"]),
+            "pisCofinsEfetivo": _f(p.get("piscof_ef")),
+            "custoAT": _custo_do_cenario(p, cen_at),
+            "icmsEfAT": _f(p.get(_ICMS_DO_CENARIO[cen_at])),
+            "custoVAR": _custo_do_cenario(p, cen_var),
+            "icmsEfVAR": _f(p.get(_ICMS_DO_CENARIO[cen_var])),
+            "precoDecididoAtacadoAV": _f(p.get("alt_pv_at_av")),
+            "precoDecididoVarejoAV": _f(p.get("alt_pv_var_av")),
+        })
+    return {"itens": itens, "total": len(itens)}
+
+
 def _chave_sug(cenario: str) -> str:
     return {"st_valor": "st_s_valor", "oficial": "oficial", "sem_red": "sem_red"}[cenario]
 

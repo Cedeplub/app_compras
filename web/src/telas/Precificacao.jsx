@@ -8,6 +8,7 @@ import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroPreco from "../componentes/FiltroPreco.jsx";
+import AplicarEmLote, { aplicarNosMapas } from "../componentes/AplicarEmLote.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
 import { precoDeMargem, motivoMargemInvalida, motivoMKPInvalido, precoDeMKP, abaixoDoCusto } from "../precoEditavel.js";
@@ -186,23 +187,34 @@ export default function Precificacao() {
     api.parametros().then(setParametros).catch((e) => setErro(e.detalhe));
   }, []);
 
+  // O RECORTE, sem paginação nem ordenação. Uma definição só, usada pela
+  // listagem e pela aplicação em lote: duas cópias divergiriam no primeiro
+  // filtro novo que alguém acrescentasse em só um dos lados, e aí o lote
+  // aplicaria num conjunto diferente do que a tela mostra.
+  const filtrosAtuais = useMemo(() => ({
+    departamento: departamento || null,
+    comprador: comprador || null,
+    status: status === "Todos" ? null : status,
+    estoque: estoque || null,
+    preco: preco || null,
+    busca: busca || null,
+    cenarioMargem: cenarioSel,
+    dtUltEntDe: dtUltEntDe || null,
+    dtUltEntAte: dtUltEntAte || null,
+  }), [departamento, comprador, status, estoque, preco, busca, cenarioSel,
+       dtUltEntDe, dtUltEntAte]);
+
+  const [loteAberto, setLoteAberto] = useState(false);
+
   const buscar = useCallback(async () => {
     setCarregando(true);
     setErro(null);
     try {
       setDados(await api.produtos({
-        departamento: departamento || null,
-        comprador: comprador || null,
-        status: status === "Todos" ? null : status,
-        estoque: estoque || null,
-        preco: preco || null,
-        busca: busca || null,
+        ...filtrosAtuais,
         ordenar, dir,
-        cenarioMargem: cenarioSel,
         pagina,
         porPagina: POR_PAGINA,
-        dtUltEntDe: dtUltEntDe || null,
-        dtUltEntAte: dtUltEntAte || null,
       }));
     } catch (e) {
       setErro(e.detalhe);
@@ -210,8 +222,7 @@ export default function Precificacao() {
     } finally {
       setCarregando(false);
     }
-  }, [departamento, comprador, status, estoque, preco, busca, ordenar, dir, cenarioSel, pagina,
-      dtUltEntDe, dtUltEntAte, versaoDados]);
+  }, [filtrosAtuais, ordenar, dir, pagina, versaoDados]);
 
   useEffect(() => {
     const t = setTimeout(buscar, busca ? 350 : 0);
@@ -440,6 +451,18 @@ export default function Precificacao() {
         <FiltroEstoque valor={estoque} aoTrocar={(v) => { setEstoque(v); setPagina(1); }} />
         <FiltroPreco valor={preco} aoTrocar={(v) => { setPreco(v); setPagina(1); }} />
 
+        {/* Fica JUNTO dos filtros, e não na barra de gravação, porque o que
+            ele aplica é "o filtro atual" — o botão ao lado do recorte diz
+            isso melhor do que qualquer rótulo. Item 1c do Diretor. */}
+        <Campo rotulo="Em lote" largura="w-auto">
+          <button type="button" onClick={() => setLoteAberto(true)}
+                  disabled={!parametros}
+                  title="Aplicar uma margem ou um MKP a todos os produtos do filtro atual, em todas as páginas."
+                  className="whitespace-nowrap rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-40">
+            Margem / MKP…
+          </button>
+        </Campo>
+
         <Campo rotulo="Departamento" largura="w-40">
           <Select valor={departamento} vazio="Todos" opcoes={opcoes?.departamentos ?? []}
                   aoTrocar={(v) => { setDepartamento(v); setPagina(1); }} />
@@ -526,6 +549,16 @@ export default function Precificacao() {
         <BarraGravacaoLote qtdSkus={alteracoesLote.length} qtdPrecos={qtdPrecosLote}
                             foraDaPagina={foraDaPaginaLote}
                             aoAbrirConfirmacao={() => setConfirmarLote(true)} />
+      )}
+      {loteAberto && (
+        <AplicarEmLote
+          filtros={filtrosAtuais}
+          parametros={parametros}
+          aoFechar={() => setLoteAberto(false)}
+          aoAplicar={(linhas, canal) => {
+            aplicarNosMapas(linhas, canal, setPrecosAT, setPrecosVAR);
+            setLoteAberto(false);
+          }} />
       )}
       {confirmarLote && (
         <ConfirmarDefinirPrecos qtdSkus={alteracoesLote.length} qtdPrecos={qtdPrecosLote}

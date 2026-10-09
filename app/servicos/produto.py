@@ -353,6 +353,60 @@ def listar(filtros: dict, pagina: int, itens_por_pagina: int,
     return linhas, total
 
 
+# As colunas MÍNIMAS para o cliente recalcular preço a partir de margem ou
+# MKP, nos dois canais. Deliberadamente curta: a aplicação em lote percorre o
+# FILTRO INTEIRO (hoje até 4.552 ativos), e mandar o contrato completo de
+# produto para cada um seria ~40x mais bytes sem necessidade.
+#
+# O que está aqui e por quê:
+#   * os três custos e as duas alíquotas — `contrato` resolve o cenário a
+#     partir delas (_CUSTO_DO_CENARIO / _ICMS_DO_CENARIO), e a resolução tem
+#     de ser a MESMA da tela, senão o lote precificaria com um custo e a
+#     célula mostraria outro;
+#   * `modalidade` — decide qual é o cenário REAL do item, que é o fallback
+#     quando o cenário escolhido não existe naquela praça (varejo não tem
+#     "Oficial");
+#   * `piscof_ef` — entra na fórmula da margem;
+#   * os preços DECIDIDOS — viram o instantâneo `decidido` de cada entrada,
+#     que é o que faz `alteracoesLote` saber se houve alteração de verdade.
+_COLUNAS_PRECIFICACAO_LOTE = """
+    p.codigo, p.modalidade, p.piscof_ef,
+    p.custo_tot_s_valor, p.custo_adicional_imagem, p.custo_tot_gerencial,
+    p.icms_saida_ef, p.icms_sem_red,
+    d.alt_pv_at_av, d.alt_pv_var_av
+"""
+
+
+def base_precificacao(filtros: dict) -> list[dict]:
+    """Os insumos de preço de TODO o filtro, sem paginação.
+
+    Serve a aplicação de margem/MKP em lote (item 1c do Diretor, 09/10/2026):
+    "aplicar para todos os itens do filtro atual, em todas as páginas e não só
+    na tela". Paginar aqui devolveria os 50 da tela, que é exatamente o que o
+    pedido existe para superar.
+
+    ⚠ Sem LIMIT de propósito. O teto é o próprio filtro, e a tela mostra a
+    CONTAGEM antes de aplicar — que foi a salvaguarda que o Diretor pediu, em
+    vez de um corte arbitrário que esconderia parte do resultado. Hoje o pior
+    caso é "Ativo" sem mais nada: 4.552 linhas de 10 colunas numéricas.
+
+    Mesmo `_condicoes` da listagem, então o conjunto é IDÊNTICO ao que a lista
+    está mostrando — incluindo o filtro de preço e o de estoque. Duas
+    construções de `where` divergiriam no primeiro filtro novo que alguém
+    acrescentasse em só um dos lados.
+    """
+    onde, binds = _condicoes(filtros)
+    return database.consultar(
+        f"""
+        select {_COLUNAS_PRECIFICACAO_LOTE}
+          from compras_pedido p
+          left join app_decisao_preco d on d.id_produto = p.codigo
+        {onde}
+        """,
+        binds,
+    )
+
+
 def resumo(filtros: dict) -> dict:
     """Os KPIs do topo da tela, somados sobre o FILTRO INTEIRO.
 

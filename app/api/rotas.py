@@ -223,6 +223,57 @@ def listar_produtos(
     return corpo
 
 
+@router.get("/produtos-base-precificacao")
+def base_precificacao(
+    usuario=Depends(auth.exigir_login),
+    departamento: str | None = None,
+    comprador: str | None = None,
+    classe: str | None = None,
+    status: str | None = None,
+    busca: str | None = None,
+    tipoAlerta: list[str] | None = Query(default=None),
+    soComAlerta: bool = False,
+    linha: str | None = None,
+    categoria: str | None = None,
+    dtUltEntDe: str | None = None,
+    dtUltEntAte: str | None = None,
+    estoque: str | None = None,
+    preco: str | None = None,
+    cenarioMargem: str | None = None,
+):
+    """Os insumos de preço do FILTRO INTEIRO, sem paginação.
+
+    Serve só a aplicação de margem/MKP em lote da tela de Precificação (item
+    1c do Diretor, 09/10/2026). Rota À PARTE, e não um `porPagina` grande na
+    listagem, por dois motivos:
+
+      * o payload é outro — 8 campos numéricos por item, contra o contrato
+        completo de produto. Com 4.552 ativos a diferença é de megabytes;
+      * `MAX_POR_PAGINA` existe para proteger a listagem, que devolve o
+        contrato inteiro. Afrouxá-lo para servir este caso tiraria a proteção
+        de todo mundo.
+
+    ⚠ NÃO GRAVA NADA. Devolve o que a tela precisa para PREENCHER os campos de
+    preço como rascunho; a gravação continua sendo "Definir preços", com a
+    mesma confirmação e o mesmo lote de sempre.
+
+    O caminho é `/produtos-base-precificacao`, e não `/produtos/...`, porque
+    `/produtos/{codigo}` já casa qualquer segmento — um `/produtos/base-...`
+    cairia nele e tentaria converter o texto para int.
+    """
+    filtros = {
+        "departamento": departamento, "comprador": comprador, "classe": classe,
+        "status": status, "busca": busca, "tipo_alerta": tipoAlerta,
+        "so_com_alerta": soComAlerta, "linha": linha, "categoria": categoria,
+        "dt_ult_ent_de": _data("dtUltEntDe", dtUltEntDe),
+        "dt_ult_ent_ate": _data("dtUltEntAte", dtUltEntAte),
+        "cenario_margem": cenarioMargem,
+        "estoque": estoque,
+        "preco": preco,
+    }
+    return contrato.base_precificacao(produto.base_precificacao(filtros), cenarioMargem)
+
+
 @router.get("/produtos/{codigo}")
 def obter_produto(codigo: int, usuario=Depends(auth.exigir_login)):
     linha = produto.obter(codigo)
