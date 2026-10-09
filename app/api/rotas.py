@@ -169,6 +169,7 @@ def listar_produtos(
     # "com"/"sem" preço (PV_ATACADO), mesma whitelist estrita e mesmo molde
     # do filtro de estoque acima — Etapa 19 §5.
     preco: str | None = None,
+    revenda: str | None = None,
     # `ordenar` é entrada de usuário virando `order by` — o whitelist de
     # `produto.ORDENACOES_VALIDAS` é a única defesa (§8.2/1-2). `dir` alterna
     # crescente/decrescente a partir do clique no cabeçalho (§3.2/§3.4);
@@ -195,6 +196,10 @@ def listar_produtos(
         raise HTTPException(
             status_code=422,
             detail=f"preco inválido: {preco!r} (use 'com' ou 'sem').")
+    if revenda not in (None, "S", "N"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"revenda inválido: {revenda!r} (use 'S' ou 'N').")
     porPagina = max(1, min(porPagina, MAX_POR_PAGINA))
 
     filtros = {
@@ -211,6 +216,7 @@ def listar_produtos(
         "cenario_margem": cenarioMargem,
         "estoque": estoque,
         "preco": preco,
+        "revenda": revenda,
     }
     linhas, total = produto.listar(filtros, pagina, porPagina, ordenar, dir)
     corpo = contrato.pagina(linhas, total, pagina, porPagina)
@@ -239,6 +245,7 @@ def base_precificacao(
     dtUltEntAte: str | None = None,
     estoque: str | None = None,
     preco: str | None = None,
+    revenda: str | None = None,
     cenarioMargem: str | None = None,
 ):
     """Os insumos de preço do FILTRO INTEIRO, sem paginação.
@@ -270,6 +277,7 @@ def base_precificacao(
         "cenario_margem": cenarioMargem,
         "estoque": estoque,
         "preco": preco,
+        "revenda": revenda,
     }
     return contrato.base_precificacao(produto.base_precificacao(filtros), cenarioMargem)
 

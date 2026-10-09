@@ -95,6 +95,19 @@ final as (
 
         -- decisao humana ausente em APP_DECISAO_PRECO (CN/DD)
         {{ compras_parametro_num('MARGEM_ALVO_PADRAO') }}        as margem_alvo_padrao,
+        -- ⚠ O VAREJO TEM PADRAO PROPRIO desde 09/10/2026 (item 1.9 do Diretor:
+        -- "varejo sugerido igual ao atacado sugerido"). Nao era defeito de
+        -- formula - DD ja usava MARGEM_ALVO_VAREJO, e a formula do varejo ja
+        -- era separada. Era que os DOIS caiam neste mesmo
+        -- MARGEM_ALVO_PADRAO, e ninguem nunca digitou alvo de varejo (0 dos 2
+        -- SKUs com decisao gravada). Com margem igual, custo igual e aliquota
+        -- igual, os dois precos sugeridos sao identicos por aritmetica - nos
+        -- 4.553 ativos.
+        --
+        -- O projeto ja tinha o precedente: MARGEM_ALTA_MIN_VAREJO e' 0,50
+        -- contra 0,25 do atacado, "porque o varejo opera com margem
+        -- naturalmente mais alta". Faltava o mesmo na margem ALVO.
+        {{ compras_parametro_num('MARGEM_ALVO_PADRAO_VAREJO') }} as margem_alvo_padrao_varejo,
 
         -- limiar visual de cobertura: a tela pinta de vermelho quando a
         -- cobertura cai abaixo de COBERTURA_ALVO x esta fracao. No prototipo

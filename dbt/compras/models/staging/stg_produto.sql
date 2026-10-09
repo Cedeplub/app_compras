@@ -11,6 +11,14 @@ renamed as (
         EMBALAGEM   as embalagem,
         QTUNITCX    as embal_compra,
         QTUNIT      as embal_venda,
+        -- 'S'/'N': o produto e' de REVENDA. Item 1.17 do Diretor de Compras
+        -- (09/10/2026): "item que nao e de venda na Precificacao - 6326
+        -- display". E' o unico campo do cadastro que separa mercadoria de
+        -- material de apoio; medido em 09/10/2026, 67 dos 4.553 ativos estao
+        -- marcados 'N'. ⚠ O 6326 NAO esta entre eles - ele tem TIPOMERC 'L',
+        -- REVENDA 'S' e TIPOPROD 1, identicos a um produto vendavel. O painel
+        -- filtra o que o cadastro marca; marcar o 6326 e' do cadastro.
+        REVENDA     as revenda,
         CODFORNEC   as id_fornecedor,
         CODEPTO     as id_departamento,
         CODSEC      as id_secao,

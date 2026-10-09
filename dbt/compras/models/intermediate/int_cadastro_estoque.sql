@@ -97,6 +97,7 @@ final as (
         f.id_fornecedor                                                    as codfornec,
         f.nome_fornecedor                                                  as fornecedor_legal_nf,
         f.uf_origem,
+        p.revenda,
         p.id_departamento                                                  as codepto,
         d.descricao_departamento                                          as departamento,
         p.id_secao                                                        as codsec,

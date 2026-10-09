@@ -98,6 +98,7 @@ def conectar():
 # guarda-corpo esquecido num dos tres `case` de int_produto_custo.
 UNIVERSO = """
     select p.codigo, p.descricao, p.modalidade, p.status,
+           ctx.revenda,
            c.st_ja_na_entrada, c.st_destacado_na_nota,
            c.dt_ult_ent, c.uf_entrada, c.entrada_sem_nota, c.fornecedor_sem_uf,
            nvl(c.icms_st_bruto, 0)              as st_bruto,
@@ -105,6 +106,7 @@ UNIVERSO = """
            case when nvl(c.icms_st_bruto, 0) > 0 then 1 else 0 end as soma_st
       from compras_pedido p
       join int_produto_custo c on c.codigo = p.codigo
+      left join compras_produto_contexto ctx on ctx.codigo = p.codigo
      where p.status = 'Ativo'
 """
 
@@ -214,6 +216,10 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
     g4 = [r for r in linhas
           if r["modalidade"] == "ST_SUBSTITUTO"
           and (r["entrada_sem_nota"] or r["fornecedor_sem_uf"])]
+    # Item 1.17, decidido com o usuario em 09/10/2026: o cadastro e' quem marca
+    # o que nao e' de revenda, e o 6326 nao esta marcado. A lista vai junto
+    # porque e' a mesma pessoa que resolve as duas coisas.
+    nao_revenda = [r for r in linhas if (r.get("revenda") or "S") == "N"]
 
     def bloco(titulo, explica, itens):
         out = [f"\n{titulo}  ({len(itens)} itens)", "-" * 78, explica, ""]
@@ -264,6 +270,21 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
               "cadastro. A regra trata condicao nao comprovada como condicao FALHA e\n"
               "nao soma o ST - a direcao conservadora. Corrigir o cadastro do\n"
               "fornecedor resolve a maior parte destes.", g4),
+        bloco("5. NAO E' DE REVENDA, MAS ESTA NO CADASTRO DE COMPRA",
+              "Produto marcado REVENDA='N' - material de apoio, nao mercadoria. A\n"
+              "Precificacao ja os esconde por padrao (filtro 'Revenda'). Entram aqui\n"
+              "so' para conferencia: se algum destes for mercadoria de verdade, e' o\n"
+              "cadastro que precisa mudar, e ele sumiu da tela sem dever sumir.\n"
+              "\n"
+              "⚠ O 6326 (TECFIL DISPLAY DE CHAO) NAO aparece nesta lista, e e' o item\n"
+              "que motivou o pedido. Ele esta cadastrado como REVENDA='S',\n"
+              "TIPOMERC='L' e TIPOPROD=1 - identico ao 2720 e ao 1689, que sao\n"
+              "produtos de verdade. Nada no cadastro o distingue, entao o painel nao\n"
+              "tem como esconde-lo.\n"
+              "PROVIDENCIA: marcar o 6326, e os displays/expositores semelhantes,\n"
+              "como REVENDA='N' no WinThor. Feito isso eles somem da Precificacao\n"
+              "sozinhos, agora e no futuro.",
+              nao_revenda),
     ]
     RELATORIO.parent.mkdir(parents=True, exist_ok=True)
     RELATORIO.write_text("\n".join(texto) + "\n", encoding="utf-8")
@@ -272,6 +293,7 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
     print(f"  grupo 2 (cadastro nao-ST x nota com ST) ........ {len(g2)}")
     print(f"  grupo 3 (nao soma, mas nota nao tinha ST) ...... {len(g3)}")
     print(f"  grupo 4 (sem nota ou sem UF) ................... {len(g4)}")
+    print(f"  grupo 5 (nao e de revenda) ..................... {len(nao_revenda)}")
 
 
 def main():

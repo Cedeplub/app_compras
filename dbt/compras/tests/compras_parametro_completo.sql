@@ -38,6 +38,10 @@ faltando as (
     union all select 'N_MESES_PADRAO'               from parametro where n_meses_padrao            is null
     union all select 'COBERTURA_ALVO_PADRAO'        from parametro where cobertura_alvo_padrao     is null
     union all select 'MARGEM_ALVO_PADRAO'           from parametro where margem_alvo_padrao        is null
+    -- MARGEM_ALVO_PADRAO_VAREJO entrou em 09/10/2026 (item 1.9). Sem ele, a
+    -- margem alvo de varejo vira NULL, o denominador do preco sugerido de
+    -- varejo vira NULL e os QUATRO precos de varejo somem da tela.
+    union all select 'MARGEM_ALVO_PADRAO_VAREJO'   from parametro where margem_alvo_padrao_varejo is null
     union all select 'MEDIDA_PEDIDO'                from parametro where medida_pedido             is null
     -- COBERTURA_CRITICA_FRACAO entrou em 01/09/2026 e nao foi listada aqui na
     -- epoca; incluida em 02/09/2026 junto com os tres limiares da taxonomia

@@ -87,7 +87,18 @@ entrada_do_dia as (
     select
         m.id_produto,
         trunc(m.data_movimento)      as dia,
-        max(n.id_fornecedor)         as id_fornecedor
+        max(n.id_fornecedor)         as id_fornecedor,
+        -- A entrada daquele dia incluiu COMPRA de fornecedor? Item 1.16 do
+        -- Diretor (09/10/2026): "bonificacao como ultima entrada na
+        -- Precificacao - 8817 com R$ 227,87". O WinThor grava em PCEST
+        -- QUALQUER entrada: no 8817 a unica que existe e' um RETORNO DE
+        -- REMESSA (CODOPER 'ER', descarga 'R'), 1 unidade a R$ 227,87, num
+        -- produto cujo atacado e' R$ 72,40.
+        --
+        -- `max`, e nao `min`: basta UMA compra no dia para a entrada do dia
+        -- ser compra. Dia com compra e bonificacao juntas conta como compra -
+        -- o valor de entrada veio da compra.
+        max(case when m.codigo_operacao = 'E' then 1 else 0 end) as tem_compra
       from movimentacao m
       join nota n
         on n.id_transacao_entrada = m.id_transacao_entrada
@@ -110,6 +121,10 @@ final as (
         -- providência: a primeira é dado de movimento, a segunda é cadastro de
         -- fornecedor.
         case when e.id_produto is null then 1 else 0 end as entrada_sem_nota,
+        -- 1 quando a ultima entrada do WinThor FOI compra de fornecedor.
+        -- Sem movimento no dia (119 ativos) nao e' "nao foi compra": e' "nao
+        -- se sabe" - por isso NULL, e nao 0. A tela distingue os dois.
+        e.tem_compra                                     as ult_entrada_e_compra,
         case when e.id_produto is not null and f.uf_origem is null
              then 1 else 0 end                           as fornecedor_sem_uf
       from cadastro c

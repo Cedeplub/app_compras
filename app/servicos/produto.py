@@ -71,6 +71,9 @@ _COLUNAS = """
     ctx.regime_fiscal, ctx.qt_ult_saida, ctx.venda_ano_passado,
     ctx.dt_ult_alt_pv_atacado, ctx.dt_ult_alt_pv_varejo,
     ctx.preco_ult_ent_sem_frete, ctx.valor_tot_gerencial,
+    -- itens 1.16 e 1.17 do Diretor (09/10/2026): a tela marca quando a
+    -- última entrada não foi compra, e filtra o que não é de revenda.
+    ctx.revenda, ctx.ult_entrada_e_compra, ctx.dt_ult_compra,
     d.atualizado_em                                    as decisao_atualizado_em
 """
 
@@ -279,6 +282,32 @@ def _condicoes(filtros: dict, incluir_alerta: bool = True) -> tuple[str, dict]:
     elif filtros.get("preco") == "sem":
         condicoes.append("nvl(p.pv_atacado, 0) <= 0")
 
+    # ── "É de revenda?" — item 1.17 do Diretor de Compras (09/10/2026) ──────
+    # "Item que não é de venda na Precificação: 6326 display."
+    #
+    # PCPRODUT.REVENDA é o único campo do cadastro que separa mercadoria de
+    # material de apoio. Medido em 09/10/2026: 67 dos 4.553 ativos estão
+    # marcados 'N'.
+    #
+    # ⚠ O 6326 NÃO é um deles. Ele tem TIPOMERC 'L', REVENDA 'S' e TIPOPROD 1
+    # — idênticos ao 2720 e ao 1689, que são produtos de verdade. O cadastro
+    # não o distingue de nada, e por isso este filtro NÃO o esconde. Decidido
+    # com o usuário em 09/10/2026: o painel filtra o que o cadastro marca, e
+    # marcar o 6326 é do cadastro — ele entra na lista que vai para o Fiscal.
+    # Inventar aqui um classificador por descrição ("DISPLAY", "EXPOSITOR")
+    # seria uma segunda verdade sobre o que é vendável, mantida por ninguém.
+    #
+    # Subconsulta escalar, e não join: `_condicoes` entra em consultas que têm
+    # só `compras_pedido p` (a contagem, o resumo), e um join novo mudaria
+    # todas elas. `nvl(..., 'S')` trata ausência como vendável — não esconder
+    # por falta de dado é a direção segura: some da tela quem o cadastro
+    # AFIRMA que não se vende.
+    if filtros.get("revenda") in ("S", "N"):
+        condicoes.append(
+            "nvl((select c.revenda from compras_produto_contexto c"
+            "      where c.codigo = p.codigo), 'S') = :revenda")
+        binds["revenda"] = filtros["revenda"]
+
     if not incluir_alerta:
         return (f"where {' and '.join(condicoes)}" if condicoes else ""), binds
 
@@ -429,12 +458,59 @@ def resumo(filtros: dict) -> dict:
         ruptura, média mensal de venda x preço de atacado. É o indicador que a
         ruptura sempre deveria ter alimentado.
     Somar os dois seria erro de leitura: um é estoque, o outro é faturamento.
+
+    ── CAPITAL PARADO conta só o que está PARADO (item 1.2) ─────────────────
+    Até 09/10/2026 somava o valor de estoque de quem tivesse QUALQUER alerta.
+    Mas a maioria dos alertas não fala de estoque encalhado: margem baixa,
+    custo acima da nota, tributação ausente, litragem, devolução alta — todos
+    entram num produto que gira normalmente. O KPI dizia "capital parado" e
+    media "capital de quem tem alguma pendência", que é outra coisa e um
+    número muito maior.
+
+    Agora soma só a severidade `parado` da taxonomia (SEM_GIRO, BAIXO_GIRO e
+    FORA_DE_LINHA) — "produto sem giro; é limpeza, não compra", como o próprio
+    `api/alertas.py` descreve a categoria. A lista vem de lá
+    (`alertas.TIPOS_PARADO`), derivada de TIPOS: um tipo novo que nasça parado
+    entra sozinho, sem ninguém lembrar deste arquivo.
+
+    ⚠ FORA_DE_LINHA entra mesmo sendo badge e não alerta pontuado. Produto
+    fora de linha com estoque é a definição de capital parado — o que ele não
+    deve fazer é competir na PRIORIZAÇÃO, e disso quem cuida é `PONTUA='N'`,
+    não este KPI.
+
+    ── RUPTURA URGENTE conta quem está SEM ESTOQUE AGORA (item 1.4) ──────────
+    Relatado pelo Diretor: "Ruptura urgente 510, contando itens com estoque".
+    Medido em 09/10/2026: 511 produtos com alerta RUPTURA, dos quais 273 TÊM
+    estoque disponível hoje. O KPI fica em 238.
+
+    Não é defeito do alerta, é defeito deste KPI. O alerta se chama "RUPTURA
+    RECORRENTE - N DIAS SEM ESTOQUE" e mede HISTÓRICO: quantos dias o produto
+    passou zerado na janela (coluna AL do gabarito, limiar
+    DIAS_SEM_ESTOQUE_ALERTA). Um produto que ficou 40 dias zerado e recebeu
+    entrada ontem continua com o alerta, e com razão — a recorrência é o
+    problema dele.
+
+    Só que o KPI se chama "Ruptura urgente", é vermelho e é o que a pessoa
+    olha para decidir o que comprar HOJE. Nesse quadro, quem já tem estoque
+    não é urgente. Os dois números passam a responder perguntas diferentes, em
+    vez de o KPI emprestar a contagem de um alerta que mede outra coisa.
+
+    ⚠ `est_pend` NÃO entra na condição, de propósito: 323 dos 511 têm pedido
+    pendente. Pedido a caminho não é estoque na prateleira — o produto está
+    zerado hoje e a venda está parando hoje. Tirá-los esconderia justamente os
+    que já foram percebidos e ainda não chegaram.
     """
     onde, binds = _condicoes(filtros, incluir_alerta=False)
     categoria = filtros.get("categoria")
     filtro_cat = " and a.categoria = :categoria" if categoria else ""
     if categoria:
         binds["categoria"] = categoria
+
+    # A lista sai de `alertas.TIPOS_PARADO`, derivada da taxonomia — não é
+    # literal aqui. Interpolada no SQL em vez de virar bind porque Oracle não
+    # aceita lista num bind só, e os valores são chaves de um dicionário do
+    # código, nunca entrada de usuário.
+    tipos_parado = ", ".join(f"'{tp}'" for tp in alertas.TIPOS_PARADO)
 
     linha = database.consultar_um(
         f"""
@@ -443,9 +519,11 @@ def resumo(filtros: dict) -> dict:
                                      where a.codigo = p.codigo{filtro_cat})
                        then 1 end)                                  as com_alerta,
             nvl(sum(case when exists (select 1 from compras_alerta a
-                                       where a.codigo = p.codigo{filtro_cat})
+                                       where a.codigo = p.codigo{filtro_cat}
+                                         and a.tipo_alerta in ({tipos_parado}))
                          then p.valor_estoque end), 0)              as capital_parado,
-            count(case when exists (select 1 from compras_alerta a
+            count(case when nvl(p.est_disp, 0) <= 0
+                        and exists (select 1 from compras_alerta a
                                      where a.codigo = p.codigo
                                        and a.tipo_alerta = 'RUPTURA')
                        then 1 end)                                  as rupturas,

@@ -168,6 +168,11 @@ custo as (
     select * from {{ ref('int_produto_custo') }}
 ),
 
+-- A origem da ultima entrada - itens 1.16 e 1.17 do Diretor (09/10/2026).
+entrada as (
+    select * from {{ ref('int_produto_entrada_fornecedor') }}
+),
+
 -- Mesmo mes de referencia do pivot (int_venda_mensal_pivot.mes_ref): o mes
 -- mais recente materializado, nao trunc(sysdate) - ver cabecalho.
 mes_alvo as (
@@ -233,7 +238,25 @@ final as (
         -- ⚠ NAO e' o "Valor NF projetado" retirado em 25/09: aquele
         -- reconstruia o valor PARA TRAS a partir do custo e divergia da nota em
         -- ate' 34%. Este parte de VL_ENT_UNIT e soma para frente.
-        cu.valor_tot_gerencial                          as VALOR_TOT_GERENCIAL
+        cu.valor_tot_gerencial                          as VALOR_TOT_GERENCIAL,
+        -- ── Itens 1.16 e 1.17 do Diretor de Compras, 09/10/2026 ───────────
+        -- REVENDA: 'S'/'N' do cadastro. A Precificacao filtra por ele para
+        -- nao oferecer decisao de preco sobre material que nao se vende.
+        -- Mora aqui, e nao em compras_pedido, porque compras_pedido e' o
+        -- espelho das 122 colunas do gabarito e acrescentar coluna la quebra
+        -- `compras_fat_pedido_122_colunas` - corretamente. Este e' o lugar do
+        -- "contexto que a planilha nao tem".
+        c.revenda                                       as REVENDA,
+        -- A ultima entrada foi COMPRA? 1 sim, 0 nao (retorno, transferencia ou
+        -- bonificacao), NULL quando nao ha movimento no dia que o PCEST
+        -- registrou. Medido em 09/10/2026: 4.011 compras, 423 nao-compras e
+        -- 119 sem movimento, nos 4.553 ativos.
+        ent.ult_entrada_e_compra                        as ULT_ENTRADA_E_COMPRA,
+        -- A data da ultima COMPRA de fornecedor, que nem sempre e' a data da
+        -- ultima entrada. ⚠ Nula em 185 dos 423 nao-compras: sao produtos que
+        -- NUNCA tiveram compra na filial de estoque - o 8817 e' um deles, e e'
+        -- por isso que a tela nao pode so' "mostrar a ultima compra" e pronto.
+        ue.dt_ult_ent_sem_frete                         as DT_ULT_COMPRA
       from pedido p
       left join tributacao t
         on t.cod_tributacao = p.cod_icms
@@ -243,6 +266,8 @@ final as (
         on va.codigo_produto = p.codigo
       left join existia_no_alvo ex
         on ex.codigo_produto = p.codigo
+      left join entrada ent
+        on ent.codigo = p.codigo
       left join ultima_entrada ue
         on ue.id_produto = p.codigo
       left join custo cu

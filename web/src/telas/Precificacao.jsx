@@ -9,6 +9,7 @@ import { Carregando, Erro } from "../componentes/Basicos.jsx";
 import CabecalhoOrdenavel, { useOrdenacaoUrl } from "../componentes/CabecalhoOrdenavel.jsx";
 import FiltroEstoque from "../componentes/FiltroEstoque.jsx";
 import FiltroPreco from "../componentes/FiltroPreco.jsx";
+import FiltroRevenda from "../componentes/FiltroRevenda.jsx";
 import AplicarEmLote, { aplicarNosMapas } from "../componentes/AplicarEmLote.jsx";
 import FiltroUltimaEntrada, { AvisoSemEntrada } from "../componentes/FiltroUltimaEntrada.jsx";
 import { precoJaAplicado, simular, TOLERANCIA_PRECO_IGUAL } from "../precificacao.js";
@@ -90,8 +91,15 @@ const ROTULO_COLUNA = {
 // remontar a Precificação vazia. `estadoTela.js` é o mecanismo genérico
 // (molde `contexto/carrinho.jsx`); `pagina` entra junto — voltar para a
 // página 7 e cair na 1 é perder o lugar tanto quanto perder o filtro.
+// ⚠ `revenda: "S"` NASCE LIGADO, e é a única exceção no conjunto: os outros
+// filtros nascem vazios ("tudo"). Item 1.17 do Diretor (09/10/2026) — "item
+// que não é de venda na Precificação". Esta é a tela de DECIDIR PREÇO, e
+// material que não se vende não tem preço a decidir. Medido: esconde 67 dos
+// 4.553 ativos, então a contagem da tela passa de 4.553 para 4.486.
+// O seletor "Revenda" deixa ver os escondidos sem mexer em código.
 const FILTROS_PADRAO = {
   departamento: "", comprador: "", status: "Ativo", estoque: "", preco: "",
+  revenda: "S",
   cenarioSel: "st_valor", busca: "", pagina: 1, dtUltEntDe: "", dtUltEntAte: "",
 };
 
@@ -111,13 +119,14 @@ export default function Precificacao() {
   const setCampo = (campo) => (v) => setFiltros((f) => ({
     ...f, [campo]: typeof v === "function" ? v(f[campo]) : v,
   }));
-  const { departamento, comprador, status, estoque, preco, cenarioSel, busca, pagina,
-          dtUltEntDe, dtUltEntAte } = filtros;
+  const { departamento, comprador, status, estoque, preco, revenda, cenarioSel, busca,
+          pagina, dtUltEntDe, dtUltEntAte } = filtros;
   const setDepartamento = setCampo("departamento");
   const setComprador = setCampo("comprador");
   const setStatus = setCampo("status");
   const setEstoque = setCampo("estoque");
   const setPreco = setCampo("preco");
+  const setRevenda = setCampo("revenda");
   const setCenarioSel = setCampo("cenarioSel");
   const setBusca = setCampo("busca");
   const setPagina = setCampo("pagina");
@@ -199,11 +208,12 @@ export default function Precificacao() {
     status: status === "Todos" ? null : status,
     estoque: estoque || null,
     preco: preco || null,
+    revenda: revenda || null,
     busca: busca || null,
     cenarioMargem: cenarioSel,
     dtUltEntDe: dtUltEntDe || null,
     dtUltEntAte: dtUltEntAte || null,
-  }), [departamento, comprador, status, estoque, preco, busca, cenarioSel,
+  }), [departamento, comprador, status, estoque, preco, revenda, busca, cenarioSel,
        dtUltEntDe, dtUltEntAte]);
 
   const [loteAberto, setLoteAberto] = useState(false);
@@ -483,6 +493,7 @@ export default function Precificacao() {
 
         <FiltroEstoque valor={estoque} aoTrocar={(v) => { setEstoque(v); setPagina(1); }} />
         <FiltroPreco valor={preco} aoTrocar={(v) => { setPreco(v); setPagina(1); }} />
+        <FiltroRevenda valor={revenda} aoTrocar={(v) => { setRevenda(v); setPagina(1); }} />
 
         {/* Fica JUNTO dos filtros, e não na barra de gravação, porque o que
             ele aplica é "o filtro atual" — o botão ao lado do recorte diz
@@ -992,10 +1003,37 @@ function Linha({ p, cenarioSel, parametros, precoAT, precoVAR, setPrecoAT, setPr
       </td>
 
       {/* Formatação idêntica a `Pedidos.jsx` (dd/mm em cima, quantidade embaixo
-          em cinza mais claro) — mesmo contrato, mesma leitura nas duas telas. */}
+          em cinza mais claro) — mesmo contrato, mesma leitura nas duas telas.
+
+          ── Item 1.16 do Diretor, 09/10/2026 ────────────────────────────────
+          "Bonificação como última entrada na Precificação: 8817 com R$ 227,87."
+          O WinThor grava em PCEST qualquer entrada: no 8817 a única que existe
+          é um RETORNO DE REMESSA de 1 unidade a R$ 227,87, num produto cujo
+          atacado é R$ 72,40. Em 423 dos 4.553 ativos a última entrada não é
+          compra.
+
+          Os NÚMEROS não mudam — custo, margem e preço sugerido continuam
+          saindo do que o WinThor gravou (decisão de 09/10/2026: "só a tela").
+          O que muda é a célula DIZER quando a entrada não foi compra, e
+          oferecer a data da última compra quando ela existe.
+
+          ⚠ `dtUltCompra` é nulo em 185 dos 423 — produtos que nunca tiveram
+          compra na filial de estoque, e o 8817 é um deles. Nesses a célula diz
+          "sem compra", que é a verdade, em vez de deixar a data do retorno
+          passar por data de compra. */}
       <td className="num px-2 py-2 text-center text-2xs text-gray-500">
         {dataCompleta(p.ultimaEntrada)}
         {p.qtdUltimaEntrada != null && <div className="text-gray-400">{numero(p.qtdUltimaEntrada, 0)}</div>}
+        {p.ultEntradaECompra === false && (
+          <div className="mt-0.5 font-semibold text-amber-700"
+               title={p.dtUltCompra
+                 ? `Esta entrada não é compra (retorno, transferência ou bonificação). Última compra: ${dataCompleta(p.dtUltCompra)}.`
+                 : "Esta entrada não é compra (retorno, transferência ou bonificação), e este produto não tem nenhuma compra registrada na filial de estoque."}>
+            {p.dtUltCompra
+              ? <>não é compra<div className="font-normal">compra {dataCompleta(p.dtUltCompra)}</div></>
+              : <>não é compra<div className="font-normal">sem compra</div></>}
+          </div>
+        )}
       </td>
 
       {/* ⚠ EST_DISP já vem dividido por FATOR_EXIBICAO no dbt

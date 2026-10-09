@@ -419,6 +419,31 @@ def produto(p: dict) -> dict:
 
         "ultimaEntrada": _data(p.get("dt_ult_ent")),
         "qtdUltimaEntrada": _f(p.get("qt_ult_ent")),
+        # ── Item 1.16 do Diretor de Compras, 09/10/2026 ──────────────────────
+        # "Bonificação como última entrada na Precificação: 8817 com R$ 227,87."
+        #
+        # `ultimaEntrada` é PCEST.DTULTENT, e o WinThor grava ali QUALQUER
+        # entrada. No 8817 a única que existe é um RETORNO DE REMESSA (CODOPER
+        # 'ER'), 1 unidade a R$ 227,87, num produto cujo atacado é R$ 72,40.
+        # Medido nos 4.553 ativos: 4.011 compras, 423 não-compras, 119 sem
+        # movimento no dia.
+        #
+        # Os números NÃO mudam — custo, margem e preço sugerido continuam
+        # saindo do que o WinThor gravou (decisão de 09/10/2026). O que muda é
+        # a tela DIZER quando a última entrada não foi compra, e oferecer a
+        # data da última compra quando existe uma.
+        #
+        # `null` em `ultEntradaECompra` é "não sei" (sem movimento no dia), não
+        # "não foi compra" — a tela não pode marcar em vermelho o que não
+        # mediu. `dtUltCompra` é nulo em 185 dos 423: produtos que NUNCA
+        # tiveram compra na filial de estoque, e o 8817 é um deles.
+        "ultEntradaECompra": (None if p.get("ult_entrada_e_compra") is None
+                              else bool(p.get("ult_entrada_e_compra"))),
+        "dtUltCompra": _data(p.get("dt_ult_compra")),
+        # Item 1.17: 'S'/'N' do cadastro (PCPRODUT.REVENDA). A tela filtra por
+        # ele; o 6326 não está marcado, e marcar é do cadastro — ver
+        # `servicos/produto._condicoes`.
+        "revenda": p.get("revenda"),
         "ultimaSaida": _data(p.get("dt_ult_saida")),
         "qtdUltimaSaida": _f(p.get("qt_ult_saida")),
 

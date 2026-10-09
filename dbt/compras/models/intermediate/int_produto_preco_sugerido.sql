@@ -132,7 +132,8 @@ entrada as (
         -- CN / DD: left join + nvl. Linha ausente e valor nulo significam a
         -- mesma coisa - "sem decisao humana" -, e as duas caem no padrao.
         nvl(d.margem_alvo,        par.margem_alvo_padrao)  as margem_alvo,
-        nvl(d.margem_alvo_varejo, par.margem_alvo_padrao)  as margem_alvo_varejo,
+        -- padrao PROPRIO do varejo (item 1.9, 09/10/2026) - ver int_parametro
+        nvl(d.margem_alvo_varejo, par.margem_alvo_padrao_varejo) as margem_alvo_varejo,
         -- CU / DI: SEM nvl, SEM fallback, SEM sugestao no lugar. Nulo aqui e'
         -- a informacao "ninguem decidiu ainda" - ver cabecalho.
         d.alt_pv_at_av,

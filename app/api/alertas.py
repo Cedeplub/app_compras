@@ -48,6 +48,19 @@ TIPOS: dict[str, dict] = {
     "FORA_DE_LINHA":         {"rotulo": "Fora de linha",  "peso": 0, "severidade": "parado"},
 }
 
+
+# Os tipos cuja severidade é "parado" — produto sem giro, estoque que não sai.
+# Derivada de TIPOS, nunca escrita à mão: uma segunda lista divergiria no dia em
+# que um tipo novo nascesse parado e ninguém lembrasse dos dois lugares.
+#
+# Existe por causa do item 1.2 do Diretor de Compras (09/10/2026): o KPI
+# "Capital parado" somava o estoque de quem tinha QUALQUER alerta — margem,
+# tributação, litragem, devolução —, e nada disso é capital parado. Ver
+# `servicos/produto.resumo`.
+TIPOS_PARADO: tuple[str, ...] = tuple(
+    tipo for tipo, meta in TIPOS.items() if meta["severidade"] == "parado"
+)
+
 # Curva ABC entra no desempate. Pesos idênticos aos do protótipo (§5).
 PESO_CLASSE = {"A": 3, "B/C": 2, "S/VEND": 1}
 
