@@ -465,11 +465,19 @@ function AdicionarProdutos({ pedido, aoCancelar, aoConcluir }) {
   }, []);
 
   // Os produtos COMPLETOS dos itens do pedido, para a tabela de cima usar a
-  // mesma tabela larga da de baixo. Um GET por item —
-  // `/api/produtos/{codigo}` devolve exatamente o mesmo contrato da lista
-  // (conferido), e um pedido tem poucos itens, então não vale inventar uma
-  // rota nova para isso. Item que falhar sai da lista em vez de derrubar a
-  // tela inteira.
+  // mesma tabela larga da de baixo. Um GET por item, e um pedido tem poucos
+  // itens, então não vale inventar uma rota nova para isso. Item que falhar
+  // sai da lista em vez de derrubar a tela inteira.
+  //
+  // ⚠ `/api/produtos/{codigo}` NÃO devolve mais exatamente o mesmo contrato
+  // da lista — este comentário afirmava isso e deixou de ser verdade em
+  // 09/10/2026. A rota de detalhe traz 13 meses de histórico (o gráfico da
+  // Decisão do SKU precisa da janela inteira da média); a listagem traz 4.
+  // Enquanto `TabelaCatalogo` mapeava o array direto, a linha de cima saía
+  // com 13 células contra um cabeçalho de 4. A tabela agora fixa o número de
+  // colunas (`MESES_CATALOGO`), então a diferença de contrato não a alcança —
+  // mas quem for usar outro campo daqui precisa saber que os dois contratos
+  // divergem.
   useEffect(() => {
     const codigos = codigosDoPedido ? codigosDoPedido.split(",").map(Number) : [];
     if (codigos.length === 0) { setItensDoPedido([]); return undefined; }

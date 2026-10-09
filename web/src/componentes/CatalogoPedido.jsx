@@ -39,6 +39,23 @@ const CINZA = "#6B7280";
 // usava no aviso "já está no pedido", para alteração pendente ter UMA cor só.
 const AMBAR = "#B98A2E";
 
+/* Quantas colunas de MÊS esta tabela tem. Cabeçalho e células saem daqui, e
+ * não do tamanho do que a API mandou — foi assim que ela quebrou em
+ * 09/10/2026.
+ *
+ * A tabela de cima de `PedidoDetalhe` ("No pedido") busca cada item pela rota
+ * de DETALHE (`/api/produtos/{codigo}`), enquanto a de baixo vem da LISTAGEM.
+ * Os dois contratos eram idênticos até a ampliação do histórico: a rota de
+ * detalhe passou a trazer 13 meses (mês corrente + 12 fechados, para o
+ * gráfico da Decisão do SKU poder mostrar a janela inteira da média) e a
+ * listagem continuou com 4. Mapear o array direto fazia a linha render 13
+ * células contra um cabeçalho de 4, e a tabela inteira saía torta.
+ *
+ * Com o comprimento fixo aqui, o número de colunas é propriedade da TABELA.
+ * Mandar mais meses deixa de ser capaz de desalinhá-la, e mandar menos
+ * devolve "—" na célula em vez de sumir com ela. */
+const MESES_CATALOGO = 4;
+
 const F_EST = "#EFF6FF";
 const F_ESTPED = "#DBEAFE";
 const F_VENDA = "#F0FDF4";
@@ -445,9 +462,10 @@ export function TabelaCatalogo({ itens, valorDe, aoTrocar, ordenar, dir, aoOrden
                 M-1/M-2/M-3 não têm coluna equivalente no whitelist — ficam
                 estáticas, para não fingir uma ordenação que não existe. */}
             <CabecalhoOrdenavel {...props} coluna="vendaAtual" padrao="desc" align="center" style={{ background: F_VENDA }}>{rot(0)}</CabecalhoOrdenavel>
-            <th className="px-2 py-2 text-center font-medium" style={{ background: F_VENDA }}>{rot(1)}</th>
-            <th className="px-2 py-2 text-center font-medium" style={{ background: F_VENDA }}>{rot(2)}</th>
-            <th className="px-2 py-2 text-center font-medium" style={{ background: F_VENDA }}>{rot(3)}</th>
+            {Array.from({ length: MESES_CATALOGO - 1 }, (_, i) => (
+              <th key={i + 1} className="px-2 py-2 text-center font-medium"
+                  style={{ background: F_VENDA }}>{rot(i + 1)}</th>
+            ))}
             <CabecalhoOrdenavel {...props} coluna="mediaVenda" padrao="desc" align="center" style={{ background: F_MEDIA }}>Média</CabecalhoOrdenavel>
             <CabecalhoOrdenavel {...props} coluna="ultimaSaida" padrao="desc" align="center">Últ. saída</CabecalhoOrdenavel>
             {/* Clientes AT/VAR mistura duas métricas na mesma célula
@@ -560,8 +578,10 @@ function LinhaCatalogo({ p, valor, aoTrocar, parametros, aviso, original, cobert
           LISTAS paginadas; faturamento/peso/litros por linha exigiriam uma
           consulta a mais por produto na página (50/clique), e só o gráfico da
           tela do produto (Decisão do SKU) paga esse custo. */}
-      {p.vendaHistorico.quantidade.map((v, i) => (
-        <td key={i} className="num px-2 py-2 text-center" style={{ background: F_VENDA }}>{numero(v, 0)}</td>
+      {Array.from({ length: MESES_CATALOGO }, (_, i) => (
+        <td key={i} className="num px-2 py-2 text-center" style={{ background: F_VENDA }}>
+          {numero(p.vendaHistorico?.quantidade?.[i], 0)}
+        </td>
       ))}
       <td className="num px-2 py-2 text-center font-semibold" style={{ background: F_MEDIA }}>
         {numero(p.mediaJanela, 0)}
