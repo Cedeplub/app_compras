@@ -122,6 +122,36 @@
 -- O que ela tentava pegar - compra DENTRO do estado - ja esta coberto pelo
 -- caso 1: compra interna tem de estar cadastrada como ST RECOLHIDO.
 --
+-- ── ⚠ O CUSTO CONTINUA VINDO DO PCEST, e isso foi MEDIDO ──────────────────
+-- Em 09/10/2026 o Diretor pediu que "ultima entrada = ultima COMPRA" valesse
+-- tambem para VALOR e CUSTO, nao so' para a data do ST. Medido antes de
+-- mexer, e a conclusao foi NAO MEXER no custo:
+--
+--   * PCEST.CUSTOULTENT ja carrega o custo da ultima COMPRA. Transferencia
+--     entre filiais NAO o sobrescreve - conferido nos SKUs 11, 63, 66 e 1463,
+--     onde a ultima entrada e' transferencia e o custo e' o da compra.
+--   * Sobravam 116 ativos em que PCMOV.CUSTOULTENT da ultima compra diferia
+--     do PCEST. Parecia conserto, e nao era: em 69 deles a ultima entrada JA
+--     E' compra. No SKU 6721 o PCEST diz 24/03/2025 / R$ 248,59 e o PCMOV tem
+--     movimentos de agosto/2025 (ET e ED) com CUSTOULTENT de 246,09, 0,00 e
+--     184,64 na mesma coluna.
+--
+-- PCMOV.CUSTOULTENT e' um INSTANTANEO POR MOVIMENTO - existe tambem em linha
+-- de devolucao e de transferencia, vale 0,00 em varias, e e' reescrito. Nao
+-- significa "o custo daquela compra". Trocar o custo por ele adotaria
+-- fotografias velhas e zeradas em produtos cujo custo o WinThor ja atualizou.
+--
+-- O VALOR (VL_ENT_UNIT) tambem fica como esta, por decisao do Diretor em
+-- 09/10/2026. PCEST.VALORULTENT e' o unico campo que carrega o FRETE, e os
+-- campos de frete do PCMOV estao vazios (PUNITNF preenchido em 0 de 5.640
+-- movimentos, VLFRETE em 3, rateio em 0). Trocar a fonte perderia o frete em
+-- 681 SKUs e deixaria 303 sem valor nenhum - e VL_ENT_UNIT e' a BASE DO
+-- ICMS-ST, nao so' uma coluna de tela.
+--
+-- O que de fato estava errado era a DATA, e e' so' ela que mudou: a regra do
+-- ST usa a data da ultima COMPRA, e a Precificacao marca quando a ultima
+-- entrada nao e' compra (item 1.16).
+--
 -- ── A LEITURA DA NOTA E' SO' CONFERENCIA ───────────────────────────────────
 -- `custo_ult_ent > custo_ult_ent_sem_st` continua calculada como
 -- `st_destacado_na_nota`. NAO decide nada. Alimenta o relatorio de divergencia
