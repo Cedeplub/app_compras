@@ -176,6 +176,7 @@ entrada as (
         -- (CONTEXTO.md regra 8) - ja vem unitario da origem.
         nvl(c.vl_ult_ent, 0)                                as vl_ent_unit,
         nvl(c.custo_ult_ent, 0)                             as custo_ult_ent,
+        nvl(c.custo_ult_ent_sem_st, 0)                      as custo_ult_ent_sem_st,
         -- BJ/BK: nvl age so' sobre NULL (a celula VAZIA). codigo 0 passa
         -- direto e vai falhar no MATCH - ver cabecalho.
         nvl(c.cod_tributacao,   par.cod_trib_icms_padrao)   as cod_icms,
@@ -207,6 +208,7 @@ lookup as (
         e.fornecedor,
         e.vl_ent_unit,
         e.custo_ult_ent,
+        e.custo_ult_ent_sem_st,
         e.cod_icms,
         e.cod_piscof,
         e.uf_origem,
@@ -238,6 +240,7 @@ cred as (
         l.codigo,
         l.vl_ent_unit,
         l.custo_ult_ent,
+        l.custo_ult_ent_sem_st,
         l.cod_icms,
         l.cod_piscof,
         l.modalidade,

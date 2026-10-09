@@ -81,6 +81,43 @@
 -- nula = NULL) - por isso o `modalidade is null` vem explicito no primeiro
 -- when.
 --
+-- ── ⚠ ST JA EMBUTIDO NA ENTRADA: quando NAO se soma ICMS-ST ────────────────
+-- Relatado pelo Diretor de Compras em 09/10/2026: "entradas anteriores a
+-- 01/10/2022 ja trazem o ICMS-ST no valor e no custo, e o painel soma o ST de
+-- novo". O fato e' real; a REGRA proposta (corte por data) nao e'.
+--
+-- Medido contra a fonte (PCEST, filial 2, 09/10/2026). O WinThor guarda
+-- CUSTOULTENTSEMST ao lado de CUSTOULTENT: quando os dois diferem, o ST da
+-- nota esta DENTRO do custo. Perguntando a ele em vez de inferir:
+--
+--   * 177 SKUs ativos tem ST de fato embutido (65 com estoque ou venda). O
+--     Diretor contou 171/59 - praticamente o mesmo conjunto, entao a MEDIDA
+--     dele estava certa.
+--   * Mas nao ha corte de data: a populacao aparece em TODOS os anos,
+--     inclusive 2024 (12 ativos), 2025 (5) e 2026 (5). Nao foi mudanca de
+--     regime, e caracteristica de cada entrada.
+--   * A regra de data acertaria 131 ativos, alteraria 40 que NAO tem ST
+--     embutido (erro para baixo no preco de venda) e deixaria 29 de fora.
+--   * O exemplo que ele deu, o SKU 1843, NAO tem ST nenhum na ultima entrada
+--     (VLSTULTENT = 0,00; custo com e sem ST sao o mesmo 39,82). Como a CEDEP
+--     e' a substituta, ela recolhe o ST na venda - entao somar o ST ali esta
+--     CERTO, e o 53,84 que a tela mostra nao e' defeito.
+--
+-- Por isso a deteccao e' por SKU, pela coluna da fonte, e nao por data.
+--
+-- O QUE SE FAZ quando o ST esta embutido: NAO soma o ICMS-ST calculado. O
+-- custo ja carrega o ST REALMENTE COBRADO, que e' numero melhor que um
+-- recalculado - conferido no SKU 1680: 2.710,04 (sem ST) + 1.015,75 (ST da
+-- nota) = 3.725,79 (CUSTOULTENT), ao centavo. O ajuste de imagem da INGRAX
+-- continua entrando: ele nao tem nada a ver com ST.
+--
+-- ⚠ ISTO MUDA CUSTO_TOT_GERENCIAL, que e' coluna de FAT_PEDIDO e base de toda
+-- margem e todo preco sugerido. 177 SKUs ativos mudam de custo, e com ele de
+-- preco sugerido. A comparacao celula a celula contra a planilha V11
+-- (validar/validar_pedido.py) passa a divergir nessa coluna para esses SKUs:
+-- a planilha nao conhece esta correcao. E' divergencia DELIBERADA, decidida
+-- com o usuario em 09/10/2026, e nao regressao.
+--
 -- ── BT x BU: o que muda e' SO' o primeiro termo ─────────────────────────────
 -- BT usa $BH2 (VL_ENT_UNIT, o valor da nota) e BU usa $BI2 (CUSTO_ULT_ENT, o
 -- custo contabil) na base. O termo de credito e' IDENTICO nos dois: $BH2*$BQ2,
@@ -153,8 +190,17 @@ imposto as (
         f.mva,
         f.cred_icms,
         f.piscof_ef,
+        -- ST ja embutido? Pergunta respondida pela FONTE, por SKU - ver o
+        -- bloco "ST JA EMBUTIDO" no cabecalho. O `+ 0.005` e' tolerancia de
+        -- centavo: igualdade exata entre dois NUMBER do Oracle nao e' garantia.
+        case when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
+             then 1 else 0
+        end                                                as st_ja_na_entrada,
         -- BT: base sobre o VALOR DA NOTA
         case when f.modalidade is null or f.modalidade <> 'ST_SUBSTITUTO'
+             then 0
+             -- o ST da nota ja esta no custo: somar o calculado contaria 2x
+             when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
              then 0
              when f.mva is null or f.vl_ent_unit = 0
              then null   -- o "" do Excel: sem MVA ou sem nota, nao ha base
@@ -164,6 +210,8 @@ imposto as (
         -- BU: base sobre o CUSTO CONTABIL; o guarda-corpo continua sendo $BH2
         case when f.modalidade is null or f.modalidade <> 'ST_SUBSTITUTO'
              then 0
+             when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
+             then 0                                   -- idem BT: ja esta dentro
              when f.mva is null or f.vl_ent_unit = 0
              then null
              else greatest(0,   f.custo_ult_ent * (1 + f.mva) * par.aliq_icms_interna_ba
@@ -184,6 +232,8 @@ imposto as (
         -- com o do custo.
         case when f.modalidade is null or f.modalidade <> 'ST_SUBSTITUTO'
              then 0
+             when f.custo_ult_ent > f.custo_ult_ent_sem_st + 0.005
+             then 0                                   -- idem BT/BU: ja esta dentro
              when f.mva is null or f.vl_ent_unit = 0
              then null
              else f.vl_ent_unit * (1 + f.mva) * par.aliq_icms_interna_ba
@@ -220,6 +270,7 @@ final as (
         case when i.icms_st_s_custo is not null
              then i.custo_ult_ent + i.icms_st_s_custo + i.custo_adicional_imagem
         end                                                as custo_tot_gerencial,
+        i.st_ja_na_entrada,
         i.icms_st_bruto,
         i.valor_adicional_imagem,
         -- O espelho BRUTO de custo_tot_gerencial. Nao entra em fat_pedido:

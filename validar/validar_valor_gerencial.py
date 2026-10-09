@@ -96,13 +96,24 @@ def conectar():
     return con
 
 
-def valor_gerencial(valor, mva, modalidade, ingrax, aliq=ALIQ_BA, perc=PERC_NF):
+def valor_gerencial(valor, mva, modalidade, ingrax, st_ja_na_entrada=False,
+                    aliq=ALIQ_BA, perc=PERC_NF):
     """A formula da Secao 2 do documento, escrita uma vez so.
 
     BRUTO = sem nenhum termo de credito: nao subtrai `valor * cred_icms` (como
     BT faz) e nao multiplica o adicional por (1 - piscof_ef) (como BX faz).
+
+    `st_ja_na_entrada` (09/10/2026): quando o ICMS-ST da nota JA esta dentro do
+    custo da ultima entrada, somar o calculado contaria duas vezes - entao o
+    termo de ST sai. ⚠ A marca e RECALCULADA DA FONTE neste script
+    (PCEST.CUSTOULTENT > PCEST.CUSTOULTENTSEMST), nunca lida da nossa coluna
+    int_produto_custo.st_ja_na_entrada: um validador que le a propria resposta
+    do model nao valida nada. Isso tambem faz o script rodar contra COMPRAS
+    antes do deploy, porque as colunas do PCEST ja existem la.
     """
-    st = valor * (1 + mva) * aliq if modalidade == "ST_SUBSTITUTO" else 0.0
+    st = (0.0 if st_ja_na_entrada
+          else valor * (1 + mva) * aliq if modalidade == "ST_SUBSTITUTO"
+          else 0.0)
     adicional = valor * (1 / perc - 1) if ingrax else 0.0
     return valor + st + adicional
 
@@ -192,11 +203,21 @@ def cenario_1_vetor_congelado(rep, cur):
 
 
 def _universo(cur):
+    """O universo, com a marca de ST-ja-embutido vinda da FONTE (PCEST).
+
+    O join com cedep.pcest e' somente SELECT, como toda leitura do CEDEP neste
+    projeto. CODFILIAL = '2' e' a filial de estoque (var compras_filial_estoque
+    no dbt_project.yml) - a mesma de onde CUSTO_ULT_ENT e VL_ENT_UNIT saem.
+    """
     return cur.execute("""
         select p.codigo, p.vl_ent_unit, p.mva, p.modalidade, p.fornecedor,
-               ctx.valor_tot_gerencial
+               ctx.valor_tot_gerencial,
+               case when nvl(e.CUSTOULTENT, 0) > nvl(e.CUSTOULTENTSEMST, 0) + 0.005
+                    then 1 else 0 end as st_ja_na_entrada
           from compras_pedido p
           join compras_produto_contexto ctx on ctx.codigo = p.codigo
+          left join cedep.pcest e
+            on e.CODPROD = p.codigo and e.CODFILIAL = '2'
          where ctx.valor_tot_gerencial is not null""").fetchall()
 
 
@@ -212,26 +233,31 @@ def cenario_2_autoteste(rep, cur):
     """
     linhas = _universo(cur)
     st_nao_acusou, ingrax_nao_acusou, neutro_mexeu = [], [], []
-    for cod, vl, mva, mod, forn, _vg in linhas:
-        vl, mva = float(vl), float(mva or 0)
+    for cod, vl, mva, mod, forn, _vg, ja_st in linhas:
+        vl, mva, ja_st = float(vl), float(mva or 0), bool(ja_st)
         ingrax = (forn or "").upper() == "INGRAX"
-        certo = valor_gerencial(vl, mva, mod, ingrax)
-        sem_st = valor_gerencial(vl, mva, "NORMAL", ingrax)
-        sem_adicional = valor_gerencial(vl, mva, mod, False)
-        if mod == "ST_SUBSTITUTO" and vl > 0 and abs(certo - sem_st) <= 0.005:
+        certo = valor_gerencial(vl, mva, mod, ingrax, ja_st)
+        sem_st = valor_gerencial(vl, mva, "NORMAL", ingrax, ja_st)
+        sem_adicional = valor_gerencial(vl, mva, mod, False, ja_st)
+        # ⚠ `and not ja_st`: nos itens em que o ST ja veio na entrada, tirar o
+        # termo de ST NAO pode mudar nada - ele ja e zero. Exigir divergencia
+        # neles reprovaria a propria correcao de 09/10/2026.
+        if mod == "ST_SUBSTITUTO" and vl > 0 and not ja_st and abs(certo - sem_st) <= 0.005:
             st_nao_acusou.append(cod)
         if ingrax and vl > 0 and abs(certo - sem_adicional) <= 0.005:
             ingrax_nao_acusou.append(cod)
         if mod != "ST_SUBSTITUTO" and not ingrax and abs(certo - vl) > 0.005:
             neutro_mexeu.append(cod)
 
-    n_st = sum(1 for r in linhas if r[3] == "ST_SUBSTITUTO" and float(r[1]) > 0)
+    n_st = sum(1 for r in linhas
+               if r[3] == "ST_SUBSTITUTO" and float(r[1]) > 0 and not r[6])
     n_ingrax = sum(1 for r in linhas if (r[4] or "").upper() == "INGRAX" and float(r[1]) > 0)
     ok = (n_st > 0 and n_ingrax > 0 and not st_nao_acusou
           and not ingrax_nao_acusou and not neutro_mexeu)
     rep.registrar(
         "AUTOTESTE - tirar o ICMS-ST bruto muda TODOS os ST_SUBSTITUTO com nota > 0 "
-        f"({n_st}); tirar o adicional muda TODOS os INGRAX com nota > 0 ({n_ingrax}); "
+        f"e SEM ST ja na entrada ({n_st}); tirar o adicional muda TODOS os "
+        f"INGRAX com nota > 0 ({n_ingrax}); "
         "e nenhum NORMAL/ST_RECOLHIDO sem Ingrax se mexe",
         ok,
         f"ST_SUBSTITUTO que nao acusaram: {len(st_nao_acusou)} (tem de ser 0)\n"
@@ -245,9 +271,9 @@ def cenario_3_identidade_no_banco(rep, cur):
     hoje. E identidade, nao gabarito: nao envelhece quando entra nota nova."""
     linhas = _universo(cur)
     difs = []
-    for cod, vl, mva, mod, forn, vg in linhas:
+    for cod, vl, mva, mod, forn, vg, ja_st in linhas:
         esperado = valor_gerencial(float(vl), float(mva or 0), mod,
-                                   (forn or "").upper() == "INGRAX")
+                                   (forn or "").upper() == "INGRAX", bool(ja_st))
         if abs(float(vg) - esperado) > 0.005:
             difs.append((cod, float(vg), esperado))
     detalhe = f"{len(difs)} divergencia(s)"
@@ -278,6 +304,57 @@ def cenario_4_ingrax_nos_dois_lados(rep, cur):
         f"{so_um_lado} SKU(s) com adicional so num dos lados (tem de ser 0)\n"
         f"{normal_ingrax} SKU(s) INGRAX sao modalidade NORMAL - e por causa deles que a\n"
         "Secao 2.1 do documento nao pode ser lida ao pe da letra (ver int_produto_custo.sql)",
+    )
+
+
+def cenario_5_st_ja_na_entrada(rep, cur):
+    """A regra de 09/10/2026, com autoteste proprio.
+
+    Duas afirmacoes, as duas invariantes (nao numero do dia):
+
+      1. Nos itens marcados, o Valor Gerencial E o proprio valor da nota (mais
+         o adicional de imagem, quando INGRAX): o ST ja esta dentro e nao se
+         soma de novo.
+      2. AUTOTESTE: aplicar a formula ANTIGA (somar o ST sempre) a esses itens
+         diverge em TODOS eles. Se algum nao divergir, ou a marca nao esta
+         pegando ou a correcao nao foi aplicada - os dois casos sao defeito.
+
+    A marca vem da FONTE (PCEST), nao da nossa coluna - ver `valor_gerencial`.
+
+    ⚠ Por que a regra nao e por DATA, que foi como o Diretor a descreveu:
+    medido em 09/10/2026, a populacao com ST embutido aparece em TODOS os anos,
+    inclusive 2024, 2025 e 2026 - nao houve mudanca de regime em 01/10/2022.
+    Um corte naquela data acertaria 131 ativos, alteraria 40 que NAO tem ST
+    embutido (erro para baixo no preco de venda) e deixaria 29 de fora.
+    """
+    linhas = [r for r in _universo(cur) if r[6]]
+    marcados_st = [r for r in linhas if r[3] == "ST_SUBSTITUTO" and float(r[1]) > 0]
+
+    erradas, nao_acusou = [], []
+    for cod, vl, mva, mod, forn, vg, _ in marcados_st:
+        vl, mva, vg = float(vl), float(mva or 0), float(vg)
+        ingrax = (forn or "").upper() == "INGRAX"
+        esperado = vl + (vl * (1 / PERC_NF - 1) if ingrax else 0.0)
+        if abs(vg - esperado) > 0.005:
+            erradas.append((cod, vg, esperado))
+        # autoteste: a formula ANTIGA tem de divergir em todos
+        antiga = valor_gerencial(vl, mva, mod, ingrax, st_ja_na_entrada=False)
+        if abs(antiga - vg) <= 0.005:
+            nao_acusou.append(cod)
+
+    ok = bool(marcados_st) and not erradas and not nao_acusou
+    detalhe = (f"{len(linhas)} SKU(s) marcados no total; {len(marcados_st)} sao "
+               f"ST_SUBSTITUTO com nota > 0 (os unicos em que a marca muda algo -\n"
+               f"          nas outras modalidades o termo de ST ja era zero)\n"
+               f"          valor gerencial != valor da nota: {len(erradas)} (tem de ser 0)\n"
+               f"          AUTOTESTE - formula antiga que NAO acusou: {len(nao_acusou)} (tem de ser 0)")
+    for cod, banco, esp in erradas[:5]:
+        detalhe += f"\n             SKU {cod}: banco {banco:.4f} != esperado {esp:.4f}"
+    rep.registrar(
+        "ST JA NA ENTRADA - nos itens marcados o Valor Gerencial e o proprio valor "
+        "da nota, e a formula antiga diverge em TODOS eles",
+        ok,
+        detalhe,
     )
 
 
@@ -323,6 +400,7 @@ def main():
         cenario_2_autoteste(rep, cur)
         cenario_3_identidade_no_banco(rep, cur)
         cenario_4_ingrax_nos_dois_lados(rep, cur)
+        cenario_5_st_ja_na_entrada(rep, cur)
         contexto_custo_maior_que_valor(cur)
     finally:
         cur.close()

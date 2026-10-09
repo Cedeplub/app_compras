@@ -132,6 +132,8 @@ final as (
             and mv.id_filial   = e.id_filial
             and mv.codigo_operacao in ('S', 'ST'))                        as qt_ult_saida,
         nvl(e.custo_ultima_entrada, 0)                                    as custo_ult_ent,
+        -- par de custo_ult_ent, sem o ICMS-ST (ver stg_estoque.sql)
+        nvl(e.custo_ultima_entrada_sem_st, 0)                             as custo_ult_ent_sem_st,
         -- VL_ULT_ENT nunca e dividido pela embalagem de compra - ja vem unitario
         nvl(e.valor_ultima_entrada, 0)                                    as vl_ult_ent,
         -- precos (regiao 1 = VAREJO / regiao 2 = ATACADO)
