@@ -196,19 +196,6 @@ def listar_produtos(
             status_code=422,
             detail=f"preco inválido: {preco!r} (use 'com' ou 'sem').")
     porPagina = max(1, min(porPagina, MAX_POR_PAGINA))
-    # Nunca string crua para bind de data (ORA-01861 já aconteceu neste
-    # projeto — ver app/servicos/monitoramento.py:_data). 422 com mensagem em
-    # português se vier malformada, em vez de estourar no Oracle.
-    def _data(rotulo: str, iso: str | None):
-        if not iso:
-            return None
-        try:
-            return dt.date.fromisoformat(iso)
-        except ValueError:
-            raise HTTPException(
-                status_code=422,
-                detail=f"{rotulo} inválida: {iso!r} (esperado AAAA-MM-DD).",
-            )
 
     filtros = {
         "departamento": departamento,
@@ -763,6 +750,37 @@ def exportar_lote_preco_201(
 
 # ─────────────────────────────────────────────── monitoramento e entradas ---
 
+def _data(rotulo: str, iso: str | None):
+    """Texto ISO da tela vira `date`, ou 422 com mensagem em português.
+
+    Nunca string crua para bind de data: ORA-01861 (`literal does not match
+    format string`) já aconteceu neste projeto, porque o Oracle interpretaria
+    a string com o NLS_DATE_FORMAT da sessão, que varia com o ambiente.
+
+    ⚠ Vive no MÓDULO, e não dentro de `listar_produtos`, desde 09/10/2026.
+    Era uma closure lá, e por isso as rotas de /monitoramento e /entradas
+    passavam a data CRUA adiante: `monitoramento._data` levantava ValueError,
+    ninguém capturava, e o FastAPI devolvia **500**. Medido antes da correção:
+    29/02 de ano não bissexto, `2024-13-45` e texto puro davam 500 nas duas
+    rotas; data válida dava 200.
+
+    O caso que o Diretor encontrou (29/02) chega por um caminho estreito — o
+    seletor da tela NÃO gera data inválida, porque o JavaScript rola
+    29/02/2023 para 01/03/2023 (conferido em web/src/periodo.js nas quatro
+    granularidades). Quem chamar a API direto, porém, alcança; e o defeito
+    real nunca foi o 29/02 em si, era a rota não validar data nenhuma.
+    """
+    if not iso:
+        return None
+    try:
+        return dt.date.fromisoformat(iso)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{rotulo} inválida: {iso!r} (esperado AAAA-MM-DD).",
+        )
+
+
 @router.get("/monitoramento/opcoes")
 def opcoes_monitoramento(usuario=Depends(auth.exigir_login)):
     return monitoramento.opcoes_monitoramento()
@@ -791,6 +809,12 @@ def ver_monitoramento(
     if metrica not in monitoramento.METRICAS:
         raise HTTPException(status_code=422,
                             detail=f"Métrica inválida. Use uma de: {', '.join(monitoramento.METRICAS)}.")
+    # 422, não 500. As quatro são obrigatórias, então o valor devolvido é
+    # descartado: o que importa é a exceção quando a data não existe no
+    # calendário (29/02 fora de ano bissexto é o caso que apareceu em uso).
+    for rotulo, valor in (("de", de), ("ate", ate),
+                          ("deAnterior", deAnterior), ("ateAnterior", ateAnterior)):
+        _data(rotulo, valor)
     filtros = {"departamento": departamento, "comprador": comprador,
                "secao": secao, "status": status, "busca": busca}
     corpo = {
@@ -819,6 +843,8 @@ def ver_entradas(
     status: str | None = None,
     busca: str | None = None,
 ):
+    _data("de", de)
+    _data("ate", ate)
     return monitoramento.entradas(
         {"departamento": departamento, "comprador": comprador,
          "secao": secao, "status": status, "busca": busca},
