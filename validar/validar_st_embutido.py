@@ -1,17 +1,32 @@
-"""Valida a REGRA DAS TRES CONDICOES do ST embutido e monta a lista de
+"""Valida a REGRA FINAL do ST embutido e monta a lista de
 divergencia que vai para o Fiscal.
 
 Origem: regra FECHADA pelo Diretor de Compras em 09/10/2026.
 
-    "O painel so deve somar o ST no custo/valor gerencial quando as TRES
-     condicoes forem verdadeiras ao mesmo tempo:
-       1. Tributacao cadastrada no produto = ST substituto;
-       2. Entrada a partir de 01/10/2022 (Decreto 7.799);
-       3. Fornecedor de FORA da Bahia.
-     Se qualquer uma das tres falhar, o ST ja esta no valor de entrada (ou nao
-     existe) e nao soma.
-     A leitura da nota continua como conferencia. Rodar a regra e me mandar a
-     lista dos itens em que regra, nota e cadastro discordam."
+    "REGRA FINAL - so cadastro e data da ultima compra:
+       1. Cadastro Normal ou ST recolhido: nao soma ST (compra dentro da BA ja
+          tem que estar cadastrada como ST recolhido).
+       2. Cadastro ST substituto com ultima compra antes de 01/10/2022: nao
+          soma. Naquela compra o ST veio recolhido e esta no custo.
+       3. Cadastro ST substituto com ultima compra a partir de 01/10/2022: soma.
+       4. Sem compra: nao soma.
+     A nota (custo COM x SEM ST) fica so como conferencia; divergencia vai para
+     o Fiscal."
+
+⚠ A CONDICAO DE UF FOI REPROVADA, e nao volta
+------------------------------------------------------------------------------
+A versao anterior desta regra tinha uma terceira condicao, "fornecedor de fora
+da Bahia". O Diretor conferiu no servidor de teste e reprovou com numero: 215
+itens ST substituto com compra posterior ao Decreto PERDERAM o ST.
+
+A causa e que a UF saia do fornecedor da ultima ENTRADA, e quando essa entrada
+e transferencia entre filiais o "fornecedor" e a propria empresa, na BA. Dos
+itens sem ST que deu para conferir, 129 de 193 nao tinham compra na data da
+"ultima entrada". YPF, Lubrax, Ipiranga, Texaco, Petronas e Valvoline nao sao
+compradas na BA.
+
+O que a UF tentava pegar - compra DENTRO do estado - ja esta no caso 1: compra
+interna tem de estar cadastrada como ST RECOLHIDO.
 
 SCHEMA - leia antes de rodar
 ------------------------------------------------------------------------------
@@ -30,18 +45,19 @@ nada"). Aqui ele faz outra coisa: afirma INVARIANTES sobre o resultado do dbt,
 que valem hoje e em 2030 porque nao dependem do numero do dia.
 
     A. Nenhum produto fora da modalidade ST_SUBSTITUTO soma ST.
-    B. Nenhum produto com entrada ANTES do Decreto soma ST.
-    C. Nenhum produto comprado DENTRO do estado de destino soma ST.
-    D. Nenhum produto sem data de entrada ou sem UF do fornecedor soma ST.
-    E. Todo produto que passa nas tres E tem MVA e nota > 0 SOMA ST - este e'
-       o lado que falta nos quatro de cima: sem ele, "nao somar nunca" passaria
-       em A-D e a regra teria virado o oposto dela mesma, em silencio.
+    B. Nenhum produto com ultima COMPRA anterior ao Decreto soma ST.
+    C. Nenhum produto SEM COMPRA soma ST.
+    D. Todo ST substituto com compra a partir do Decreto, com MVA e nota > 0,
+       SOMA ST - este e' o lado que falta nos tres de cima: sem ele, "nao somar
+       nunca" passaria em A-C e a regra teria virado o oposto dela mesma, em
+       silencio.
 
 A CONFERENCIA QUE O DIRETOR PEDIU
 ------------------------------------------------------------------------------
-1689 e 2671 (entradas de 2013 e 2014) param de somar ST: o valor gerencial
-passa a ser igual ao valor de entrada, R$ 44,14 e R$ 6,99. Esses dois numeros
-vem do pedido dele, nao do banco - sao gabarito, nao medida.
+1689 e 2671 (sem compra registrada) nao somam ST: o valor gerencial e igual ao
+valor de entrada, R$ 44,14 e R$ 6,99. O 6771 (compra de 01/10/2026) soma: custo
+gerencial R$ 28,48. Esses numeros vem do pedido dele, nao do banco - sao
+gabarito, nao medida.
 """
 from __future__ import annotations
 
@@ -55,6 +71,9 @@ import oracledb  # noqa: E402
 
 # O que o Diretor mediu e mandou conferir, em 09/10/2026.
 CONFERENCIA = {1689: 44.14, 2671: 6.99}
+# O lado POSITIVO da conferencia: produto que TEM de somar, e quanto.
+# Compara contra CUSTO_TOT_GERENCIAL, que e' o numero que ele leu na tela.
+CONFERENCIA_SOMA = {6771: 28.48}
 TOL = 0.015
 
 RELATORIO = RAIZ / "validar" / "saida" / "st_divergencias.txt"
@@ -100,7 +119,8 @@ UNIVERSO = """
     select p.codigo, p.descricao, p.modalidade, p.status,
            ctx.revenda,
            c.st_ja_na_entrada, c.st_destacado_na_nota,
-           c.dt_ult_ent, c.uf_entrada, c.entrada_sem_nota, c.fornecedor_sem_uf,
+           c.dt_ult_ent, c.dt_ult_compra, c.uf_entrada,
+           c.entrada_sem_nota, c.fornecedor_sem_uf,
            nvl(c.icms_st_bruto, 0)              as st_bruto,
            c.valor_tot_gerencial, p.vl_ent_unit, p.mva,
            case when nvl(c.icms_st_bruto, 0) > 0 then 1 else 0 end as soma_st
@@ -127,24 +147,15 @@ def _inicio_beneficio(cur):
         "select st_beneficio_inicio from int_parametro").fetchone()[0]
 
 
-def _uf_destino(cur):
-    """A UF de destino vem do mesmo lugar que o dbt usa (var compras_uf_destino,
-    hoje 'BA'). Aqui ela nao tem tabela, entao fica explicita como constante de
-    UM lugar so, e nao espalhada pelos filtros."""
-    return "BA"
-
-
-def cenario_1_invariantes(rep, cur, linhas, inicio, uf_destino):
-    """As quatro negativas (A-D) e a positiva (E)."""
+def cenario_1_invariantes(rep, cur, linhas, inicio):
+    """As tres negativas (A-C) e a positiva (D)."""
     casos = [
         ("A. modalidade fora de ST_SUBSTITUTO",
          lambda r: r["modalidade"] != "ST_SUBSTITUTO"),
-        ("B. entrada ANTES do Decreto",
-         lambda r: r["dt_ult_ent"] is not None and r["dt_ult_ent"] < inicio),
-        (f"C. compra DENTRO de {uf_destino}",
-         lambda r: r["uf_entrada"] == uf_destino),
-        ("D. sem data de entrada ou sem UF do fornecedor",
-         lambda r: r["dt_ult_ent"] is None or r["uf_entrada"] is None),
+        ("B. ultima COMPRA anterior ao Decreto",
+         lambda r: r["dt_ult_compra"] is not None and r["dt_ult_compra"] < inicio),
+        ("C. sem COMPRA registrada",
+         lambda r: r["dt_ult_compra"] is None),
     ]
     for nome, filtro in casos:
         alvo = [r for r in linhas if filtro(r)]
@@ -160,19 +171,26 @@ def cenario_1_invariantes(rep, cur, linhas, inicio, uf_destino):
     # ausencia ali nao e' decisao da regra do ST.
     devem = [r for r in linhas
              if r["modalidade"] == "ST_SUBSTITUTO"
-             and r["dt_ult_ent"] is not None and r["dt_ult_ent"] >= inicio
-             and r["uf_entrada"] is not None and r["uf_entrada"] != uf_destino
+             and r["dt_ult_compra"] is not None and r["dt_ult_compra"] >= inicio
              and (r["mva"] or 0) > 0 and (r["vl_ent_unit"] or 0) > 0]
     mudos = [r for r in devem if not r["soma_st"]]
     rep.registrar(
-        f"E. passa nas tres, tem MVA e nota: TODOS somam ST ({len(devem)} ativos)",
+        f"D. ST substituto com compra depois do Decreto, com MVA e nota: "
+        f"TODOS somam ST ({len(devem)} ativos)",
         not mudos,
         "" if not mudos else "nao somaram: " + ", ".join(str(r["codigo"]) for r in mudos[:20]),
     )
 
 
 def cenario_2_conferencia(rep, cur):
-    """Os dois SKUs que o Diretor mandou conferir."""
+    """Os SKUs que o Diretor mandou conferir — os DOIS lados.
+
+    `CONFERENCIA` sao os que NAO podem somar (gerencial = entrada) e
+    `CONFERENCIA_SOMA` os que TEM de somar. Os dois juntos, e nao so' o
+    primeiro: uma conferencia que so' prova "deixou de somar aqui" passaria
+    tambem numa regra que nunca soma — que foi exatamente o defeito reprovado
+    no fim de 09/10/2026, quando 215 itens perderam o ST pela condicao de UF.
+    """
     falhas, texto = [], []
     for sku, esperado in CONFERENCIA.items():
         linha = cur.execute(
@@ -192,13 +210,28 @@ def cenario_2_conferencia(rep, cur):
             falhas.append(f"SKU {sku}: gerencial {gerencial:.2f} != {esperado:.2f}")
         if abs(gerencial - entrada) > TOL:
             falhas.append(f"SKU {sku}: gerencial {gerencial:.2f} != entrada {entrada:.2f}")
+    for sku, esperado in CONFERENCIA_SOMA.items():
+        linha = cur.execute(
+            "select c.custo_tot_gerencial, c.dt_ult_compra "
+            "  from int_produto_custo c where c.codigo = :c", {"c": sku}).fetchone()
+        if linha is None:
+            falhas.append(f"SKU {sku} nao existe neste schema")
+            continue
+        ger = float(linha[0] or 0)
+        quando = f"{linha[1]:%d/%m/%Y}" if linha[1] else "sem compra"
+        texto.append(f"SKU {sku}: custo gerencial {ger:.2f} | esperado {esperado:.2f} "
+                     f"| ult. compra {quando}")
+        if abs(ger - esperado) > TOL:
+            falhas.append(f"SKU {sku}: custo gerencial {ger:.2f} != {esperado:.2f}")
+
     rep.registrar(
-        "CONFERENCIA do Diretor: 1689 e 2671 param de somar ST (gerencial = entrada)",
+        "CONFERENCIA do Diretor: 1689/2671 nao somam (gerencial = entrada) e "
+        "6771 soma (custo gerencial 28,48)",
         not falhas,
         "\n".join(texto + (["FALHAS:"] + falhas if falhas else [])))
 
 
-def relatorio_divergencias(linhas, inicio, uf_destino):
+def relatorio_divergencias(linhas, inicio):
     """A lista que vai para o Fiscal.
 
     Quatro grupos, e os dois primeiros sao os que o Diretor nomeou. A ordem e'
@@ -211,11 +244,9 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
           if r["modalidade"] != "ST_SUBSTITUTO" and r["st_destacado_na_nota"]]
     g3 = [r for r in linhas
           if r["modalidade"] == "ST_SUBSTITUTO" and not r["soma_st"]
-          and not r["st_destacado_na_nota"] and not r["entrada_sem_nota"]
-          and r["uf_entrada"] is not None]
+          and not r["st_destacado_na_nota"] and r["dt_ult_compra"] is not None]
     g4 = [r for r in linhas
-          if r["modalidade"] == "ST_SUBSTITUTO"
-          and (r["entrada_sem_nota"] or r["fornecedor_sem_uf"])]
+          if r["modalidade"] == "ST_SUBSTITUTO" and r["dt_ult_compra"] is None]
     # Item 1.17, decidido com o usuario em 09/10/2026: o cadastro e' quem marca
     # o que nao e' de revenda, e o 6326 nao esta marcado. A lista vai junto
     # porque e' a mesma pessoa que resolve as duas coisas.
@@ -226,11 +257,14 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
         if not itens:
             out.append("  (nenhum)")
         for r in sorted(itens, key=lambda x: x["codigo"])[:400]:
-            dt = f"{r['dt_ult_ent']:%d/%m/%Y}" if r["dt_ult_ent"] else "sem data"
+            # A data impressa e' a da ULTIMA COMPRA, que e' a que decide -
+            # nao PCEST.DTULTENT. Imprimir a errada foi o que escondeu, na
+            # primeira rodada, que a regra olhava para transferencia de filial.
+            dt = (f"{r['dt_ult_compra']:%d/%m/%Y}" if r["dt_ult_compra"]
+                  else "sem compra")
             nota = "ST destacado" if r["st_destacado_na_nota"] else "sem ST      "
             out.append(f"  {r['codigo']:>5}  {(r['descricao'] or '')[:36]:<36} "
-                       f"{r['modalidade'] or '-':<14} {dt:<11} "
-                       f"UF {r['uf_entrada'] or '--':<3} "
+                       f"{r['modalidade'] or '-':<14} compra {dt:<11} "
                        f"nota {nota} "
                        f"regra {'SOMA' if r['soma_st'] else 'nao soma'}")
         if len(itens) > 400:
@@ -242,10 +276,13 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
         "=" * 78,
         "Regra das tres condicoes fechada pelo Diretor de Compras em 09/10/2026.",
         f"Inicio do beneficio (Decreto 7.799): {inicio:%d/%m/%Y}.",
-        f"Estado de destino: {uf_destino}.",
         "",
-        "A REGRA soma ST quando as tres valem juntas: cadastro ST substituto,",
-        f"entrada a partir da data acima e fornecedor de fora de {uf_destino}.",
+        "A REGRA soma ST quando as DUAS valem: cadastro ST substituto e ultima",
+        "COMPRA a partir da data acima. Sem compra, nao soma.",
+        "",
+        "A condicao de UF existiu e foi REPROVADA em 09/10/2026: a UF saia da",
+        "ultima ENTRADA, que muitas vezes e transferencia entre filiais, e 215",
+        "itens perderam o ST por isso.",
         "A NOTA e' conferencia: o WinThor guarda o custo COM e SEM ST, e quando",
         "os dois diferem o ST daquela compra veio destacado.",
         "",
@@ -261,15 +298,15 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
               "compra veio com ST. Ou o cadastro esta desatualizado, ou o fornecedor\n"
               "destacou ST indevidamente.", g2),
         bloco("3. REGRA NAO SOMA, E A NOTA TAMBEM NAO TRAZIA ST",
-              "Cadastro ST substituto, mas a compra foi dentro do estado ou anterior ao\n"
-              "Decreto - entao a regra nao soma. So' que a nota tambem nao traz ST\n"
+              "Cadastro ST substituto com ultima compra anterior ao Decreto - entao a\n"
+              "regra nao soma. So' que a nota daquela compra tambem nao traz ST\n"
               "destacado: nao ha evidencia de que o imposto ja esteja no preco. Pode\n"
-              "ser compra sem ST de fato, ou cadastro de origem errado.", g3),
-        bloco("4. SEM COMO CONFERIR",
-              "Entrada sem nota (carga inicial do WinThor) ou fornecedor sem UF no\n"
-              "cadastro. A regra trata condicao nao comprovada como condicao FALHA e\n"
-              "nao soma o ST - a direcao conservadora. Corrigir o cadastro do\n"
-              "fornecedor resolve a maior parte destes.", g4),
+              "ser compra sem ST de fato, ou cadastro desatualizado.", g3),
+        bloco("4. ST SUBSTITUTO SEM NENHUMA COMPRA REGISTRADA",
+              "Nao ha compra de fornecedor na filial de estoque - so' carga inicial\n"
+              "(30/06/2013), transferencia ou bonificacao. Sem compra nao ha data para\n"
+              "decidir, e a regra nao soma. E' a direcao conservadora, e foi o que o\n"
+              "Diretor confirmou: 'os sem compra ficam como estao'.", g4),
         bloco("5. NAO E' DE REVENDA, MAS ESTA NO CADASTRO DE COMPRA",
               "Produto marcado REVENDA='N' - material de apoio, nao mercadoria. A\n"
               "Precificacao ja os esconde por padrao (filtro 'Revenda'). Entram aqui\n"
@@ -292,7 +329,7 @@ def relatorio_divergencias(linhas, inicio, uf_destino):
     print(f"  grupo 1 (regra soma x nota ja tinha ST) ........ {len(g1)}")
     print(f"  grupo 2 (cadastro nao-ST x nota com ST) ........ {len(g2)}")
     print(f"  grupo 3 (nao soma, mas nota nao tinha ST) ...... {len(g3)}")
-    print(f"  grupo 4 (sem nota ou sem UF) ................... {len(g4)}")
+    print(f"  grupo 4 (ST substituto sem compra) ............. {len(g4)}")
     print(f"  grupo 5 (nao e de revenda) ..................... {len(nao_revenda)}")
 
 
@@ -308,15 +345,14 @@ def main():
             print("Rode o dbt com o model novo antes (em producao, so apos o deploy).")
             return 1
         inicio = _inicio_beneficio(cur)
-        uf_destino = _uf_destino(cur)
         cur.execute(UNIVERSO)
         cols = [d[0].lower() for d in cur.description]
         linhas = [dict(zip(cols, r)) for r in cur.fetchall()]
         print(f"{len(linhas)} produtos ativos.\n")
 
-        cenario_1_invariantes(rep, cur, linhas, inicio, uf_destino)
+        cenario_1_invariantes(rep, cur, linhas, inicio)
         cenario_2_conferencia(rep, cur)
-        relatorio_divergencias(linhas, inicio, uf_destino)
+        relatorio_divergencias(linhas, inicio)
     finally:
         cur.close()
         con.close()

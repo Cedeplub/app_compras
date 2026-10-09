@@ -82,89 +82,77 @@
 -- when.
 --
 -- ── ⚠ ST JA EMBUTIDO NA ENTRADA: quando NAO se soma ICMS-ST ────────────────
--- Regra FECHADA pelo Diretor de Compras em 09/10/2026. Ela substitui tanto o
--- corte por data que ele propos na primeira rodada quanto a deteccao por
--- CUSTOULTENTSEMST que vigorou entre as duas - as duas estao descritas no fim
--- deste bloco, com os numeros, porque quem reabrir este codigo precisa saber
--- por que nenhuma das duas ficou.
+-- REGRA FINAL, fechada pelo Diretor de Compras em 09/10/2026 depois de ele
+-- conferir a versao anterior no servidor de teste. Quatro casos, e so' o
+-- terceiro soma:
 --
--- SOMA-SE o ICMS-ST ao custo/valor gerencial quando as TRES condicoes valem
--- AO MESMO TEMPO:
+--   1. cadastro Normal ou ST RECOLHIDO .................. nao soma.
+--      Compra dentro da Bahia ja tem de estar cadastrada como ST recolhido -
+--      e' por aqui que a compra interna sai, e nao por uma regra de UF.
+--   2. ST SUBSTITUTO com ultima COMPRA antes de 01/10/2022 .... nao soma.
+--      Naquela compra o ST veio recolhido e esta no custo. O cadastro hoje e'
+--      substituto porque uma compra NOVA viria sem ST - o cadastro fala do
+--      futuro, a compra fala do passado.
+--   3. ST SUBSTITUTO com ultima COMPRA a partir de 01/10/2022 . SOMA.
+--      Decreto 7.799: o ST deixou de vir destacado na compra interestadual.
+--   4. sem COMPRA nenhuma ............................... nao soma.
 --
---   1. CADASTRO: modalidade = ST_SUBSTITUTO. A CEDEP e' a substituta e recolhe
---      o ST na SAIDA. Produto Normal ou ST_RECOLHIDO nunca soma.
---   2. DATA: ultima entrada a partir de ST_BENEFICIO_INICIO (01/10/2022,
---      Decreto 7.799). Antes dela, produto ST vinha com o ST destacado na nota
---      e o imposto ja entrava no custo.
---   3. ORIGEM: fornecedor de FORA da Bahia. O beneficio vale so' para compra
---      INTERESTADUAL - distribuidor ou industria da BA sempre veio, e continua
---      vindo, com o ST ja no preco.
+-- ── ⚠ A DATA E' A DA ULTIMA COMPRA, E ISSO E' O CERNE ──────────────────────
+-- NAO e' PCEST.DTULTENT. O WinThor grava em DTULTENT qualquer entrada -
+-- inclusive TRANSFERENCIA ENTRE FILIAIS e BONIFICACAO. A data da ultima
+-- compra sai de `int_produto_ultima_entrada` (CODOPER = 'E', sem ER/ET/EB).
 --
--- Falhando QUALQUER uma, o ST ja esta no valor de entrada (ou nao existe) e
--- nao soma. E' por isso que a flag se chama `st_ja_na_entrada` e e' 1 por
--- padrao: a excecao e' somar, nao deixar de somar.
+-- Medido pelo Diretor na aba Entradas: dos itens sem ST que deu para conferir,
+-- 129 de 193 NAO tem compra na data da "ultima entrada" - exemplos 11, 63, 66,
+-- 1463 e 1843. Nos itens que somam ST isso acontece em 1 de 2.436.
 --
--- ── POR QUE AS TRES JUNTAS, nas palavras dele ──────────────────────────────
---   * so' a DATA falha nas compras dentro do estado depois de 2022 - sao os
---     casos de 2024-2026 que a deteccao por coluna achava e ninguem explicava;
---   * so' a NOTA falha nas entradas SEM nota (19 ativos com data 30/06/2013,
---     a carga inicial do WinThor) e trata igual o que e' diferente: outros 7
---     com a MESMA data saiam como "sem ST" so' porque a coluna nao diferia;
---   * so' o CADASTRO nao diz como aquela compra especifica veio.
+-- ── ⚠ A CONDICAO DE UF EXISTIU E FOI REPROVADA. Nao reintroduza. ───────────
+-- Entre as 14h e as 20h de 09/10/2026 a regra tinha uma terceira condicao,
+-- "fornecedor de fora da Bahia". O Diretor conferiu no servidor de teste e
+-- reprovou com numero: 215 itens ST substituto com compra posterior ao
+-- Decreto PERDERAM o ST. Exemplos que ele deu: 6771 caiu para custo gerencial
+-- R$ 21,37 e sugerido R$ 32,01 (o certo e' 28,48 e 42,67); 6641 sugerido
+-- R$ 37,97; 1843 voltou a R$ 39,82.
 --
--- ── A LEITURA DA NOTA NAO SUMIU: virou CONFERENCIA ─────────────────────────
--- `custo_ult_ent > custo_ult_ent_sem_st` continua calculada, agora com o nome
--- que descreve o que ela e': `st_destacado_na_nota`. Ela NAO decide mais nada
--- no custo. Serve ao relatorio de divergencia (regra x nota x cadastro) que o
--- Diretor pediu para mandar ao Fiscal - onde regra e nota discordam, pode ser
--- erro de CADASTRO, e nao do painel.
+-- A causa: a UF saia do fornecedor da ultima ENTRADA, e quando essa entrada e'
+-- transferencia de outra filial o "fornecedor" e' a propria empresa, na BA.
+-- YPF, Lubrax, Ipiranga, Texaco, Petronas e Valvoline nao sao compradas na
+-- Bahia. A condicao parecia certa e media outra coisa.
 --
--- ── A ORIGEM DA COMPRA NAO E' A DO CADASTRO ────────────────────────────────
--- A condicao 3 le `int_produto_entrada_fornecedor.uf_entrada`, que e' a UF do
--- fornecedor da entrada QUE FORMOU O CUSTO (casada por produto + dia de
--- PCEST.DTULTENT) - nao `int_produto_fiscal.uf_origem`, que e' a UF do
--- fornecedor CADASTRADO no produto. Medido em 09/10/2026 nos 3.055 ativos onde
--- a condicao 3 decide: as duas divergem em 235, e em 191 deles a compra veio
--- da BAHIA com o cadastro apontando para fora. O cadastro somaria ST em 191
--- produtos que ja vieram com ele no preco.
+-- O que ela tentava pegar - compra DENTRO do estado - ja esta coberto pelo
+-- caso 1: compra interna tem de estar cadastrada como ST RECOLHIDO.
 --
--- ⚠ CONDICAO NAO COMPROVADA E' CONDICAO FALHA. Sem UF do fornecedor da entrada
--- (28 ativos) ou sem data de ultima entrada (43), a condicao nao se verifica e
--- o ST NAO soma. E' a direcao conservadora de proposito: deixar de somar
--- subestima o custo e o preco sugerido, e aparece; somar sobre um ST que ja
--- estava dentro conta o imposto duas vezes e nao aparece em lugar nenhum.
+-- ── A LEITURA DA NOTA E' SO' CONFERENCIA ───────────────────────────────────
+-- `custo_ult_ent > custo_ult_ent_sem_st` continua calculada como
+-- `st_destacado_na_nota`. NAO decide nada. Alimenta o relatorio de divergencia
+-- (regra x nota x cadastro) que vai para o Fiscal - onde os dois discordam,
+-- pode ser erro de CADASTRO, e nao do painel. O Diretor ja leu a primeira
+-- rodada e classificou: o 4650 e' erro de cadastro (unico ST substituto entre
+-- 27 sprays Mundial PR ativos, os outros 26 sao ST recolhido) e vai para
+-- correcao; os 51 ST recolhido com ST na nota estao certos; os 12 Normal com
+-- ST destacado vao para o Fiscal.
 --
--- ── O QUE MUDA, medido em 09/10/2026 ───────────────────────────────────────
---   ativos ST_SUBSTITUTO ................................. 3.279
---   param de somar por DATA (entrada antes de 01/10/2022) .. 181
---   param de somar por DATA AUSENTE ......................... 43
---   param de somar por ORIGEM (fornecedor da BA) ............ 214
---   param de somar por FALTA DE UF .......................... 28
---   continuam somando .................................... ~2.813
--- Conferencia do Diretor: 1689 e 2671 (entradas de 2013 e 2014) param de
--- somar - gerencial igual a entrada, R$ 44,14 e R$ 6,99.
+-- ── O QUE MUDA, e o que conferir ───────────────────────────────────────────
+-- Conferencia pedida por ele:
+--   6771 .... custo gerencial R$ 28,48, sugerido R$ 42,67
+--   1689 .... gerencial igual a entrada, R$ 44,14
+--   2671 .... gerencial igual a entrada, R$ 6,99
+--   os 215 que a UF derrubou voltam a somar ST
 --
--- ⚠ ISTO MUDA CUSTO_TOT_GERENCIAL, que e' coluna de FAT_PEDIDO e base de toda
--- margem e todo preco sugerido. A comparacao celula a celula contra a planilha
--- V11 (validar/validar_pedido.py) diverge nessa coluna para esses SKUs: a
--- planilha nao conhece a regra. E' divergencia DELIBERADA - e, desde a
--- resposta do Diretor em 09/10/2026, o PAINEL e' a referencia e a planilha nao
--- sera corrigida.
+-- ⚠ ISTO MUDA CUSTO_TOT_GERENCIAL, coluna de FAT_PEDIDO e base de toda margem
+-- e todo preco sugerido. A comparacao celula a celula contra a planilha V11
+-- (validar/validar_pedido.py) diverge nessa coluna: a planilha nao conhece a
+-- regra. Divergencia DELIBERADA - e, desde 09/10/2026, o PAINEL e' a
+-- referencia e a planilha nao sera corrigida.
 --
--- ── AS DUAS REGRAS QUE NAO FICARAM, e por que ──────────────────────────────
--- 1. CORTE SO' POR DATA (1a proposta, 09/10/2026). Media dele: 171 ativos com
---    ST embutido. Medindo contra PCEST: 177 - a MEDIDA estava certa. Mas a
---    populacao aparecia em TODOS os anos, inclusive 2024 (12), 2025 (5) e 2026
---    (5), e o corte puro acertaria 131, alteraria 40 sem ST embutido e deixaria
---    29 de fora. Os de 2024-2026 eram compra DENTRO do estado - que a condicao
---    3 agora explica.
--- 2. DETECCAO POR CUSTOULTENTSEMST (o que vigorou entre as duas rodadas).
---    Pergunta a fonte se o ST esta dentro daquele custo, e acerta quando ha
---    nota. Nao tem resposta para entrada SEM nota: dos 26 ativos com data
---    30/06/2013 (carga inicial), 19 saiam somando ST e 7 nao, por diferenca de
---    coluna e nao de fato. O SKU 1843, que o Diretor deu como exemplo na 1a
---    rodada, nao tem ST na ultima entrada (VLSTULTENT = 0,00) - pela regra
---    nova ele soma ou nao conforme data e origem, nao conforme a coluna.
+-- ── AS DUAS REGRAS ANTERIORES, e por que nenhuma ficou ─────────────────────
+-- 1. CORTE SO' POR DATA, sobre PCEST.DTULTENT. A medida do Diretor estava
+--    certa (171 ativos; medimos 177), mas a populacao com ST na nota aparecia
+--    em todos os anos, inclusive 2024-2026. A regra final conserta isso pela
+--    fonte da data - aqueles casos tinham DTULTENT de transferencia.
+-- 2. DETECCAO POR CUSTOULTENTSEMST. Acerta onde ha nota e nao tem resposta
+--    onde nao ha: dos 26 ativos com data 30/06/2013 (carga inicial do
+--    WinThor), 19 somavam ST e 7 nao, por diferenca de coluna e nao de fato.
 --
 -- ── BT x BU: o que muda e' SO' o primeiro termo ─────────────────────────────
 -- BT usa $BH2 (VL_ENT_UNIT, o valor da nota) e BU usa $BI2 (CUSTO_ULT_ENT, o
@@ -226,9 +214,16 @@ parametro as (
     select * from {{ ref('int_parametro') }}
 ),
 
--- A ORIGEM da compra que formou o custo - condicao 3 das tres do ST embutido.
--- Nao e' o fornecedor do cadastro; ver o bloco "A ORIGEM DA COMPRA NAO E' A DO
--- CADASTRO" no cabecalho.
+-- A ULTIMA COMPRA de fornecedor - a data que decide o ST embutido. NAO e'
+-- PCEST.DTULTENT: o WinThor grava ali qualquer entrada, inclusive
+-- transferencia entre filiais e bonificacao. Ver o cabecalho.
+compra as (
+    select * from {{ ref('int_produto_ultima_entrada') }}
+),
+
+-- A origem da ultima ENTRADA (quem, de onde, e se foi compra). NAO decide
+-- mais nada no ST desde 09/10/2026 - serve ao aviso "nao e compra" da
+-- Precificacao (item 1.16) e ao relatorio de divergencia.
 entrada as (
     select * from {{ ref('int_produto_entrada_fornecedor') }}
 ),
@@ -266,6 +261,7 @@ imposto as (
              then 1 else 0
         end                                                as st_destacado_na_nota,
         e.dt_ult_ent,
+        compra.dt_ult_ent_sem_frete                        as dt_ult_compra,
         e.uf_entrada,
         e.entrada_sem_nota,
         e.fornecedor_sem_uf,
@@ -326,6 +322,8 @@ imposto as (
         on b.codigo = f.codigo
       left join entrada e
         on e.codigo = f.codigo
+      left join compra
+        on compra.id_produto = f.codigo
      cross join parametro par
 ),
 
@@ -356,6 +354,7 @@ final as (
         -- montada pelos MESMOS numeros que a regra usou.
         i.st_destacado_na_nota,
         i.dt_ult_ent,
+        i.dt_ult_compra,
         i.uf_entrada,
         i.entrada_sem_nota,
         i.fornecedor_sem_uf,

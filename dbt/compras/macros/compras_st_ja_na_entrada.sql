@@ -15,9 +15,27 @@
   nenhuma — e a quinta copia viria no proximo ajuste.
 
   A regra, por extenso, esta no bloco "ST JA EMBUTIDO NA ENTRADA" do cabecalho
-  de int_produto_custo.sql. Em resumo: NAO soma, a menos que as tres valham
-  juntas — cadastro ST_SUBSTITUTO, entrada a partir do Decreto 7.799 e
-  fornecedor de fora do estado de destino.
+  de int_produto_custo.sql. Em resumo, tres casos NAO somam e um soma:
+
+    1. cadastro Normal ou ST recolhido ............... nao soma
+    2. ST substituto, ultima COMPRA antes do Decreto . nao soma
+    3. ST substituto, ultima COMPRA a partir dele .... SOMA
+    4. sem compra nenhuma ............................ nao soma
+
+  ⚠ A DATA E' A DA ULTIMA COMPRA, nao a de PCEST.DTULTENT. O WinThor grava em
+  DTULTENT qualquer entrada - inclusive transferencia entre filiais e
+  bonificacao - e olhar para ela responde pela movimentacao errada. Nos SKUs
+  11, 63, 66 e 1463 a ultima entrada e' transferencia e a compra de verdade e'
+  meses ou anos antes.
+
+  ⚠ NAO HA MAIS CONDICAO DE UF. Ela existiu entre as 14h e as 20h de
+  09/10/2026 e foi REPROVADA pelo Diretor de Compras com medicao propria: 215
+  itens ST substituto com compra posterior ao Decreto perderam o ST por causa
+  dela. A causa e' que a UF saia da ultima ENTRADA, que em 129 de 193 dos
+  casos conferidos nao era compra - era transferencia de filial da BA. YPF,
+  Lubrax, Ipiranga, Texaco, Petronas e Valvoline nao sao compradas na BA.
+  Compra dentro do estado ja tem de estar cadastrada como ST RECOLHIDO, e
+  o caso 1 a pega. Nao reintroduza a UF sem medir de novo.
 
   ⚠ DEVOLVE 1/0, NAO UM BOOLEANO, e isso e' a parte que importa. A forma
   natural seria `not (<as tres condicoes>)` — e ela tem um buraco: com
@@ -31,7 +49,7 @@
   decisao sobre o dado ausente escrita, em vez de deduzi-la do comportamento
   de tres valores logicos.
 
-  ⚠ Os alias `f` (int_produto_fiscal), `e` (int_produto_entrada_fornecedor) e
+  ⚠ Os alias `f` (int_produto_fiscal), `compra` (int_produto_ultima_entrada) e
   `par` (int_parametro) sao os do select chamador. A macro depende deles de
   proposito: passar tres nomes de alias por parametro tornaria a chamada mais
   longa que a propria condicao, e ela so' tem um chamador.
@@ -39,11 +57,9 @@
 -#}
 
 {% macro compras_st_ja_na_entrada() -%}
-case when f.modalidade  = 'ST_SUBSTITUTO'                                  -- 1
-      and e.dt_ult_ent is not null
-      and e.dt_ult_ent >= par.st_beneficio_inicio                          -- 2
-      and e.uf_entrada is not null
-      and e.uf_entrada <> '{{ var("compras_uf_destino", "BA") }}'          -- 3
+case when f.modalidade = 'ST_SUBSTITUTO'                                   -- 1
+      and compra.dt_ult_ent_sem_frete is not null                          -- 3
+      and compra.dt_ult_ent_sem_frete >= par.st_beneficio_inicio           -- 2
      then 0 else 1
 end
 {%- endmacro %}

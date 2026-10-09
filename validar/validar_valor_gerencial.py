@@ -217,30 +217,30 @@ def _universo(cur):
     `int_produto_custo.st_ja_na_entrada`. A diferenca e' a regra de ouro deste
     arquivo: um validador que le a propria resposta do model nao valida nada.
 
-    ⚠ A data vem da FONTE (PCEST.DTULTENT, somente SELECT, filial 2 = var
-    compras_filial_estoque). A UF vem de `int_produto_custo.uf_entrada`, que e'
-    nossa - nao ha como recalcular aqui a ligacao produto -> entrada do dia ->
-    nota -> fornecedor sem reescrever int_produto_entrada_fornecedor inteiro,
-    e uma segunda implementacao dela seria pior que ler a primeira. Quem cobra
-    a resolucao em si e' o teste do dbt
-    (compras_st_embutido_tres_condicoes.sql); aqui ela entra como insumo
-    declarado.
+    ⚠ A data da ULTIMA COMPRA vem de `int_produto_custo.dt_ult_compra`, que e'
+    nossa resolucao (PCMOV com CODOPER = 'E', pela logica da rotina 218). Nao
+    da' para recalcula-la aqui sem reescrever int_produto_ultima_entrada
+    inteiro, e uma segunda implementacao seria pior que ler a primeira. Quem
+    cobra a resolucao em si e' o teste do dbt
+    (compras_st_embutido_cadastro_e_compra.sql); aqui ela entra como insumo
+    DECLARADO, e a modalidade - a outra condicao - vem do cadastro.
+
+    ⚠ NAO USA PCEST.DTULTENT, e esse e' o ponto. O WinThor grava ali qualquer
+    entrada, inclusive transferencia entre filiais. Ate 09/10/2026 este script
+    usava DTULTENT e uma condicao de UF, e as duas coisas juntas derrubaram o
+    ST de 215 itens - defeito que o Diretor pegou conferindo na tela, nao aqui.
     """
     return cur.execute("""
         select p.codigo, p.vl_ent_unit, p.mva, p.modalidade, p.fornecedor,
                ctx.valor_tot_gerencial,
                case when p.modalidade = 'ST_SUBSTITUTO'
-                     and e.DTULTENT is not null
-                     and e.DTULTENT >= par.st_beneficio_inicio
-                     and c.uf_entrada is not null
-                     and c.uf_entrada <> 'BA'
+                     and c.dt_ult_compra is not null
+                     and c.dt_ult_compra >= par.st_beneficio_inicio
                     then 0 else 1 end as st_ja_na_entrada
           from compras_pedido p
           join compras_produto_contexto ctx on ctx.codigo = p.codigo
           join int_produto_custo c on c.codigo = p.codigo
          cross join int_parametro par
-          left join cedep.pcest e
-            on e.CODPROD = p.codigo and e.CODFILIAL = '2'
          where ctx.valor_tot_gerencial is not null""").fetchall()
 
 
@@ -342,7 +342,7 @@ def cenario_5_st_ja_na_entrada(rep, cur):
          diverge em TODOS eles. Se algum nao divergir, ou a marca nao esta
          pegando ou a correcao nao foi aplicada - os dois casos sao defeito.
 
-    A marca e montada pelas TRES CONDICOES a partir dos insumos de `_universo`,
+    A marca e montada pelas DUAS CONDICOES a partir dos insumos de `_universo`,
     nao lida de `int_produto_custo.st_ja_na_entrada` - ver aquela funcao.
 
     ⚠ A REGRA MUDOU DUAS VEZES EM 09/10/2026, e vale saber por que parou aqui:
@@ -356,9 +356,16 @@ def cenario_5_st_ja_na_entrada(rep, cur):
          e nao tem resposta onde nao ha: dos 26 ativos com data 30/06/2013 (a
          carga inicial do WinThor), 19 somavam ST e 7 nao, por diferenca de
          coluna e nao de fato.
-      3. AS TRES CONDICOES, que o Diretor fechou no fim do dia. A condicao 3
-         (fornecedor de fora do estado) e' o que explica os casos de 2024-2026
-         que derrubaram a opcao 1: eram compra DENTRO da Bahia.
+      3. AS TRES CONDICOES, com uma de UF. REPROVADA no mesmo dia, pelo
+         Diretor, conferindo no servidor de teste: 215 itens ST substituto com
+         compra posterior ao Decreto perderam o ST. A UF saia da ultima
+         ENTRADA, que muitas vezes e' transferencia entre filiais - e ai o
+         "fornecedor" e' a propria empresa, na BA.
+      4. CADASTRO + DATA DA ULTIMA COMPRA, a regra que ficou. O que a UF
+         tentava pegar (compra dentro do estado) ja esta no cadastro: compra
+         interna tem de ser ST RECOLHIDO. E a data passou a sair da ultima
+         COMPRA, nao de DTULTENT - que era a causa dos casos de 2024-2026 que
+         derrubaram a opcao 1.
 
     A bateria completa de invariantes desta regra - e a lista de divergencia
     entre regra, nota e cadastro que vai para o Fiscal - esta em
